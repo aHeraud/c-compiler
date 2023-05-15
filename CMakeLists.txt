@@ -1,0 +1,37 @@
+cmake_minimum_required(VERSION 3.25)
+project(c_compiler C)
+
+function(add_git_submodule path)
+    find_package(Git REQUIRED)
+
+    execute_process(COMMAND ${GIT_EXECUTABLE} submodule init ${path}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+            COMMAND_ERROR_IS_FATAL ANY)
+
+    add_subdirectory(${path})
+endfunction(add_git_submodule)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/bin)
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
+
+include_directories(src)
+
+add_library(cclib STATIC
+        src/lexer.h src/lexer.c
+        src/util/read-lines.h src/util/read-lines.c
+        src/util/vectors.h src/util/vectors.c
+)
+
+add_git_submodule("dependencies/cunit")
+add_executable(unit-tests
+        src/util/read-lines.h src/util/vectors.h src/lexer.h
+        tst/test-main.c
+        tst/tests.h
+        tst/util/read-lines-test.c
+        tst/lexer-tests.c)
+target_link_libraries(unit-tests PUBLIC cunit)
+target_link_libraries(unit-tests PUBLIC cclib)
+
+enable_testing()
+add_test(NAME tests COMMAND unit-tests)
