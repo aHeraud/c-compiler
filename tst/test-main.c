@@ -8,6 +8,7 @@ int main() {
 
     read_lines_test_init_suite();
     lexer_tests_init_suite();
+    parser_tests_init_suite();
 
     CU_basic_set_mode(CU_BRM_VERBOSE);
 

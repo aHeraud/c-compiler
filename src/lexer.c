@@ -1,6 +1,6 @@
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
-#include <malloc.h>
 #include <stdlib.h>
 #include <ctype.h>
 
@@ -14,39 +14,39 @@ struct ReservedWord {
 
 struct ReservedWord RESERVED_WORDS[] = {
 //        {"auto", TK_AUTO},
-//        {"break", TK_BREAK},
-//        {"case", TK_CASE},
-        {"char", TK_TYPE_CHAR},
-//        {"const", TK_CONST},
-//        {"continue", TK_CONTINUE},
-//        {"default", TK_DEFAULT},
-//        {"do", TK_DO},
-        {"double", TK_TYPE_DOUBLE},
-        {"else", TK_ELSE},
-        {"enum", TK_TYPE_ENUM},
-//        {"extern", TK_EXTERN},
-        {"float", TK_TYPE_FLOAT},
-//        {"for", TK_FOR},
-//        {"goto", TK_GOTO},
-        {"if", TK_IF},
-//        {"inline", TK_INLINE},
-        {"int", TK_TYPE_INT},
-        {"long", TK_TYPE_LONG},
+        {"break",    TK_BREAK},
+        {"case",     TK_CASE},
+        {"char",     TK_CHAR},
+        {"const",    TK_CONST},
+        {"continue", TK_CONTINUE},
+        {"default",  TK_DEFAULT},
+        {"do",       TK_DO},
+        {"double",   TK_DOUBLE},
+        {"else",     TK_ELSE},
+        {"enum",     TK_ENUM},
+        {"extern",   TK_EXTERN},
+        {"float",    TK_FLOAT},
+        {"for",      TK_FOR},
+        {"goto",     TK_GOTO},
+        {"if",       TK_IF},
+        {"inline",   TK_INLINE},
+        {"int",      TK_INT},
+        {"long",     TK_LONG},
 //        {"register", TK_REGISTER},
 //        {"restrict", TK_RESTRICT},
-        {"return", TK_RETURN},
-        {"short", TK_TYPE_SHORT},
-        {"signed", TK_TYPE_SIGNED},
+        {"return",   TK_RETURN},
+        {"short",    TK_SHORT},
+        {"signed",   TK_SIGNED},
 //        {"sizeof", TK_SIZEOF},
 //        {"static", TK_STATIC},
-        {"struct", TK_TYPE_STRUCT},
-//        {"switch", TK_SWITCH},
-        {"typedef", TK_TYPE_TYPEDEF},
-        {"union", TK_TYPE_UNION},
-        {"unsigned", TK_TYPE_UNSIGNED},
-        {"void", TK_TYPE_VOID},
+        {"struct",   TK_STRUCT},
+        {"switch",   TK_SWITCH},
+        {"typedef",  TK_TYPEDEF},
+        {"union",    TK_UNION},
+        {"unsigned", TK_UNSIGNED},
+        {"void",     TK_VOID},
 //        {"volatile", TK_VOLATILE},
-//        {"while", TK_WHILE},
+        {"while",    TK_WHILE},
 //        {"_Alignas", TK_ALIGNAS},
 //        {"_Alignof", TK_ALIGNOF},
 //        {"_Atomic", TK_ATOMIC},
@@ -129,6 +129,7 @@ lexer_t linit(const char* input_path, const char* input, size_t input_len) {
         .input_offset = 0,
         .input_len = input_len,
         .position = {
+            .path = input_path,
             .line = 1,
             .column = 0,
         }
@@ -137,14 +138,13 @@ lexer_t linit(const char* input_path, const char* input, size_t input_len) {
 }
 
 void lfree(lexer_t* lexer) {
-    free(lexer->input);
     lexer->input = NULL;
 }
 
 token_t lscan(struct Lexer* lexer) {
     // skip whitespace
     char c0 = lpeek(lexer, 1);
-    while (c0 == ' ' || c0 == '\t') {
+    while (c0 == ' ' || c0 == '\t' || c0 == '\n') {
         ladvance(lexer);
         c0 = lpeek(lexer, 1);
     }
@@ -156,16 +156,21 @@ token_t lscan(struct Lexer* lexer) {
     c0 = lpeek(lexer, 1); // lookahead 1
     char c1 = lpeek(lexer, 2); // lookahead 2
     switch (c0) {
-        case '\r':
-        case '\n':
-            ladvance(lexer);
-            token.kind = TK_NEWLINE;
-            token.value = "\n";
-            break;
+//        case '\r':
+//        case '\n':
+//            ladvance(lexer);
+//            token.kind = TK_NEWLINE;
+//            token.value = "\n";
+//            break;
         case ';':
             ladvance(lexer);
             token.kind = TK_SEMICOLON;
             token.value = ";";
+            break;
+        case ':':
+            ladvance(lexer);
+            token.kind = TK_COLON;
+            token.value = ":";
             break;
         case ',':
             ladvance(lexer);
@@ -234,6 +239,17 @@ token_t lscan(struct Lexer* lexer) {
             token.kind = TK_STAR;
             token.value = "*";
             break;
+        case '=':
+            ladvance(lexer);
+            if (c1 == '=') {
+                ladvance(lexer);
+                token.kind = TK_EQUALS;
+                token.value = "==";
+            } else {
+                token.kind = TK_ASSIGN;
+                token.value = "=";
+            }
+            break;
         default:
             if (isalpha(c0) || c0 == '_') {
                 identifier_or_reserved_word(lexer, &token);
@@ -257,11 +273,11 @@ token_t lscan(struct Lexer* lexer) {
 }
 
 void string_literal(struct Lexer* lexer, struct Token* token) {
-    struct SourcePosition match_start = {lexer->position.line, lexer->position.column};
+    struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
     struct CharVector buffer = {malloc(512), 0, 512};
     char c = ladvance(lexer);
     assert(c == '"');
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
     while ((c = ladvance(lexer)) && c != '"') {
         if (c == '\r' || c == '\n') {
             // Illegal newline in string literal
@@ -271,10 +287,10 @@ void string_literal(struct Lexer* lexer, struct Token* token) {
             exit(1);
         } else if (c == '\\' && lpeek(lexer, 1) == '"') {
             // Special handling for escaped double quote
-            append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
-            append_char(&buffer.buffer, &buffer.len, &buffer.max_len, ladvance(lexer));
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
         } else {
-            append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
         }
     }
 
@@ -284,18 +300,18 @@ void string_literal(struct Lexer* lexer, struct Token* token) {
                 lexer->input_path, lexer->position.line, lexer->position.column);
         exit(1);
     }
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
     token->kind = TK_STRING_LITERAL;
     token->position = match_start;
-    token->value = realloc(buffer.buffer, buffer.len);
+    token->value = realloc(buffer.buffer, buffer.size);
 }
 
 void char_literal(struct Lexer* lexer, struct Token* token) {
-    struct SourcePosition match_start = {lexer->position.line, lexer->position.column};
+    struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
     struct CharVector buffer = {malloc(4), 0, 4};
     char c = ladvance(lexer);
     assert(c == '\'');
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
     while ((c = ladvance(lexer)) && c != '\'') {
         if (c == '\r' || c == '\n') {
             // Illegal newline in character literal
@@ -305,10 +321,10 @@ void char_literal(struct Lexer* lexer, struct Token* token) {
             exit(1);
         } else if (c == '\\' && lpeek(lexer, 1) == '\'') {
             // Special handling for escaped single quote
-            append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
-            append_char(&buffer.buffer, &buffer.len, &buffer.max_len, ladvance(lexer));
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
         } else {
-            append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
         }
     }
 
@@ -318,15 +334,15 @@ void char_literal(struct Lexer* lexer, struct Token* token) {
                 lexer->input_path, lexer->position.line, lexer->position.column);
         exit(1);
     }
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
 
     token->position = match_start;
     token->kind = TK_CHAR_LITERAL;
-    token->value = realloc(buffer.buffer, buffer.len);
+    token->value = realloc(buffer.buffer, buffer.size);
 }
 
 void integer_constant(struct Lexer* lexer, struct Token* token) {
-    struct SourcePosition match_start = {lexer->position.line, lexer->position.column};
+    struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
     struct CharVector buffer = {malloc(32), 0, 32};
 
     // TODO: handle hex, octal, and binary literals
@@ -334,28 +350,28 @@ void integer_constant(struct Lexer* lexer, struct Token* token) {
     assert(isdigit(c));
 
     do {
-        append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
     } while ((c = lpeek(lexer, 1)) && isdigit(c));
 
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, '\0');
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '\0');
 
     token->kind = TK_INTEGER_CONSTANT;
     token->position = match_start;
-    token->value = realloc(buffer.buffer, buffer.len);
+    token->value = realloc(buffer.buffer, buffer.size);
 }
 
 void identifier_or_reserved_word(struct Lexer* lexer, struct Token* token) {
-    struct SourcePosition match_start = {lexer->position.line, lexer->position.column};
+    struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
     struct CharVector buffer = {malloc(32), 0, 32};
 
     char c = ladvance(lexer);
     assert(isalpha(c) || c == '_');
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
 
     while ((c = lpeek(lexer, 1)) && (isalnum(c) || c == '_' )) {
-        append_char(&buffer.buffer, &buffer.len, &buffer.max_len, ladvance(lexer));
+        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
     }
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, '\0');
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '\0');
 
     // Is this a reserved word?
     for(int i = 0; i < sizeof(RESERVED_WORDS) / sizeof(struct ReservedWord); i++) {
@@ -370,7 +386,7 @@ void identifier_or_reserved_word(struct Lexer* lexer, struct Token* token) {
     }
 
     token->kind = TK_IDENTIFIER;
-    token->value = realloc(buffer.buffer, buffer.len);
+    token->value = realloc(buffer.buffer, buffer.size);
     token->position = match_start;
 }
 
@@ -379,29 +395,29 @@ void comment(struct Lexer* lexer, token_t* token) {
 
     char c = ladvance(lexer);
     assert(c == '/');
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
     c = ladvance(lexer);
     assert(c == '/' || c == '*');
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
 
     if (c == '*') {
         while ((c = ladvance(lexer)) && c != '*' && lpeek(lexer, 1) != '/') {
-            append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
         }
 
         if (c != '*' || lpeek(lexer, 1) != '/') {
             // error
         }
-        append_char(&buffer.buffer, &buffer.len, &buffer.max_len, c);
-        append_char(&buffer.buffer, &buffer.len, &buffer.max_len, ladvance(lexer));
+        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
+        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
     } else {
         while ((c = lpeek(lexer, 1)) && c != '\n') {
-            append_char(&buffer.buffer, &buffer.len, &buffer.max_len, ladvance(lexer));
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
         }
     }
 
-    append_char(&buffer.buffer, &buffer.len, &buffer.max_len, '\0');
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '\0');
 
     token->kind = TK_COMMENT;
-    token->value = realloc(buffer.buffer, buffer.len);
+    token->value = realloc(buffer.buffer, buffer.size);
 }
