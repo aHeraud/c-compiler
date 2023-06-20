@@ -115,16 +115,20 @@ typedef struct Token {
  */
 typedef struct TokenVector {
     token_t* buffer;
-    size_t len;
-    size_t max_len;
+    size_t size;
+    size_t capacity;
 } token_vector_t;
 
+void append_token(token_t** buffer, size_t *size, size_t* capacity, token_t token);
+
+typedef struct Lexer lexer_t;
 typedef struct Lexer {
     const char* input_path;
     const char* input;
     size_t input_offset;
     size_t input_len;
     source_position_t position;
+    lexer_t* child; // Used for nested lexers, e.g. for #include
 } lexer_t;
 
 lexer_t linit(const char* input_path, const char* input, size_t input_len);

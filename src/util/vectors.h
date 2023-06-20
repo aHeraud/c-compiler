@@ -42,6 +42,14 @@ void append_char(char** buffer, size_t* size, size_t* capacity, char c);
 void append_chars(char** buffer, size_t* size, size_t* capacity, const char* str);
 
 /**
+ * Shrinks a buffer to its current size.
+ * @param buffer buffer to shrink
+ * @param size number of elements in the buffer
+ * @param capacity maximum number of elements in the buffer
+ */
+void shrink_char_vector(char** buffer, const size_t* size, size_t* capacity);
+
+/**
  * Appends a pointer to a buffer, growing the buffer if necessary.
  * @param buffer buffer to append to
  * @param size number of elements in the buffer

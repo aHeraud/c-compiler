@@ -456,6 +456,8 @@ bool direct_declarator_prime(parser_t* parser, ast_node_t* node) {
         node->position = position;
         node->direct_declarator.type = DECL_FUNCTION;
         node->direct_declarator.function.param_type_or_ident_list = pt_i_list;
+        node->direct_declarator.next = NULL;
+        node->direct_declarator.prev = NULL;
         require(parser, TK_RPAREN, NULL);
         return true;
     } else {
@@ -473,6 +475,8 @@ bool direct_declarator(parser_t* parser, ast_node_t* node) {
         temp->direct_declarator.type = DECL_IDENTIFIER;
         identifier_t identifier = {token.value};
         temp->direct_declarator.identifier = identifier;
+        temp->direct_declarator.next = NULL;
+        temp->direct_declarator.prev = NULL;
 
         // reverse the list of direct_declarator nodes
         ast_node_t* prev = malloc(sizeof(ast_node_t));

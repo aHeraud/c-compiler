@@ -28,6 +28,12 @@ void append_chars(char** buffer, size_t* buffer_len, size_t* buffer_max_len, con
     *buffer_len += len;
 }
 
+void shrink_char_vector(char** buffer, const size_t* size, size_t* capacity) {
+    *buffer = realloc(*buffer, *size);
+    assert(buffer != NULL);
+    *capacity = *size;
+}
+
 void append_ptr(void*** buffer, size_t* buffer_len, size_t* buffer_max_len, void* ptr) {
     if (*buffer_len + 1 >= *buffer_max_len) {
         *buffer_max_len > 0 ? (*buffer_max_len *= 2) : (*buffer_max_len = 1);

@@ -40,7 +40,8 @@ add_executable(unit-tests
         tst/tests.h
         tst/util/read-lines-test.c
         tst/lexer-tests.c
-        tst/parser-tests.c src/ast.h)
+        tst/parser-tests.c src/ast.h
+        tst/preprocessor-tests.c)
 target_link_libraries(unit-tests PUBLIC cunit)
 target_link_libraries(unit-tests PUBLIC cclib)
 
