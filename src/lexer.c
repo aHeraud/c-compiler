@@ -610,12 +610,6 @@ void preprocessor_include(lexer_t* lexer) {
     // 1. If double-quoted, search in the directory containing the current file
     // 2. Search in additional include directories included as command-line arguments (if any were supplied)
     // 3. Search in the standard system include directories
-    //    * ['/usr/local/include', '/usr/include'] on Linux
-    //    * TODO for other platforms
-    //
-
-    // TODO: resolve include path for system headers
-    // TODO: custom user/system include folders
 
     bool search_current_dir = end == '"';
     FILE *fp = NULL;

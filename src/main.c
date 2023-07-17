@@ -39,6 +39,7 @@ int main(int argc, char** argv) {
     struct Options options = {
             .print_ast = false,
             .additional_include_directories = {NULL, 0, 0},
+            .additional_system_include_directories = {NULL, 0, 0},
             .input_files = {NULL, 0, 0},
     };
 
@@ -46,10 +47,21 @@ int main(int argc, char** argv) {
         if (strcmp(argv[argi], "--ast") == 0) {
             options.print_ast = true;
         } else if (strncmp(argv[argi], "-I", 2) == 0) {
-            append_ptr((void***) &options.additional_include_directories.buffer,
-                       &options.additional_include_directories.size,
-                       &options.additional_include_directories.capacity,
-                       argv[argi] + 2);
+            size_t len = strlen(argv[argi]);
+            if (len > 2) {
+                append_ptr((void ***) &options.additional_include_directories.buffer,
+                           &options.additional_include_directories.size,
+                           &options.additional_include_directories.capacity,
+                           argv[argi] + 2);
+            } else if (argi + 1 < argc) {
+                append_ptr((void ***) &options.additional_include_directories.buffer,
+                           &options.additional_include_directories.size,
+                           &options.additional_include_directories.capacity,
+                           argv[++argi]);
+            } else {
+                fprintf(stderr, "Missing argument for -I\n");
+                return 1;
+            }
         } else if (strncmp(argv[argi], "--include-directory", 19) == 0) {
             if (argv[argi][19] == '=') {
                 append_ptr((void ***) &options.additional_include_directories.buffer,
@@ -63,6 +75,22 @@ int main(int argc, char** argv) {
                            argv[++argi]);
             } else {
                 fprintf(stderr, "Missing argument for --include-directory\n");
+                return 1;
+            }
+        } else if (strncmp(argv[argi], "-isystem", 8) == 0) {
+            size_t len = strlen(argv[argi]);
+            if (len > 8) {
+                append_ptr((void ***) &options.additional_system_include_directories.buffer,
+                           &options.additional_system_include_directories.size,
+                           &options.additional_system_include_directories.capacity,
+                           argv[argi] + 8);
+            } else if (argi + 1 < argc) {
+                append_ptr((void ***) &options.additional_system_include_directories.buffer,
+                           &options.additional_system_include_directories.size,
+                           &options.additional_system_include_directories.capacity,
+                           argv[++argi]);
+            } else {
+                fprintf(stderr, "Missing argument for -isystem\n");
                 return 1;
             }
         } else if (strncmp(argv[argi], "--system-include-directory", 26) == 0) {
@@ -82,6 +110,14 @@ int main(int argc, char** argv) {
             }
         } else if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
             printf("Usage: %s [options] <input files>\n", argv[0]);
+            printf("Options:\n");
+            printf("  --ast           Print the generated AST\n");
+            printf("  -I<dir>, --include-directory=<dir>\n");
+            printf("                  Add directory to the include search path. These will be\n");
+            printf("                  searched in the order they are given before the system\n");
+            printf("                  include directories.\n");
+            printf("  -isystem<dir>, --system-include-directory=<dir>\n");
+            printf("                  Add directory to the system include search path.\n");
             return 0;
         } else {
             append_ptr((void***) &options.input_files.buffer,
