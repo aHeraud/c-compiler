@@ -136,7 +136,13 @@ char lpeek(struct Lexer* lexer, unsigned int count) {
     return c;
 }
 
-lexer_t linit(const char* input_path, const char* input, size_t input_len) {
+lexer_t linit(
+        const char* input_path,
+        const char* input,
+        size_t input_len,
+        string_vector_t* user_include_paths,
+        string_vector_t* system_include_paths
+) {
     lexer_t lexer = {
         .input_path = input_path,
         .input = input,
@@ -146,8 +152,25 @@ lexer_t linit(const char* input_path, const char* input, size_t input_len) {
             .path = input_path,
             .line = 1,
             .column = 0,
-        }
+        },
+        .user_include_paths = user_include_paths,
+        .system_include_paths = system_include_paths,
     };
+
+    if (lexer.user_include_paths == NULL) {
+        lexer.user_include_paths = malloc(sizeof(string_vector_t));
+        lexer.user_include_paths->buffer = NULL;
+        lexer.user_include_paths->size = 0;
+        lexer.user_include_paths->capacity = 0;
+    }
+
+    if (lexer.system_include_paths == NULL) {
+        lexer.system_include_paths = malloc(sizeof(string_vector_t));
+        lexer.system_include_paths->buffer = NULL;
+        lexer.system_include_paths->size = 0;
+        lexer.system_include_paths->capacity = 0;
+    }
+
     return lexer;
 }
 
@@ -575,7 +598,7 @@ void preprocessor_include(lexer_t* lexer) {
 
     if (c0 != end) {
         fprintf(stderr, "%s:%d:%d: error: missing terminating '%c' character\n",
-                lexer->input_path, lexer->position.line, lexer->position.column, end); // TODO: print the line
+                lexer->input_path, lexer->position.line, lexer->position.column, end);
         exit(1); // TODO: error recovery
     } else {
         ladvance(lexer); // consume the closing symbol ('"' or '>')
@@ -583,38 +606,75 @@ void preprocessor_include(lexer_t* lexer) {
 
     // TODO: consume the rest of the line, error if there's anything other than whitespace or a comment
 
+    // #include path resolution:
+    // 1. If double-quoted, search in the directory containing the current file
+    // 2. Search in additional include directories included as command-line arguments (if any were supplied)
+    // 3. Search in the standard system include directories
+    //    * ['/usr/local/include', '/usr/include'] on Linux
+    //    * TODO for other platforms
+    //
+
     // TODO: resolve include path for system headers
     // TODO: custom user/system include folders
 
-    // For now, just assume the include path is relative to the current file
-    // TODO: this is not correct, it should be relative to the translation unit being processed, not the current file
-    char prefix[256];
-    get_file_prefix(lexer->input_path, 256, prefix);
+    bool search_current_dir = end == '"';
+    FILE *fp = NULL;
+    if (search_current_dir) {
+        char prefix[256];
+        get_file_prefix(lexer->input_path, 256, prefix);
+        char_vector_t path = {malloc(32), 0, 32};
+        append_chars(&path.buffer, &path.size, &path.capacity, prefix);
+        append_chars(&path.buffer, &path.size, &path.capacity, filename.buffer);
+        shrink_char_vector(&path.buffer, &path.size, &path.capacity);
+        fp = fopen(path.buffer, "r");
+    }
 
-    char_vector_t path = {malloc(32), 0, 32};
-    append_chars(&path.buffer, &path.size, &path.capacity, prefix);
-    append_chars(&path.buffer, &path.size, &path.capacity, filename.buffer);
-    shrink_char_vector(&path.buffer, &path.size, &path.capacity);
+    for(int i = 0; i < lexer->user_include_paths->size; i += 1) {
+        if (fp != NULL) {
+            break;
+        }
 
-    // File inclusion is handled recursively by creating a new nested lexer for the included file
-    FILE *fp = fopen(path.buffer, "r");
+        char_vector_t path = {malloc(32), 0, 32};
+        append_chars(&path.buffer, &path.size, &path.capacity, lexer->user_include_paths->buffer[i]);
+        if (path.size > 0 && path.buffer[path.size - 1] != '/') {
+            append_char(&path.buffer, &path.size, &path.capacity, '/');
+        }
+        append_chars(&path.buffer, &path.size, &path.capacity, filename.buffer);
+        fp = fopen(path.buffer, "r");
+    }
+
+    for(int i = 0; i < lexer->system_include_paths->size; i += 1) {
+        if (fp != NULL) {
+            break;
+        }
+
+        char_vector_t path = {malloc(32), 0, 32};
+        append_chars(&path.buffer, &path.size, &path.capacity, lexer->system_include_paths->buffer[i]);
+        if (path.size > 0 && path.buffer[path.size - 1] != '/') {
+            append_char(&path.buffer, &path.size, &path.capacity, '/');
+        }
+        append_chars(&path.buffer, &path.size, &path.capacity, filename.buffer);
+        fp = fopen(path.buffer, "r");
+    }
+
     if (fp == NULL) {
         fprintf(stderr, "%s:%d:%d: Failed to open file: %s\n",
                 filename_start.path, filename_start.line, filename_start.column, filename.buffer);
         exit(1);
     }
 
+    // File inclusion is handled recursively by creating a new nested lexer for the included file
     char* source_buffer = NULL;
     size_t len = 0;
     ssize_t bytes_read = getdelim( &source_buffer, &len, '\0', fp);
     if (bytes_read < 0) {
-        fprintf(stderr, "%s:%d:%d: Failed to read file: %s\n",
+        fprintf(stderr, "%s:%d:%d: No such file or directory: %s\n",
                 filename_start.path, filename_start.line, filename_start.column, filename.buffer);
         exit(1);
     }
     fclose(fp);
 
     lexer_t* child = malloc(sizeof(lexer_t));
-    *child = linit(filename.buffer, source_buffer, bytes_read);
+    *child = linit(filename.buffer, source_buffer, bytes_read, lexer->user_include_paths, lexer->system_include_paths);
     lexer->child = child;
 }

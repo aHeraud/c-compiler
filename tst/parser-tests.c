@@ -5,7 +5,7 @@
 
 void test_primary_expression_ident() {
     char* input = "bar";
-    lexer_t lexer = linit("path/to/file", input, strlen(input));
+    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
     parser_t parser = {
             .token = lscan(&lexer),
             .lexer = lexer,
@@ -20,7 +20,7 @@ void test_primary_expression_ident() {
 
 void test_declaration_simple() {
     char* input = "int foo = 5;";
-    lexer_t lexer = linit("path/to/file", input, strlen(input));
+    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
     token_t token = lscan(&lexer);
     parser_t parser = {lexer,token};
     ast_node_t node;
@@ -58,7 +58,7 @@ void test_declaration_simple() {
 
 void test_declaration_function_proto_no_params() {
     char* input = "inline float foo();";
-    lexer_t lexer = linit("path/to/file", input, strlen(input));
+    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
     token_t token = lscan(&lexer);
     parser_t parser = {lexer,token};
 
@@ -79,7 +79,7 @@ void test_declaration_function_proto_no_params() {
 
 void test_function_definition() {
     char* input = "int foo() { return 5; }";
-    lexer_t lexer = linit("path/to/file", input, strlen(input));
+    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
     token_t token = lscan(&lexer);
     parser_t parser = {lexer,token};
 
@@ -88,9 +88,6 @@ void test_function_definition() {
     CU_ASSERT_TRUE_FATAL(matches);
     CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF); // verify that we've consumed all tokens
     CU_ASSERT_EQUAL_FATAL(node.type, AST_FUNCTION_DEFINITION);
-
-    fprintf(stderr, "\n");
-    ppast(stderr, &node);
 }
 
 int parser_tests_init_suite() {

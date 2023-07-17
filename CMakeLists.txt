@@ -46,4 +46,4 @@ target_link_libraries(unit-tests PUBLIC cunit)
 target_link_libraries(unit-tests PUBLIC cclib)
 
 enable_testing()
-add_test(NAME tests COMMAND unit-tests)
+add_test(NAME tests COMMAND unit-tests WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})

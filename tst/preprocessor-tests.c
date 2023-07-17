@@ -4,8 +4,11 @@
 #include "tests.h"
 #include "lexer.h"
 
-void test_includes_header() {
-    char* input_path = "tst/test-input/include/a.c";
+void test_includes_file(
+        char* input_path,
+        string_vector_t* user_includes_paths,
+        string_vector_t* system_includes_path
+) {
     FILE* file = fopen(input_path, "r");
     CU_ASSERT_PTR_NOT_NULL_FATAL(file);
     char* source_buffer = NULL;
@@ -14,7 +17,7 @@ void test_includes_header() {
     CU_ASSERT_FATAL(bytes_read > 0);
     fclose(file);
 
-    lexer_t lexer = linit(input_path, source_buffer, len);
+    lexer_t lexer = linit(input_path, source_buffer, len, user_includes_paths, system_includes_path);
     token_t token;
     token_vector_t tokens = {NULL, 0, 0};
     while ((token = lscan(&lexer)).kind != TK_EOF) {
@@ -44,12 +47,27 @@ void test_includes_header() {
     CU_ASSERT_EQUAL_FATAL(tokens.buffer[14].kind, TK_SEMICOLON);
 }
 
+void test_includes_header_relative_path() {
+    char* input_path = "tst/test-input/include/a.c";
+    test_includes_file(input_path, NULL, NULL);
+}
+
+void test_includes_header_additional_directory() {
+    char* input_path = "tst/test-input/include/c.c";
+    string_vector_t user_includes_paths = {NULL, 0, 0};
+    append_ptr((void***) &user_includes_paths.buffer, &user_includes_paths.size, &user_includes_paths.capacity, "tst/test-input/include/dep");
+    test_includes_file(input_path, &user_includes_paths, NULL);
+}
+
 int preprocessor_tests_init_suite() {
     CU_pSuite pSuite = CU_add_suite("preprocessor", NULL, NULL);
-    if (NULL == CU_add_test(pSuite, "#include", test_includes_header)) {
+    if (NULL == CU_add_test(pSuite, "#include - relative path", test_includes_header_relative_path)) {
         CU_cleanup_registry();
         exit(CU_get_error());
     }
-
+    if (NULL == CU_add_test(pSuite, "#include - additional include directory", test_includes_header_additional_directory)) {
+        CU_cleanup_registry();
+        exit(CU_get_error());
+    }
     return 0;
 }

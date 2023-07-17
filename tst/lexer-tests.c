@@ -4,7 +4,7 @@
 
 void test_simple_program() {
     char* input = "/*multi line\ncomment*/\nint main() {\n    return 0; // comment\n}";
-    lexer_t lexer = linit("path/to/file", input, strlen(input));
+    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
     token_t token;
     CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_COMMENT);
     CU_ASSERT_STRING_EQUAL_FATAL(token.value, "/*multi line\ncomment*/");

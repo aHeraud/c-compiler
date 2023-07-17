@@ -128,10 +128,18 @@ typedef struct Lexer {
     size_t input_offset;
     size_t input_len;
     source_position_t position;
+    string_vector_t* user_include_paths;
+    string_vector_t* system_include_paths;
     lexer_t* child; // Used for nested lexers, e.g. for #include
 } lexer_t;
 
-lexer_t linit(const char* input_path, const char* input, size_t input_len);
+lexer_t linit(
+        const char* input_path,
+        const char* input,
+        size_t input_len,
+        string_vector_t* user_include_paths,
+        string_vector_t* system_include_paths
+);
 void lfree(lexer_t* lexer);
 token_t lscan(lexer_t* lexer);
 

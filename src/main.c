@@ -7,9 +7,30 @@
 #include "parser.h"
 #include "util/ast-printer.h"
 
+// TODO: Set based on current platform
+char* DEFAULT_SYSTEM_INCLUDE_DIRECTORIES[2] = {
+        "/usr/local/include",
+        "/usr/include",
+};
+
 struct Options {
-    // --ast
+    /**
+     * --ast
+     * Print the AST to stdout.
+    */
     bool print_ast;
+
+    /**
+     * -I<dir>, --include-directory <dir>, --include-directory=<dir>
+     * Add <dir> to the user include search path.
+     */
+    string_vector_t additional_include_directories;
+
+    /**
+     * -isystem <dir>, --system-include-directory <dir>, --system-include-directory=<dir>
+     * Add <dir> to the system include search path.
+     */
+     string_vector_t additional_system_include_directories;
 
     string_vector_t input_files;
 };
@@ -17,12 +38,48 @@ struct Options {
 int main(int argc, char** argv) {
     struct Options options = {
             .print_ast = false,
+            .additional_include_directories = {NULL, 0, 0},
             .input_files = {NULL, 0, 0},
     };
 
     for (int argi = 1; argi < argc; argi++) {
         if (strcmp(argv[argi], "--ast") == 0) {
             options.print_ast = true;
+        } else if (strncmp(argv[argi], "-I", 2) == 0) {
+            append_ptr((void***) &options.additional_include_directories.buffer,
+                       &options.additional_include_directories.size,
+                       &options.additional_include_directories.capacity,
+                       argv[argi] + 2);
+        } else if (strncmp(argv[argi], "--include-directory", 19) == 0) {
+            if (argv[argi][19] == '=') {
+                append_ptr((void ***) &options.additional_include_directories.buffer,
+                           &options.additional_include_directories.size,
+                           &options.additional_include_directories.capacity,
+                           argv[argi] + 20);
+            } else if (argi + 1 < argc) {
+                append_ptr((void ***) &options.additional_include_directories.buffer,
+                           &options.additional_include_directories.size,
+                           &options.additional_include_directories.capacity,
+                           argv[++argi]);
+            } else {
+                fprintf(stderr, "Missing argument for --include-directory\n");
+                return 1;
+            }
+        } else if (strncmp(argv[argi], "--system-include-directory", 26) == 0) {
+            if (argv[argi][26] == '=') {
+                append_ptr((void ***) &options.additional_system_include_directories.buffer,
+                           &options.additional_system_include_directories.size,
+                           &options.additional_system_include_directories.capacity,
+                           argv[argi] + 27);
+            } else if (argi + 1 < argc) {
+                append_ptr((void ***) &options.additional_system_include_directories.buffer,
+                           &options.additional_system_include_directories.size,
+                           &options.additional_system_include_directories.capacity,
+                           argv[++argi]);
+            } else {
+                fprintf(stderr, "Missing argument for --system-include-directory\n");
+                return 1;
+            }
         } else if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
             printf("Usage: %s [options] <input files>\n", argv[0]);
             return 0;
@@ -37,6 +94,14 @@ int main(int argc, char** argv) {
     if (options.input_files.size == 0) {
         fprintf(stderr, "No input files\n");
         return 1;
+    }
+
+    for(size_t i = 0; i < sizeof(DEFAULT_SYSTEM_INCLUDE_DIRECTORIES) / sizeof(char*); i++) {
+        // TODO: check for duplicates
+        append_ptr((void***) &options.additional_system_include_directories.buffer,
+                   &options.additional_system_include_directories.size,
+                   &options.additional_system_include_directories.capacity,
+                   DEFAULT_SYSTEM_INCLUDE_DIRECTORIES[i]);
     }
 
     for (size_t i = 0; i < options.input_files.size; i++) {
@@ -57,7 +122,10 @@ int main(int argc, char** argv) {
 
         lexer_t lexer = linit(options.input_files.buffer[i],
                               source_buffer,
-                              bytes_read);
+                              bytes_read,
+                              &options.additional_include_directories,
+                              &options.additional_system_include_directories
+        );
         parser_t parser = pinit(lexer);
 
         ast_node_t* translation_unit = malloc(sizeof(ast_node_t));
