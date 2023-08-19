@@ -4,11 +4,25 @@
 #include "tests.h"
 #include "lexer.h"
 
+static lexer_global_context_t create_context() {
+    return (lexer_global_context_t) {
+            .user_include_paths = NULL,
+            .system_include_paths = NULL,
+            .macro_definitions = hash_table_create(100)
+    };
+}
+
 void test_includes_file(
         char* input_path,
         string_vector_t* user_includes_paths,
         string_vector_t* system_includes_path
 ) {
+    lexer_global_context_t context = {
+            .user_include_paths = user_includes_paths,
+            .system_include_paths = system_includes_path,
+            .macro_definitions = hash_table_create(10)
+    };
+
     FILE* file = fopen(input_path, "r");
     CU_ASSERT_PTR_NOT_NULL_FATAL(file);
     char* source_buffer = NULL;
@@ -17,7 +31,7 @@ void test_includes_file(
     CU_ASSERT_FATAL(bytes_read > 0);
     fclose(file);
 
-    lexer_t lexer = linit(input_path, source_buffer, len, user_includes_paths, system_includes_path);
+    lexer_t lexer = linit(input_path, source_buffer, len, &context);
     token_t token;
     token_vector_t tokens = {NULL, 0, 0};
     while ((token = lscan(&lexer)).kind != TK_EOF) {
@@ -59,15 +73,215 @@ void test_includes_header_additional_directory() {
     test_includes_file(input_path, &user_includes_paths, NULL);
 }
 
+void test_macro_define_and_replace_macro_no_body() {
+    char*  input_path = "define-no-body.c";
+    char* source_buffer = "#define FOO\nFOO\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {NULL, 0, 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    // verify that the macro was parsed correctly
+    CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 1)
+    macro_definition_t* definition = malloc(sizeof(macro_definition_t));
+    CU_ASSERT_TRUE_FATAL(hash_table_lookup(&context.macro_definitions, "FOO", (void**) &definition))
+    CU_ASSERT_EQUAL_FATAL(definition->tokens.size, 0)
+    CU_ASSERT_EQUAL_FATAL(definition->parameters.size, 0)
+    CU_ASSERT_EQUAL_FATAL(definition->variadic, false)
+
+    // verify that the macro was expanded correctly
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 0)
+}
+
+void test_macro_define_and_replace_macro_with_body() {
+    char*  input_path = "define-with-body.c";
+    char* source_buffer = "#define HELLO_WORLD printf(\"hello world!\");\nHELLO_WORLD\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 1)
+    macro_definition_t* definition = malloc(sizeof(macro_definition_t));
+    CU_ASSERT_TRUE_FATAL(hash_table_lookup(&context.macro_definitions, "HELLO_WORLD", (void**) &definition))
+    CU_ASSERT_EQUAL_FATAL(definition->tokens.size, 5)
+    CU_ASSERT_EQUAL_FATAL(definition->parameters.size, 0)
+    CU_ASSERT_EQUAL_FATAL(definition->variadic, false)
+    token_kind_t expected_tokens[] = {TK_IDENTIFIER, TK_LPAREN, TK_STRING_LITERAL, TK_RPAREN, TK_SEMICOLON};
+    for (int i = 0; i < 5; i++) {
+        CU_ASSERT_EQUAL_FATAL(definition->tokens.buffer[i].kind, expected_tokens[i])
+    }
+    CU_ASSERT_STRING_EQUAL_FATAL(definition->tokens.buffer[0].value, "printf")
+    CU_ASSERT_STRING_EQUAL_FATAL(definition->tokens.buffer[2].value, "hello world!")
+
+    // verify that the macro was expanded correctly
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 5)
+    for (int i = 0; i < 5; i++) {
+        CU_ASSERT_EQUAL_FATAL(tokens.buffer[i].kind, expected_tokens[i])
+    }
+}
+
+void test_macro_define_and_replace_parameterized_macro() {
+    char*  input_path = "define-with-parameters.c";
+    char* source_buffer = "#define SUM(a, b) a + b\nSUM((3 * 3),2)\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 1)
+    macro_definition_t* definition = malloc(sizeof(macro_definition_t));
+    CU_ASSERT_TRUE_FATAL(hash_table_lookup(&context.macro_definitions, "SUM", (void**) &definition))
+    CU_ASSERT_EQUAL_FATAL(definition->tokens.size, 3)
+    CU_ASSERT_EQUAL_FATAL(definition->parameters.size, 2)
+    CU_ASSERT_EQUAL_FATAL(definition->variadic, false)
+
+    token_kind_t definition_expected_tokens[] = {TK_IDENTIFIER, TK_PLUS, TK_IDENTIFIER};
+    for (int i = 0; i < 3; i++) {
+        CU_ASSERT_EQUAL_FATAL(definition->tokens.buffer[i].kind, definition_expected_tokens[i])
+    }
+    CU_ASSERT_STRING_EQUAL_FATAL(definition->tokens.buffer[0].value, "a")
+    CU_ASSERT_STRING_EQUAL_FATAL(definition->tokens.buffer[2].value, "b")
+
+    // verify that the macro was expanded correctly
+    token_kind_t expansion_expected_tokens[] = {
+            TK_LPAREN,
+            TK_INTEGER_CONSTANT,
+            TK_STAR,
+            TK_INTEGER_CONSTANT,
+            TK_RPAREN,
+            TK_PLUS,
+            TK_INTEGER_CONSTANT
+    };
+    CU_ASSERT_EQUAL_FATAL(tokens.size, (sizeof(expansion_expected_tokens) / sizeof(token_kind_t)))
+    for (int i = 0; i < tokens.size; i++) {
+        CU_ASSERT_EQUAL_FATAL(tokens.buffer[i].kind, expansion_expected_tokens[i])
+    }
+}
+
+void test_macro_define_and_replace_stringification() {
+    char*  input_path = "define-with-parameters.c";
+    char* source_buffer = "#define STRINGIFY(a) #a\nSTRINGIFY(foo)\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 1)
+    macro_definition_t* macro_definition = NULL;
+    CU_ASSERT_TRUE_FATAL(hash_table_lookup(&context.macro_definitions, "STRINGIFY", (void**) &macro_definition))
+    CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.size, 2)
+    token_kind_t expected_macro_tokens[] = {TK_HASH, TK_IDENTIFIER};
+    for (int i = 0; i < 2; i++) {
+        CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.buffer[i].kind, expected_macro_tokens[i])
+    }
+
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 1)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[0].kind, TK_STRING_LITERAL)
+    CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[0].value, "foo")
+}
+
+void test_macro_define_and_replace_token_pasting() {
+    char*  input_path = "define-with-parameters.c";
+    char* source_buffer = "#define PASTE(a, b) a ## b\nPASTE(foo, bar)\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 1)
+    macro_definition_t* macro_definition = NULL;
+    CU_ASSERT_TRUE_FATAL(hash_table_lookup(&context.macro_definitions, "PASTE", (void**) &macro_definition))
+    CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.size, 3)
+    token_kind_t expected_macro_tokens[] = {TK_IDENTIFIER, TK_DOUBLE_HASH, TK_IDENTIFIER};
+    for (int i = 0; i < 2; i++) {
+        CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.buffer[i].kind, expected_macro_tokens[i])
+    }
+
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 1)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[0].kind, TK_IDENTIFIER)
+    CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[0].value, "foobar")
+}
+
+void test_macro_define_and_replace_varargs() {
+    char* input_path = "define-with-varargs.c";
+    char* source_buffer = "#define PRINT(stream, ...) fprintf(stream, __VA_ARGS__)\nPRINT(stdout, \"hello %s!\", \"world\");\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 1)
+    macro_definition_t* macro_definition = NULL;
+    CU_ASSERT_TRUE_FATAL(hash_table_lookup(&context.macro_definitions, "PRINT", (void**) &macro_definition))
+    CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.size, 6)
+    token_kind_t expected_macro_tokens[] = {
+            TK_IDENTIFIER,
+            TK_LPAREN,
+            TK_IDENTIFIER,
+            TK_COMMA,
+            TK_IDENTIFIER,
+            TK_RPAREN
+    };
+    for (int i = 0; i < 6; i++) {
+        CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.buffer[i].kind, expected_macro_tokens[i])
+    }
+
+    token_kind_t expected_expansion_tokens[] = {
+            TK_IDENTIFIER,
+            TK_LPAREN,
+            TK_IDENTIFIER,
+            TK_COMMA,
+            TK_STRING_LITERAL,
+            TK_COMMA,
+            TK_STRING_LITERAL,
+            TK_RPAREN,
+            TK_SEMICOLON
+    };
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 9)
+    for (int i = 0; i < 9; i++) {
+        CU_ASSERT_EQUAL_FATAL(tokens.buffer[i].kind, expected_expansion_tokens[i])
+    }
+}
+
 int preprocessor_tests_init_suite() {
     CU_pSuite pSuite = CU_add_suite("preprocessor", NULL, NULL);
-    if (NULL == CU_add_test(pSuite, "#include - relative path", test_includes_header_relative_path)) {
+    if (NULL == CU_add_test(pSuite, "#include - relative path", test_includes_header_relative_path) ||
+        NULL == CU_add_test(pSuite, "#include - additional include directory", test_includes_header_additional_directory) ||
+        NULL == CU_add_test(pSuite, "#define - no body", test_macro_define_and_replace_macro_no_body) ||
+        NULL == CU_add_test(pSuite, "#define - with multi-token body", test_macro_define_and_replace_macro_with_body) ||
+        NULL == CU_add_test(pSuite, "#define - with parameters", test_macro_define_and_replace_parameterized_macro) ||
+        NULL == CU_add_test(pSuite, "#define - parameter stringification", test_macro_define_and_replace_stringification) ||
+        NULL == CU_add_test(pSuite, "#define - token pasting", test_macro_define_and_replace_token_pasting) ||
+        NULL == CU_add_test(pSuite, "#define - variadic macro", test_macro_define_and_replace_varargs)
+    ) {
         CU_cleanup_registry();
         exit(CU_get_error());
     }
-    if (NULL == CU_add_test(pSuite, "#include - additional include directory", test_includes_header_additional_directory)) {
-        CU_cleanup_registry();
-        exit(CU_get_error());
-    }
+
     return 0;
 }

@@ -1,7 +1,10 @@
-#ifndef C_COMPILER_PREPROCESSOR_LEXER_H
-#define C_COMPILER_PREPROCESSOR_LEXER_H
+#ifndef C_COMPILER_LEXER_H
+#define C_COMPILER_LEXER_H
+
+#include <stdbool.h>
 #include <stdint.h>
 #include "util/vectors.h"
+#include "util/hashtable.h"
 
 typedef enum TokenKind {
     TK_NONE,
@@ -14,6 +17,10 @@ typedef enum TokenKind {
     TK_PP_UNDEF,
     TK_PP_IFDEF,
     TK_PP_LINE,
+
+    /* Preprocessor tokens */
+    TK_HASH, // stringification
+    TK_DOUBLE_HASH, // concatenation
 
     TK_VOID,
     TK_CHAR,
@@ -94,6 +101,66 @@ typedef enum TokenKind {
     TK_ELLIPSIS, // '...'
 } token_kind_t;
 
+struct ReservedWord {
+    char* word;
+    enum TokenKind kind;
+};
+
+static struct ReservedWord RESERVED_WORDS[] = {
+//        {"auto", TK_AUTO},
+        {"break",    TK_BREAK},
+        {"case",     TK_CASE},
+        {"char",     TK_CHAR},
+        {"const",    TK_CONST},
+        {"continue", TK_CONTINUE},
+        {"default",  TK_DEFAULT},
+        {"do",       TK_DO},
+        {"double",   TK_DOUBLE},
+        {"else",     TK_ELSE},
+        {"enum",     TK_ENUM},
+        {"extern",   TK_EXTERN},
+        {"float",    TK_FLOAT},
+        {"for",      TK_FOR},
+        {"goto",     TK_GOTO},
+        {"if",       TK_IF},
+        {"inline",   TK_INLINE},
+        {"int",      TK_INT},
+        {"long",     TK_LONG},
+//        {"register", TK_REGISTER},
+//        {"restrict", TK_RESTRICT},
+        {"return",   TK_RETURN},
+        {"short",    TK_SHORT},
+        {"signed",   TK_SIGNED},
+        {"sizeof", TK_SIZEOF},
+        {"static", TK_STATIC},
+        {"struct",   TK_STRUCT},
+        {"switch",   TK_SWITCH},
+        {"typedef",  TK_TYPEDEF},
+        {"union",    TK_UNION},
+        {"unsigned", TK_UNSIGNED},
+        {"void",     TK_VOID},
+//        {"volatile", TK_VOLATILE},
+        {"while",    TK_WHILE},
+//        {"_Alignas", TK_ALIGNAS},
+//        {"_Alignof", TK_ALIGNOF},
+//        {"_Atomic", TK_ATOMIC},
+//        {"_Bool", TK_BOOL},
+//        {"_Complex", TK_COMPLEX},
+//        {"_Generic", TK_GENERIC},
+//        {"_Imaginary", TK_IMAGINARY},
+//        {"_Noreturn", TK_NORETURN},
+//        {"_Static_assert", TK_STATIC_ASSERT},
+//        {"_Thread_local", TK_THREAD_LOCAL}
+};
+
+static struct ReservedWord PREPROCESSOR_DIRECTIVES[] = {
+        {"include", TK_PP_INCLUDE},
+        {"define", TK_PP_DEFINE},
+        {"undef", TK_PP_UNDEF},
+        {"ifdef", TK_PP_IFDEF},
+        {"line", TK_PP_LINE}
+};
+
 typedef struct SourcePosition {
     const char* path;
     uint32_t line;
@@ -106,13 +173,6 @@ typedef struct Token {
     struct SourcePosition position;
 } token_t;
 
-/**
- * Vector of tokens.
- * Pointers to tokens in this vector are only guaranteed to be valid until the next call to lex(),
- * as the buffer may be reallocated.
- *
- * TODO: use some sort of linked list, or linked list of arrays, to avoid reallocating the buffer
- */
 typedef struct TokenVector {
     token_t* buffer;
     size_t size;
@@ -121,6 +181,33 @@ typedef struct TokenVector {
 
 void append_token(token_t** buffer, size_t *size, size_t* capacity, token_t token);
 
+typedef struct TokenNode {
+    token_t token;
+    struct TokenNode* prev;
+    struct TokenNode* next;
+} token_node_t;
+
+typedef struct MacroDefinition {
+    char* name;
+    token_vector_t parameters; // positional parameters, if any
+    bool variadic;
+    token_vector_t tokens;
+} macro_definition_t;
+
+/**
+ * Context shared by all lexers.
+ * This is used to store global state, such as the list of include paths and macro definitions.
+ */
+typedef struct LexerGlobalContext {
+    string_vector_t* user_include_paths;
+    string_vector_t* system_include_paths;
+    /**
+     * Hash table of macro definitions.
+     * The key is the macro name, and the value is a pointer to a heap allocated macro_definition_t.
+     */
+    hash_table_t macro_definitions;
+} lexer_global_context_t;
+
 typedef struct Lexer lexer_t;
 typedef struct Lexer {
     const char* input_path;
@@ -128,19 +215,28 @@ typedef struct Lexer {
     size_t input_offset;
     size_t input_len;
     source_position_t position;
-    string_vector_t* user_include_paths;
-    string_vector_t* system_include_paths;
-    lexer_t* child; // Used for nested lexers, e.g. for #include
+    lexer_global_context_t* global_context;
+    /**
+     * A pointer to a child lexer (if any exist).
+     * Mainly used for handling #includes directives, which create a new lexer to parse the included file.
+     */
+    lexer_t* child;
+    /**
+     * Tokens that have been parsed but not yet consumed.
+     * Generally, this will be the tokens that were parsed by the preprocessor as part of macro expansion,
+     * as the lexer will only scan one token at a time from the input (includes directives are handled by nested lexers).
+     */
+    token_node_t* pending_tokens;
 } lexer_t;
 
 lexer_t linit(
         const char* input_path,
         const char* input,
         size_t input_len,
-        string_vector_t* user_include_paths,
-        string_vector_t* system_include_paths
+        lexer_global_context_t* global_context
 );
-void lfree(lexer_t* lexer);
+char lpeek(struct Lexer* lexer, unsigned int count);
+char ladvance(struct Lexer* lexer);
 token_t lscan(lexer_t* lexer);
 
-#endif //C_COMPILER_PREPROCESSOR_LEXER_H
+#endif //C_COMPILER_LEXER_H

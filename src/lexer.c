@@ -6,75 +6,14 @@
 #include <stdbool.h>
 
 #include "lexer.h"
+#include "preprocessor.h"
 #include "util/vectors.h"
-
-struct ReservedWord {
-    char* word;
-    enum TokenKind kind;
-};
-
-struct ReservedWord RESERVED_WORDS[] = {
-//        {"auto", TK_AUTO},
-        {"break",    TK_BREAK},
-        {"case",     TK_CASE},
-        {"char",     TK_CHAR},
-        {"const",    TK_CONST},
-        {"continue", TK_CONTINUE},
-        {"default",  TK_DEFAULT},
-        {"do",       TK_DO},
-        {"double",   TK_DOUBLE},
-        {"else",     TK_ELSE},
-        {"enum",     TK_ENUM},
-        {"extern",   TK_EXTERN},
-        {"float",    TK_FLOAT},
-        {"for",      TK_FOR},
-        {"goto",     TK_GOTO},
-        {"if",       TK_IF},
-        {"inline",   TK_INLINE},
-        {"int",      TK_INT},
-        {"long",     TK_LONG},
-//        {"register", TK_REGISTER},
-//        {"restrict", TK_RESTRICT},
-        {"return",   TK_RETURN},
-        {"short",    TK_SHORT},
-        {"signed",   TK_SIGNED},
-        {"sizeof", TK_SIZEOF},
-        {"static", TK_STATIC},
-        {"struct",   TK_STRUCT},
-        {"switch",   TK_SWITCH},
-        {"typedef",  TK_TYPEDEF},
-        {"union",    TK_UNION},
-        {"unsigned", TK_UNSIGNED},
-        {"void",     TK_VOID},
-//        {"volatile", TK_VOLATILE},
-        {"while",    TK_WHILE},
-//        {"_Alignas", TK_ALIGNAS},
-//        {"_Alignof", TK_ALIGNOF},
-//        {"_Atomic", TK_ATOMIC},
-//        {"_Bool", TK_BOOL},
-//        {"_Complex", TK_COMPLEX},
-//        {"_Generic", TK_GENERIC},
-//        {"_Imaginary", TK_IMAGINARY},
-//        {"_Noreturn", TK_NORETURN},
-//        {"_Static_assert", TK_STATIC_ASSERT},
-//        {"_Thread_local", TK_THREAD_LOCAL}
-};
-
-struct ReservedWord PREPROCESSOR_DIRECTIVES[] = {
-        {"include", TK_PP_INCLUDE},
-        {"define", TK_PP_DEFINE},
-        {"undef", TK_PP_UNDEF},
-        {"ifdef", TK_PP_IFDEF},
-        {"line", TK_PP_LINE}
-};
 
 void string_literal(struct Lexer* lexer, struct Token* token);
 void char_literal(struct Lexer* lexer, struct Token* token);
 void integer_constant(struct Lexer* lexer, struct Token* token);
 void identifier_or_reserved_word(struct Lexer* lexer, struct Token* token);
 void comment(struct Lexer* lexer, token_t* token);
-void preprocessor_directive(struct Lexer* lexer, token_t* token);
-void preprocessor_include(struct Lexer* lexer);
 
 void append_token(token_t** buffer, size_t *size, size_t* capacity, token_t token) {
     if (*size + 1 > *capacity) {
@@ -140,8 +79,7 @@ lexer_t linit(
         const char* input_path,
         const char* input,
         size_t input_len,
-        string_vector_t* user_include_paths,
-        string_vector_t* system_include_paths
+        lexer_global_context_t* global_context
 ) {
     lexer_t lexer = {
         .input_path = input_path,
@@ -153,31 +91,10 @@ lexer_t linit(
             .line = 1,
             .column = 0,
         },
-        .user_include_paths = user_include_paths,
-        .system_include_paths = system_include_paths,
+        .global_context = global_context,
     };
 
-    if (lexer.user_include_paths == NULL) {
-        lexer.user_include_paths = malloc(sizeof(string_vector_t));
-        lexer.user_include_paths->buffer = NULL;
-        lexer.user_include_paths->size = 0;
-        lexer.user_include_paths->capacity = 0;
-    }
-
-    if (lexer.system_include_paths == NULL) {
-        lexer.system_include_paths = malloc(sizeof(string_vector_t));
-        lexer.system_include_paths->buffer = NULL;
-        lexer.system_include_paths->size = 0;
-        lexer.system_include_paths->capacity = 0;
-    }
-
     return lexer;
-}
-
-// TODO: rename this
-void lfree(lexer_t* lexer) {
-    // TODO: free allocated memory for input path/input
-    lexer->input = NULL;
 }
 
 token_t lscan(struct Lexer* lexer) {
@@ -185,12 +102,21 @@ token_t lscan(struct Lexer* lexer) {
         token_t token = lscan(lexer->child);
         if (token.kind == TK_NONE || token.kind == TK_EOF) {
             // child lexer is done, clean it up
-            lfree(lexer->child);
             free(lexer->child);
             lexer->child = NULL;
         } else {
             return token;
         }
+    }
+
+    if (lexer->pending_tokens != NULL) {
+        // These tokens were already parsed by this lexer (probably by a macro expansion).
+        // Return them instead of scanning the input for a new token.
+        token_node_t* node = lexer->pending_tokens;
+        token_t token = node->token;
+        lexer->pending_tokens = node->next;
+        free(node);
+        return token;
     }
 
     bool start_of_line = lexer->position.column == 0;
@@ -278,6 +204,17 @@ token_t lscan(struct Lexer* lexer) {
             break;
         case '.':
             ladvance(lexer);
+
+            if (lpeek(lexer, 1) == '.' && lpeek(lexer, 2) == '.') {
+                ladvance(lexer);
+                ladvance(lexer);
+                token.kind = TK_ELLIPSIS;
+                token.value = "...";
+                break;
+            }
+
+            // TODO: floating point constants
+
             token.kind = TK_DOT;
             token.value = ".";
             break;
@@ -322,20 +259,49 @@ token_t lscan(struct Lexer* lexer) {
                     case TK_PP_INCLUDE:
                         preprocessor_include(lexer);
                         return lscan(lexer); // scan next token
+                    case TK_PP_DEFINE:
+                        {
+                            macro_definition_t* macro_definition = malloc(sizeof(macro_definition_t));
+                            preprocessor_define(lexer, macro_definition);
+                            hash_table_insert(&lexer->global_context->macro_definitions,
+                                              macro_definition->name,
+                                              macro_definition);
+                        }
+                        return lscan(lexer); // scan next token
                     default:
                         fprintf(stderr, "%s:%d:%d: Unknown preprocessor directive '%s'\n",
                                 directive_name.position.path, directive_name.position.line, directive_name.position.column, directive_name.value);
                         exit(1); // TODO: error recovery
                 }
             } else {
-                fprintf(stderr, "%s:%d:%d: Unexpected character '#' in input\n",
-                        lexer->position.path, lexer->position.line, lexer->position.column);
-                exit(1); // TODO: error recovery
+                // only really valid while processing macros, but the parser can handle it
+                ladvance(lexer); // consume '#'
+                char next = lpeek(lexer, 1);
+                if (next == '#') {
+                    ladvance(lexer); // consume next '#'
+                    token.kind = TK_DOUBLE_HASH;
+                    token.value = "##";
+                } else {
+                    token.kind = TK_HASH;
+                    token.value = "#";
+                }
+                break;
             }
             break;
         default:
             if (isalpha(c0) || c0 == '_') {
                 identifier_or_reserved_word(lexer, &token);
+                if (token.kind == TK_IDENTIFIER) {
+                    // check if this is a macro
+                    macro_definition_t* macro_definition;
+                    if (hash_table_lookup(&lexer->global_context->macro_definitions, token.value, (void**) &macro_definition)) {
+                        // expand macro
+                        macro_parameters_t parameters;
+                        preprocessor_parse_macro_invocation_parameters(lexer, macro_definition, &parameters);
+                        preprocessor_expand_macro(lexer, macro_definition, parameters);
+                        return lscan(lexer); // skip past the macro name and scan next token
+                    }
+                }
             } else if (isdigit(c0)) {
                 // TODO: handle floats generally
                 // TODO: handle floating point numbers beginning with '.' (e.g. .5f)
@@ -360,7 +326,7 @@ void string_literal(struct Lexer* lexer, struct Token* token) {
     struct CharVector buffer = {malloc(512), 0, 512};
     char c = ladvance(lexer);
     assert(c == '"');
-    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
+
     while ((c = ladvance(lexer)) && c != '"') {
         if (c == '\r' || c == '\n') {
             // Illegal newline in string literal
@@ -383,7 +349,7 @@ void string_literal(struct Lexer* lexer, struct Token* token) {
                 lexer->input_path, lexer->position.line, lexer->position.column);
         exit(1);
     }
-    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '\0');
     token->kind = TK_STRING_LITERAL;
     token->position = match_start;
     token->value = realloc(buffer.buffer, buffer.size);
@@ -503,172 +469,4 @@ void comment(struct Lexer* lexer, token_t* token) {
 
     token->kind = TK_COMMENT;
     token->value = realloc(buffer.buffer, buffer.size);
-}
-
-void preprocessor_directive(struct Lexer* lexer, token_t* token) {
-    char c = ladvance(lexer);
-    assert(c == '#');
-
-    // skip whitespace between '#' and the directive name
-    char c0 = lpeek(lexer, 1);
-    while (c0 == ' ' || c0 == '\t') {
-        ladvance(lexer);
-        c0 = lpeek(lexer, 1);
-    }
-
-    char_vector_t directive_name_vec = {malloc(32), 0, 32};
-    if (!isalpha(c0) && c0 != '_') {
-        fprintf(stderr, "Invalid preprocessor directive name at %s:%d:%d\n",
-                lexer->input_path, lexer->position.line, lexer->position.column); // TODO: print the line
-        exit(1); // TODO: error recovery
-    }
-
-    append_char(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity, ladvance(lexer));
-    while ((c0 = lpeek(lexer, 1)) && (isalnum(c0) || c0 == '_')) {
-        append_char(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity, ladvance(lexer));
-    }
-    append_char(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity, '\0');
-    shrink_char_vector(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity);
-
-    for (int i = 0; i < sizeof(PREPROCESSOR_DIRECTIVES) / sizeof(struct ReservedWord); i++) {
-        struct ReservedWord directive = PREPROCESSOR_DIRECTIVES[i];
-        if (strcmp(directive.word, directive_name_vec.buffer) == 0) {
-            token->kind = directive.kind;
-            token->value = directive_name_vec.buffer;
-            token->position = lexer->position;
-            return;
-        }
-    }
-
-    fprintf(stderr, "%s:%d:%d: Invalid preprocessor directive '%s'\n",
-            lexer->input_path, lexer->position.line, lexer->position.column, directive_name_vec.buffer); // TODO: print the line
-    exit(1); // TODO: error recovery
-}
-
-// For resolving relative paths in #include directives
-void get_file_prefix(const char* path, const size_t len, char buffer[len]) {
-    ssize_t pathlen = strlen(path);
-
-    // find the last '/'
-    for (size_t i = pathlen - 1; i >= 0; i -= 1) {
-        if (path[i] == '/') { // TODO: normalize path separators in #include directives
-            // copy the prefix into the buffer, including the trailing '/'
-            strncpy(buffer, path, i + 1 > len ? len : i + 1);
-            return;
-        }
-        if (i == 0) {
-            break;
-        }
-    }
-
-    // no '/' found
-    // because path is the path to the translation unit being processed, we know it is a file, meaning
-    // it is in the current working directory, and the prefix is just ""
-    buffer[0] = '\0';
-}
-
-void preprocessor_include(lexer_t* lexer) {
-    // skip whitespace between '#include' and the file specifier
-    while (lpeek(lexer, 1) == ' ' || lpeek(lexer, 1) == '\t') {
-        ladvance(lexer);
-    }
-
-    source_position_t filename_start = lexer->position;
-    char start = lpeek(lexer, 1);
-    char end;
-    if (start == '"') {
-        end = '"';
-    } else if (start == '<') {
-        end = '>';
-    } else {
-        fprintf(stderr, "%s:%d:%d: error: expected \"FILE\" or <FILE> following '#include' directive\n",
-                lexer->input_path, lexer->position.line, lexer->position.column); // TODO: print the line
-        exit(1); // TODO: error recovery
-    }
-
-    ladvance(lexer); // consume the opening symbol ('"' or '<')
-
-    char_vector_t filename = {malloc(32), 0, 32};
-    char c0;
-    while ((c0 = lpeek(lexer, 1)) && c0 != end && c0 != '\n') {
-        append_char(&filename.buffer, &filename.size, &filename.capacity, ladvance(lexer));
-    }
-    append_char(&filename.buffer, &filename.size, &filename.capacity, '\0');
-    shrink_char_vector(&filename.buffer, &filename.size, &filename.capacity);
-
-    if (c0 != end) {
-        fprintf(stderr, "%s:%d:%d: error: missing terminating '%c' character\n",
-                lexer->input_path, lexer->position.line, lexer->position.column, end);
-        exit(1); // TODO: error recovery
-    } else {
-        ladvance(lexer); // consume the closing symbol ('"' or '>')
-    }
-
-    // TODO: consume the rest of the line, error if there's anything other than whitespace or a comment
-
-    // #include path resolution:
-    // 1. If double-quoted, search in the directory containing the current file
-    // 2. Search in additional include directories included as command-line arguments (if any were supplied)
-    // 3. Search in the standard system include directories
-
-    bool search_current_dir = end == '"';
-    FILE *fp = NULL;
-    if (search_current_dir) {
-        char prefix[256];
-        get_file_prefix(lexer->input_path, 256, prefix);
-        char_vector_t path = {malloc(32), 0, 32};
-        append_chars(&path.buffer, &path.size, &path.capacity, prefix);
-        append_chars(&path.buffer, &path.size, &path.capacity, filename.buffer);
-        shrink_char_vector(&path.buffer, &path.size, &path.capacity);
-        fp = fopen(path.buffer, "r");
-    }
-
-    for(int i = 0; i < lexer->user_include_paths->size; i += 1) {
-        if (fp != NULL) {
-            break;
-        }
-
-        char_vector_t path = {malloc(32), 0, 32};
-        append_chars(&path.buffer, &path.size, &path.capacity, lexer->user_include_paths->buffer[i]);
-        if (path.size > 0 && path.buffer[path.size - 1] != '/') {
-            append_char(&path.buffer, &path.size, &path.capacity, '/');
-        }
-        append_chars(&path.buffer, &path.size, &path.capacity, filename.buffer);
-        fp = fopen(path.buffer, "r");
-    }
-
-    for(int i = 0; i < lexer->system_include_paths->size; i += 1) {
-        if (fp != NULL) {
-            break;
-        }
-
-        char_vector_t path = {malloc(32), 0, 32};
-        append_chars(&path.buffer, &path.size, &path.capacity, lexer->system_include_paths->buffer[i]);
-        if (path.size > 0 && path.buffer[path.size - 1] != '/') {
-            append_char(&path.buffer, &path.size, &path.capacity, '/');
-        }
-        append_chars(&path.buffer, &path.size, &path.capacity, filename.buffer);
-        fp = fopen(path.buffer, "r");
-    }
-
-    if (fp == NULL) {
-        fprintf(stderr, "%s:%d:%d: Failed to open file: %s\n",
-                filename_start.path, filename_start.line, filename_start.column, filename.buffer);
-        exit(1);
-    }
-
-    // File inclusion is handled recursively by creating a new nested lexer for the included file
-    char* source_buffer = NULL;
-    size_t len = 0;
-    ssize_t bytes_read = getdelim( &source_buffer, &len, '\0', fp);
-    if (bytes_read < 0) {
-        fprintf(stderr, "%s:%d:%d: No such file or directory: %s\n",
-                filename_start.path, filename_start.line, filename_start.column, filename.buffer);
-        exit(1);
-    }
-    fclose(fp);
-
-    lexer_t* child = malloc(sizeof(lexer_t));
-    *child = linit(filename.buffer, source_buffer, bytes_read, lexer->user_include_paths, lexer->system_include_paths);
-    lexer->child = child;
 }

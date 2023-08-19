@@ -1,11 +1,24 @@
+#include <malloc.h>
 #include "CUnit/Basic.h"
-#include "util/ast-printer.h"
 #include "tests.h"
 #include "parser.h"
 
+static lexer_global_context_t create_context() {
+    return (lexer_global_context_t) {
+            .user_include_paths = NULL,
+            .system_include_paths = NULL,
+            .macro_definitions = {
+                    .size = 0,
+                    .num_buckets = 10,
+                    .buckets = calloc(10, sizeof(hashtable_entry_t *)),
+            }
+    };
+}
+
 void test_primary_expression_ident() {
+    lexer_global_context_t context = create_context();
     char* input = "bar";
-    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = {
             .token = lscan(&lexer),
             .lexer = lexer,
@@ -19,8 +32,9 @@ void test_primary_expression_ident() {
 }
 
 void test_declaration_simple() {
+    lexer_global_context_t context = create_context();
     char* input = "int foo = 5;";
-    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     token_t token = lscan(&lexer);
     parser_t parser = {lexer,token};
     ast_node_t node;
@@ -57,8 +71,9 @@ void test_declaration_simple() {
 }
 
 void test_declaration_function_proto_no_params() {
+    lexer_global_context_t context = create_context();
     char* input = "inline float foo();";
-    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     token_t token = lscan(&lexer);
     parser_t parser = {lexer,token};
 
@@ -78,8 +93,9 @@ void test_declaration_function_proto_no_params() {
 }
 
 void test_function_definition() {
+    lexer_global_context_t context = create_context();
     char* input = "int foo() { return 5; }";
-    lexer_t lexer = linit("path/to/file", input, strlen(input), NULL, NULL);
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     token_t token = lscan(&lexer);
     parser_t parser = {lexer,token};
 

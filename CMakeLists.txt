@@ -23,10 +23,12 @@ include_directories(src)
 
 add_library(cclib STATIC
         src/lexer.h src/lexer.c
+        src/preprocessor.h src/preprocessor.c
         src/util/read-lines.h src/util/read-lines.c
         src/util/vectors.h src/util/vectors.c
         src/parser.c src/parser.h
-        src/util/ast-printer.h src/util/ast-printer.c src/ast.h src/ast.h)
+        src/util/ast-printer.h src/util/ast-printer.c src/ast.h src/ast.h
+        src/util/hashtable.c src/util/hashtable.h)
 
 add_executable(cc src/main.c src/ast.h)
 target_link_libraries(cc PUBLIC cclib)
@@ -41,7 +43,8 @@ add_executable(unit-tests
         tst/util/read-lines-test.c
         tst/lexer-tests.c
         tst/parser-tests.c src/ast.h
-        tst/preprocessor-tests.c)
+        tst/preprocessor-tests.c
+        tst/util/hashtable-tests.c)
 target_link_libraries(unit-tests PUBLIC cunit)
 target_link_libraries(unit-tests PUBLIC cclib)
 

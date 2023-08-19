@@ -156,11 +156,20 @@ int main(int argc, char** argv) {
         }
         fclose(file);
 
+        lexer_global_context_t global_context = {
+                .user_include_paths = &options.additional_include_directories,
+                .system_include_paths = &options.additional_system_include_directories,
+                .macro_definitions = {
+                        .size = 0,
+                        .num_buckets = 1000,
+                        .buckets = calloc(1000, sizeof(hashtable_entry_t*)),
+                }
+        };
+
         lexer_t lexer = linit(options.input_files.buffer[i],
                               source_buffer,
                               bytes_read,
-                              &options.additional_include_directories,
-                              &options.additional_system_include_directories
+                              &global_context
         );
         parser_t parser = pinit(lexer);
 

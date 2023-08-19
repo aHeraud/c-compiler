@@ -10,6 +10,7 @@ int main() {
     lexer_tests_init_suite();
     preprocessor_tests_init_suite();
     parser_tests_init_suite();
+    hashtable_tests_init_suite();
 
     CU_basic_set_mode(CU_BRM_VERBOSE);
 
