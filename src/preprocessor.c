@@ -437,6 +437,7 @@ void preprocessor_expand_macro(lexer_t* lexer, macro_definition_t* macro_definit
                     append_char(&vec.buffer, &vec.size, &vec.capacity, c);
                 }
             }
+            append_char(&vec.buffer, &vec.size, &vec.capacity, '\0');
             shrink_char_vector(&vec.buffer, &vec.size, &vec.capacity);
 
             // replace cur ('#') and next (macro parameter) with the stringified parameter
