@@ -217,6 +217,8 @@ void identifier(struct Lexer* lexer, struct Token* token) {
  * @param lexer
  */
 void preprocessor_define(lexer_t* lexer, macro_definition_t* macro_definition) {
+    lexer->global_context->disable_macro_expansion = true;
+
     // skip whitespace between '#define' and the macro name
     while (lpeek(lexer, 1) == ' ' || lpeek(lexer, 1) == '\t') {
         ladvance(lexer);
@@ -276,6 +278,19 @@ void preprocessor_define(lexer_t* lexer, macro_definition_t* macro_definition) {
     macro_definition->parameters = parameter_list;
     macro_definition->tokens = tokens;
     macro_definition->variadic = variadic;
+
+    lexer->global_context->disable_macro_expansion = false;
+}
+
+void preprocessor_undefine(lexer_t* lexer, const char* macro_name) {
+    hash_table_t* macro_definitions = &lexer->global_context->macro_definitions;
+    void* value;
+    if (hash_table_remove(macro_definitions, macro_name, &value)) {
+        macro_definition_t* macro_definition = value;
+        free(macro_definition->parameters.buffer);
+        free(macro_definition->tokens.buffer);
+        free(macro_definition);
+    }
 }
 
 void append_macro_parameter(macro_parameters_t* parameters, token_vector_t parameter) {

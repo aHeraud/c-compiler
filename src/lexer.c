@@ -119,14 +119,14 @@ token_t lscan(struct Lexer* lexer) {
         return token;
     }
 
-    bool start_of_line = lexer->position.column == 0;
-
     // skip whitespace
     char c0 = lpeek(lexer, 1);
     while (c0 == ' ' || c0 == '\t' || c0 == '\n') {
         ladvance(lexer);
         c0 = lpeek(lexer, 1);
     }
+
+    bool start_of_line = lexer->position.column == 0;
 
     struct Token token;
     token.kind = TK_NONE;
@@ -268,6 +268,13 @@ token_t lscan(struct Lexer* lexer) {
                                               macro_definition);
                         }
                         return lscan(lexer); // scan next token
+                    case TK_PP_UNDEF:
+                        {
+                            token_t macro_name;
+                            identifier_or_reserved_word(lexer, &macro_name);
+                            preprocessor_undefine(lexer, macro_name.value);
+                        }
+                        return lscan(lexer); // scan next token
                     default:
                         fprintf(stderr, "%s:%d:%d: Unknown preprocessor directive '%s'\n",
                                 directive_name.position.path, directive_name.position.line, directive_name.position.column, directive_name.value);
@@ -294,7 +301,8 @@ token_t lscan(struct Lexer* lexer) {
                 if (token.kind == TK_IDENTIFIER) {
                     // check if this is a macro
                     macro_definition_t* macro_definition;
-                    if (hash_table_lookup(&lexer->global_context->macro_definitions, token.value, (void**) &macro_definition)) {
+                    if (!lexer->global_context->disable_macro_expansion &&
+                        hash_table_lookup(&lexer->global_context->macro_definitions, token.value, (void**) &macro_definition)) {
                         // expand macro
                         macro_parameters_t parameters;
                         preprocessor_parse_macro_invocation_parameters(lexer, macro_definition, &parameters);
@@ -395,11 +403,11 @@ void integer_constant(struct Lexer* lexer, struct Token* token) {
     struct CharVector buffer = {malloc(32), 0, 32};
 
     // TODO: handle hex, octal, and binary literals
-    char c = ladvance(lexer);
+    char c = lpeek(lexer, 1);
     assert(isdigit(c));
 
     do {
-        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
+        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
     } while ((c = lpeek(lexer, 1)) && isdigit(c));
 
     append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '\0');
@@ -410,6 +418,11 @@ void integer_constant(struct Lexer* lexer, struct Token* token) {
 }
 
 void identifier_or_reserved_word(struct Lexer* lexer, struct Token* token) {
+    // discard any pending whitespace
+    while (lpeek(lexer, 1) == ' ' || lpeek(lexer, 1) == '\t' || lpeek(lexer, 1) == '\n') {
+        ladvance(lexer);
+    }
+
     struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
     struct CharVector buffer = {malloc(32), 0, 32};
 

@@ -19,7 +19,11 @@ void append_char(char** buffer, size_t* buffer_len, size_t* buffer_max_len, char
 void append_chars(char** buffer, size_t* buffer_len, size_t* buffer_max_len, const char* s) {
     size_t len = strlen(s);
     if (*buffer_len + len >= *buffer_max_len) {
-        *buffer_max_len > 0 ? (*buffer_max_len *= 2) : (*buffer_max_len = len);
+        if (*buffer_max_len == 0) {
+            *buffer_max_len = len;
+        } else {
+            while (*buffer_max_len < *buffer_len + len) *buffer_max_len *= 2;
+        }
         *buffer = realloc(*buffer, *buffer_max_len);
         assert(buffer != NULL);
     }

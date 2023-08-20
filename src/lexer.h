@@ -101,6 +101,101 @@ typedef enum TokenKind {
     TK_ELLIPSIS, // '...'
 } token_kind_t;
 
+static const char* token_kind_names[] = {
+        [TK_NONE] = "TK_NONE",
+        [TK_COMMENT] = "TK_COMMENT",
+        [TK_NEWLINE] = "TK_NEWLINE",
+
+        /* Preprocessor Directives */
+        [TK_PP_INCLUDE] = "TK_PP_INCLUDE",
+        [TK_PP_DEFINE] = "TK_PP_DEFINE",
+        [TK_PP_UNDEF] = "TK_PP_UNDEF",
+        [TK_PP_IFDEF] = "TK_PP_IFDEF",
+        [TK_PP_LINE] = "TK_PP_LINE",
+
+        /* Preprocessor tokens */
+        [TK_HASH] = "TK_HASH", // stringification
+        [TK_DOUBLE_HASH] = "TK_DOUBLE_HASH", // concatenation
+
+        [TK_VOID] = "TK_VOID",
+        [TK_CHAR] = "TK_CHAR",
+        [TK_SHORT] = "TK_SHORT",
+        [TK_INT] = "TK_INT",
+        [TK_LONG] = "TK_LONG",
+        [TK_FLOAT] = "TK_FLOAT",
+        [TK_DOUBLE] = "TK_DOUBLE",
+        [TK_SIGNED] = "TK_SIGNED",
+        [TK_UNSIGNED] = "TK_UNSIGNED",
+        [TK_BOOL] = "TK_BOOL",
+        [TK_COMPLEX] = "TK_COMPLEX",
+        [TK_STRUCT] = "TK_STRUCT",
+        [TK_UNION] = "TK_UNION",
+        [TK_ENUM] = "TK_ENUM",
+        [TK_TYPEDEF] = "TK_TYPEDEF",
+        [TK_STATIC] = "TK_STATIC",
+        [TK_AUTO] = "TK_AUTO",
+        [TK_REGISTER] = "TK_REGISTER",
+        [TK_IF] = "TK_IF",
+        [TK_ELSE] = "TK_ELSE",
+        [TK_SWITCH] = "TK_SWITCH",
+        [TK_CASE] = "TK_CASE",
+        [TK_DEFAULT] = "TK_DEFAULT",
+        [TK_GOTO] = "TK_GOTO",
+        [TK_CONTINUE] = "TK_CONTINUE",
+        [TK_BREAK] = "TK_BREAK",
+        [TK_RETURN] = "TK_RETURN",
+        [TK_WHILE] = "TK_WHILE",
+        [TK_DO] = "TK_DO",
+        [TK_FOR] = "TK_FOR",
+        [TK_SIZEOF] = "TK_SIZEOF",
+        [TK_CONST] = "TK_CONST",
+        [TK_RESTRICT] = "TK_RESTRICT",
+        [TK_VOLATILE] = "TK_VOLATILE",
+        [TK_EXTERN] = "TK_EXTERN",
+        [TK_INLINE] = "TK_INLINE",
+
+        /* Identifier */
+        [TK_IDENTIFIER] = "TK_IDENTIFIER",
+
+        /* Constants and string literals */
+        [TK_CHAR_LITERAL] = "TK_CHAR_LITERAL",
+        [TK_STRING_LITERAL] = "TK_STRING_LITERAL",
+        [TK_INTEGER_CONSTANT] = "TK_INTEGER_CONSTANT",
+        [TK_FLOATING_CONSTANT] = "TK_FLOATING_CONSTANT",
+
+        /* Punctuators */
+        [TK_ASSIGN] = "TK_ASSIGN",
+        [TK_ASTERISK] = "TK_ASTERISK",
+        [TK_AMPERSAND] = "TK_AMPERSAND",
+        [TK_SEMICOLON] = "TK_SEMICOLON",
+        [TK_COMMA] = "TK_COMMA",
+        [TK_COLON] = "TK_COLON",
+        [TK_EXCLAMATION] = "TK_EXCLAMATION",
+        [TK_LPAREN] = "TK_LPAREN",
+        [TK_RPAREN] = "TK_RPAREN",
+        [TK_LBRACE] = "TK_LBRACE",
+        [TK_RBRACE] = "TK_RBRACE",
+        [TK_LBRACKET] = "TK_LBRACKET",
+        [TK_RBRACKET] = "TK_RBRACKET",
+        [TK_DOT] = "TK_DOT",
+        [TK_PLUS] = "TK_PLUS",
+        [TK_MINUS] = "TK_MINUS",
+        [TK_ARROW] = "TK_ARROW",
+        [TK_STAR] = "TK_STAR",
+        [TK_SLASH] = "TK_SLASH",
+        [TK_EOF] = "TK_EOF",
+        [TK_TILDE] = "TK_TILDE",
+        [TK_INCREMENT] = "TK_INCREMENT",
+        [TK_DECREMENT] = "TK_DECREMENT",
+        [TK_EQUALS] = "TK_EQUALS",
+        [TK_NOT_EQUALS] = "TK_NOT_EQUALS",
+        [TK_LESS_THAN] = "TK_LESS_THAN",
+        [TK_GREATER_THAN] = "TK_GREATER_THAN",
+        [TK_LESS_THAN_EQUAL] = "TK_LESS_THAN_EQUAL",
+        [TK_GREATER_THAN_EQUAL] = "TK_GREATER_THAN_EQUAL",
+        [TK_ELLIPSIS] = "TK_ELLIPSIS",
+};
+
 struct ReservedWord {
     char* word;
     enum TokenKind kind;
@@ -206,6 +301,10 @@ typedef struct LexerGlobalContext {
      * The key is the macro name, and the value is a pointer to a heap allocated macro_definition_t.
      */
     hash_table_t macro_definitions;
+    /**
+     * Set to true when the lexer is parsing a macro definition.
+     */
+    bool disable_macro_expansion;
 } lexer_global_context_t;
 
 typedef struct Lexer lexer_t;

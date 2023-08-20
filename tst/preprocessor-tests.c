@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "CUnit/Basic.h"
+#include "test-common.h"
 #include "tests.h"
 #include "lexer.h"
 
@@ -38,27 +39,30 @@ void test_includes_file(
         append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
     }
 
-    CU_ASSERT_EQUAL_FATAL(tokens.size, 15);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[0].kind, TK_STATIC);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[1].kind, TK_CONST);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[2].kind, TK_INT);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[3].kind, TK_IDENTIFIER);
+    token_kind_t expected_tokens[] = {
+            TK_STATIC,
+            TK_CONST,
+            TK_INT,
+            TK_IDENTIFIER,
+            TK_ASSIGN,
+            TK_INTEGER_CONSTANT,
+            TK_SEMICOLON,
+            TK_CONST,
+            TK_INT,
+            TK_IDENTIFIER,
+            TK_ASSIGN,
+            TK_IDENTIFIER,
+            TK_STAR,
+            TK_INTEGER_CONSTANT,
+            TK_SEMICOLON
+    };
+    TEST_ASSERT_ARRAYS_EQUAL(expected_tokens, 15, token_kind_array(tokens.buffer, tokens.size), tokens.size, format_token_kind_array)
+
     CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[3].value, "b");
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[4].kind, TK_ASSIGN);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[5].kind, TK_INTEGER_CONSTANT);
     CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[5].value, "4");
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[6].kind, TK_SEMICOLON);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[7].kind, TK_CONST);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[8].kind, TK_INT);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[9].kind, TK_IDENTIFIER);
     CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[9].value, "a");
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[10].kind, TK_ASSIGN);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[11].kind, TK_IDENTIFIER);
     CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[11].value, "b");
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[12].kind, TK_STAR);
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[13].kind, TK_INTEGER_CONSTANT);
     CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[13].value, "2");
-    CU_ASSERT_EQUAL_FATAL(tokens.buffer[14].kind, TK_SEMICOLON);
 }
 
 void test_includes_header_relative_path() {
@@ -212,11 +216,10 @@ void test_macro_define_and_replace_token_pasting() {
     CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 1)
     macro_definition_t* macro_definition = NULL;
     CU_ASSERT_TRUE_FATAL(hash_table_lookup(&context.macro_definitions, "PASTE", (void**) &macro_definition))
-    CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.size, 3)
     token_kind_t expected_macro_tokens[] = {TK_IDENTIFIER, TK_DOUBLE_HASH, TK_IDENTIFIER};
-    for (int i = 0; i < 2; i++) {
-        CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.buffer[i].kind, expected_macro_tokens[i])
-    }
+    TEST_ASSERT_ARRAYS_EQUAL(expected_macro_tokens, 3,
+                             token_kind_array(macro_definition->tokens.buffer, macro_definition->tokens.size), macro_definition->tokens.size,
+                             format_token_kind_array)
 
     CU_ASSERT_EQUAL_FATAL(tokens.size, 1)
     CU_ASSERT_EQUAL_FATAL(tokens.buffer[0].kind, TK_IDENTIFIER)
@@ -238,7 +241,7 @@ void test_macro_define_and_replace_varargs() {
     CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 1)
     macro_definition_t* macro_definition = NULL;
     CU_ASSERT_TRUE_FATAL(hash_table_lookup(&context.macro_definitions, "PRINT", (void**) &macro_definition))
-    CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.size, 6)
+
     token_kind_t expected_macro_tokens[] = {
             TK_IDENTIFIER,
             TK_LPAREN,
@@ -247,9 +250,9 @@ void test_macro_define_and_replace_varargs() {
             TK_IDENTIFIER,
             TK_RPAREN
     };
-    for (int i = 0; i < 6; i++) {
-        CU_ASSERT_EQUAL_FATAL(macro_definition->tokens.buffer[i].kind, expected_macro_tokens[i])
-    }
+    TEST_ASSERT_ARRAYS_EQUAL(expected_macro_tokens, 6,
+                             token_kind_array(macro_definition->tokens.buffer, macro_definition->tokens.size), macro_definition->tokens.size,
+                             format_token_kind_array)
 
     token_kind_t expected_expansion_tokens[] = {
             TK_IDENTIFIER,
@@ -262,10 +265,61 @@ void test_macro_define_and_replace_varargs() {
             TK_RPAREN,
             TK_SEMICOLON
     };
-    CU_ASSERT_EQUAL_FATAL(tokens.size, 9)
-    for (int i = 0; i < 9; i++) {
-        CU_ASSERT_EQUAL_FATAL(tokens.buffer[i].kind, expected_expansion_tokens[i])
+    TEST_ASSERT_ARRAYS_EQUAL(expected_expansion_tokens, 9, token_kind_array(tokens.buffer, tokens.size), tokens.size, format_token_kind_array)
+}
+
+void test_macro_define_and_replace_parameter_expansion() {
+    char* input_path = "define-with-parameter-expansion.c";
+    char* source_buffer = "#define FOO(a) a\n#define BAR b\nFOO(BAR)\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
     }
+
+    token_kind_t expected_expansion_tokens[] = {TK_IDENTIFIER};
+    TEST_ASSERT_ARRAYS_EQUAL(expected_expansion_tokens, 1, token_kind_array(tokens.buffer, tokens.size), tokens.size, format_token_kind_array)
+    const char* expected_expansion_value[] = {"b"};
+    TEST_ASSERT_STRING_ARRAYS_EQUAL(expected_expansion_value, 1, token_value_array(tokens.buffer, tokens.size), tokens.size)
+}
+
+void test_macro_define_and_replace_parameter_name_is_defined_macro() {
+    char* input_path = "define-with-parameter-name-is-defined-macro.c";
+    char* source_buffer = "#define BAR 42\n#define FOO(BAR) BAR\nFOO(baz)\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    token_kind_t expected_expansion_tokens[] = {TK_IDENTIFIER};
+    TEST_ASSERT_ARRAYS_EQUAL(expected_expansion_tokens, 1, token_kind_array(tokens.buffer, tokens.size), tokens.size, format_token_kind_array)
+    const char* expected_expansion_value[] = {"baz"};
+    TEST_ASSERT_STRING_ARRAYS_EQUAL(expected_expansion_value, 1, token_value_array(tokens.buffer, tokens.size), tokens.size)
+}
+
+void test_macro_define_and_undefine() {
+    char* input_path = "define-and-undefine-macro.c";
+    char* source_buffer = "#define FOO 42\n#undef FOO\nFOO\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(context.macro_definitions.size, 0)
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 1)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[0].kind, TK_IDENTIFIER)
+    CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[0].value, "FOO")
 }
 
 int preprocessor_tests_init_suite() {
@@ -277,7 +331,10 @@ int preprocessor_tests_init_suite() {
         NULL == CU_add_test(pSuite, "#define - with parameters", test_macro_define_and_replace_parameterized_macro) ||
         NULL == CU_add_test(pSuite, "#define - parameter stringification", test_macro_define_and_replace_stringification) ||
         NULL == CU_add_test(pSuite, "#define - token pasting", test_macro_define_and_replace_token_pasting) ||
-        NULL == CU_add_test(pSuite, "#define - variadic macro", test_macro_define_and_replace_varargs)
+        NULL == CU_add_test(pSuite, "#define - variadic macro", test_macro_define_and_replace_varargs) ||
+        NULL == CU_add_test(pSuite, "#define - parameter expansion", test_macro_define_and_replace_parameter_expansion) ||
+        NULL == CU_add_test(pSuite, "#define - parameter name is defined macro", test_macro_define_and_replace_parameter_name_is_defined_macro) ||
+        NULL == CU_add_test(pSuite, "#define - and #undef", test_macro_define_and_undefine)
     ) {
         CU_cleanup_registry();
         exit(CU_get_error());
