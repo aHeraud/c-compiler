@@ -127,6 +127,32 @@ typedef struct InitDeclarator {
     ast_node_t* initializer;
 } init_declarator_t;
 
+typedef struct AbstractDeclarator {
+    ast_node_t* pointer;
+    ast_node_t* direct_abstract_declarator;
+} abstract_declarator_t;
+
+typedef struct DirectAbstractDeclarator {
+    enum DIRECT_ABSTRACT_DECLARATOR_TYPE {
+        DIRECT_ABSTRACT_DECL_ABSTRACT,
+        DIRECT_ABSTRACT_DECL_ARRAY,
+        DIRECT_ABSTRACT_DECL_FUNCTION,
+    } type;
+    union {
+        abstract_declarator_t abstract;
+        struct {
+            ast_node_t* type_qualifier_list;
+            ast_node_t* assignment_expression;
+            bool _static;
+        } array;
+        struct {
+            ast_node_t* param_type_list;
+        } function;
+    };
+    ast_node_t* next;
+    ast_node_t* prev;
+} direct_abstract_declarator_t;
+
 typedef struct Declarator {
     ast_node_t* pointer;
     ast_node_t* direct_declarator;
@@ -172,6 +198,21 @@ typedef struct FunctionDefinition {
     ast_node_t* compound_statement;
 } function_definition_t;
 
+typedef struct ParameterDeclaration {
+    ast_node_t* declaration_specifiers;
+    ast_node_t* declarator; // declarator, or optional abstract declarator
+} parameter_declaration_t;
+
+typedef struct ParameterTypeList {
+    ast_node_vector_t parameter_list;
+    bool variadic;
+} parameter_type_list_t;
+
+typedef struct Pointer {
+    ast_node_t* type_qualifier_list;
+    ast_node_t* next_pointer;
+} pointer_t;
+
 typedef struct TranslationUnit {
     ast_node_vector_t external_declarations;
 } translation_unit_t;
@@ -200,6 +241,7 @@ typedef struct JumpStatement {
 } jump_statement_t;
 
 typedef enum AstNodeKind {
+    AST_ABSTRACT_DECLARATOR,
     AST_EXPRESSION,
     AST_PRIMARY_EXPRESSION,
     AST_DECLARATION,
@@ -211,12 +253,16 @@ typedef enum AstNodeKind {
     AST_INIT_DECLARATOR_LIST,
     AST_INIT_DECLARATOR,
     AST_DECLARATOR,
+    AST_DIRECT_ABSTRACT_DECLARATOR,
     AST_DIRECT_DECLARATOR,
     AST_INITIALIZER,
     AST_FUNCTION_DEFINITION,
     AST_TRANSLATION_UNIT,
     AST_COMPOUND_STATEMENT,
     AST_JUMP_STATEMENT,
+    AST_PARAMETER_TYPE_LIST,
+    AST_PARAMETER_DECLARATION,
+    AST_POINTER,
 } ast_node_kind_t;
 
 typedef struct AstNode {
@@ -224,6 +270,8 @@ typedef struct AstNode {
     source_position_t position;
     // There's probably a better way to do this, but I'm not sure what it is
     union {
+        abstract_declarator_t abstract_declarator;
+        direct_abstract_declarator_t direct_abstract_declarator;
         primary_expression_t primary_expression;
         declaration_t declaration;
         ast_node_vector_t declaration_specifiers;
@@ -240,6 +288,9 @@ typedef struct AstNode {
         translation_unit_t translation_unit;
         compound_statement_t compound_statement;
         jump_statement_t jump_statement;
+        parameter_declaration_t parameter_declaration;
+        parameter_type_list_t parameter_type_list;
+        pointer_t pointer;
     };
 } ast_node_t;
 

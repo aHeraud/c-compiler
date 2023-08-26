@@ -3,23 +3,27 @@
 
 #include <stddef.h>
 
-typedef struct CharVector {
-    char* buffer;
-    size_t size;
-    size_t capacity;
-} char_vector_t;
+#define VEC_DEFINE(name, typedef_name, type) \
+typedef struct name { \
+    type* buffer; \
+    size_t size; \
+    size_t capacity; \
+} typedef_name;
 
-typedef struct StringVector {
-    char** buffer;
-    size_t size;
-    size_t capacity;
-} string_vector_t;
+VEC_DEFINE(CharVector, char_vector_t, char)
+VEC_DEFINE(StringVector, string_vector_t, char*)
+VEC_DEFINE(PtrVector, ptr_vector_t, void*)
 
-typedef struct PtrVector {
-    void** buffer;
-    size_t size;
-    size_t capacity;
-} ptr_vector_t;
+// Append a single element to a vector, growing the vector if necessary.
+#define VEC_APPEND(vec, elem) \
+do { \
+    if (vec->size + 1 >= vec->capacity) { \
+        vec->capacity > 0 ? (vec->capacity *= 2) : (vec->capacity = 1); \
+        vec->buffer = realloc(vec->buffer, vec->capacity * sizeof(elem)); \
+        assert(vec->buffer != NULL); \
+    } \
+    (vec->buffer)[vec->size++] = elem; \
+} while (0)
 
 /**
  * Appends a character to a buffer, growing the buffer if necessary.

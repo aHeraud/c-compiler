@@ -70,7 +70,6 @@ typedef enum TokenKind {
 
     /* Punctuators */
     TK_ASSIGN, // '='
-    TK_ASTERISK,
     TK_AMPERSAND,
     TK_SEMICOLON,
     TK_COMMA,
@@ -165,7 +164,6 @@ static const char* token_kind_names[] = {
 
         /* Punctuators */
         [TK_ASSIGN] = "TK_ASSIGN",
-        [TK_ASTERISK] = "TK_ASTERISK",
         [TK_AMPERSAND] = "TK_AMPERSAND",
         [TK_SEMICOLON] = "TK_SEMICOLON",
         [TK_COMMA] = "TK_COMMA",

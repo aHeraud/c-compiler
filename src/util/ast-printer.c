@@ -90,8 +90,44 @@ void ppdirectdeclarator(FILE *__restrict stream, int indent_level, ast_node_t* n
                 fprintf(stream, "%s", current->direct_declarator.identifier.name);
                 break;
             case DECL_FUNCTION:
-                assert(current->direct_declarator.function.param_type_or_ident_list == NULL); // TODO
-                fprintf(stream, "()");
+                if (current->direct_declarator.function.param_type_or_ident_list == NULL) {
+                    fprintf(stream, "()");
+                } else {
+                    fprintf(stream, "(");
+                    assert(current->direct_declarator.function.param_type_or_ident_list->type == AST_PARAMETER_TYPE_LIST);
+                    parameter_type_list_t list = current->direct_declarator.function.param_type_or_ident_list->parameter_type_list;
+                    for(int i = 0; i < list.parameter_list.size; i += 1) {
+                        parameter_declaration_t param = list.parameter_list.buffer[i]->parameter_declaration;
+
+                        ast_node_vector_t declaration_specifiers = param.declaration_specifiers->declaration_specifiers;
+                        for (int j = 0; j < declaration_specifiers.size; j += 1) {
+                            ast_node_t* specifier = declaration_specifiers.buffer[j];
+                            assert(specifier->type == AST_TYPE_SPECIFIER);
+                            fprintf(stream, "%s ", type_specifier_names[specifier->type_specifier]);
+                        }
+
+                        ast_node_t* pointer_node = param.declarator->declarator.pointer;
+                        while (pointer_node != NULL) {
+                            // TODO: print pointer qualifiers
+                            fprintf(stream, "*");
+                            pointer_node = pointer_node->pointer.next_pointer;
+                        }
+
+                        // TODO: print direct/abstract declarator
+                        // direct_declarator_t* direct_declarator = &param.declarator->direct_declarator;
+
+
+                        if (i < list.parameter_list.size - 1) {
+                            fprintf(stream, ", ");
+                        }
+
+                    }
+                    if (list.variadic) {
+                        fprintf(stream, ", ...");
+                    }
+
+                    fprintf(stream, ")");
+                }
         }
         current = current->direct_declarator.next;
     }
