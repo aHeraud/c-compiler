@@ -11,7 +11,7 @@
 
 void string_literal(struct Lexer* lexer, struct Token* token);
 void char_literal(struct Lexer* lexer, struct Token* token);
-void integer_constant(struct Lexer* lexer, struct Token* token);
+void numeric_constant(struct Lexer* lexer, struct Token* token);
 void identifier_or_reserved_word(struct Lexer* lexer, struct Token* token);
 void comment(struct Lexer* lexer, token_t* token);
 
@@ -239,6 +239,11 @@ token_t lscan(struct Lexer* lexer) {
             token.kind = TK_STAR;
             token.value = "*";
             break;
+        case '%':
+            ladvance(lexer);
+            token.kind = TK_PERCENT;
+            token.value = "%";
+            break;
         case '=':
             ladvance(lexer);
             if (c1 == '=') {
@@ -249,6 +254,79 @@ token_t lscan(struct Lexer* lexer) {
                 token.kind = TK_ASSIGN;
                 token.value = "=";
             }
+            break;
+        case '<':
+            ladvance(lexer);
+            if (c1 == '=') {
+                ladvance(lexer);
+                token.kind = TK_LESS_THAN_EQUAL;
+                token.value = "<=";
+            } else if (c1 == '<') {
+                ladvance(lexer);
+                token.kind = TK_LSHIFT;
+                token.value = "<<";
+            } else {
+                token.kind = TK_LESS_THAN;
+                token.value = "<";
+            }
+            break;
+        case '>':
+            ladvance(lexer);
+            if (c1 == '=') {
+                ladvance(lexer);
+                token.kind = TK_GREATER_THAN_EQUAL;
+                token.value = ">=";
+            } else if (c1 == '>') {
+                ladvance(lexer);
+                token.kind = TK_RSHIFT;
+                token.value = ">>";
+            } else {
+                token.kind = TK_GREATER_THAN;
+                token.value = ">";
+            }
+            break;
+        case '!':
+            ladvance(lexer);
+            if (c1 == '=') {
+                ladvance(lexer);
+                token.kind = TK_NOT_EQUALS;
+                token.value = "!=";
+            } else {
+                token.kind = TK_EXCLAMATION;
+                token.value = "!";
+            }
+            break;
+        case '&':
+            ladvance(lexer);
+            if (c1 == '&') {
+                ladvance(lexer);
+                token.kind = TK_LOGICAL_AND;
+                token.value = "&&";
+            } else {
+                token.kind = TK_AMPERSAND;
+                token.value = "&";
+            }
+            break;
+        case '|':
+            ladvance(lexer);
+            if (c1 == '|') {
+                ladvance(lexer);
+                token.kind = TK_LOGICAL_OR;
+                token.value = "||";
+            } else {
+                token.kind = TK_BITWISE_OR;
+                token.value = "|";
+            }
+            break;
+        case '^':
+            ladvance(lexer);
+            token.kind = TK_BITWISE_XOR;
+            token.value = "^";
+            break;
+        case '?':
+            ladvance(lexer);
+            token.kind = TK_TERNARY;
+            token.value = "?";
             break;
         case '#':
             if (start_of_line) {
@@ -292,7 +370,6 @@ token_t lscan(struct Lexer* lexer) {
                     token.kind = TK_HASH;
                     token.value = "#";
                 }
-                break;
             }
             break;
         default:
@@ -314,13 +391,13 @@ token_t lscan(struct Lexer* lexer) {
                 // TODO: handle floats generally
                 // TODO: handle floating point numbers beginning with '.' (e.g. .5f)
                 // TODO: handle floats in scientific notation (e.g. 1.0e-5f)
-                integer_constant(lexer, &token);
+                numeric_constant(lexer, &token);
             } else if (c0 == '\0') {
                 token.kind = TK_EOF;
                 token.value = "EOF";
             } else {
-                fprintf(stderr, "Unexpected character '%c' at %d:%d\n",
-                        c0, lexer->position.line, lexer->position.column);
+                fprintf(stderr, "%s:%d: Unexpected character '%c' at %d:%d\n",
+                        __FILE__, __LINE__, c0, lexer->position.line, lexer->position.column);
                 exit(1);
             }
             break;
@@ -398,7 +475,7 @@ void char_literal(struct Lexer* lexer, struct Token* token) {
     token->value = realloc(buffer.buffer, buffer.size);
 }
 
-void integer_constant(struct Lexer* lexer, struct Token* token) {
+void numeric_constant(struct Lexer* lexer, struct Token* token) {
     struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
     struct CharVector buffer = {malloc(32), 0, 32};
 
@@ -410,9 +487,21 @@ void integer_constant(struct Lexer* lexer, struct Token* token) {
         append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
     } while ((c = lpeek(lexer, 1)) && isdigit(c));
 
+    if (lpeek(lexer, 1) == '.') {
+        token->kind = TK_FLOATING_CONSTANT;
+
+        ladvance(lexer);
+        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '.');
+
+        while ((c = lpeek(lexer, 1)) && isdigit(c)) {
+            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
+        }
+    } else {
+        token->kind = TK_INTEGER_CONSTANT;
+    }
+
     append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '\0');
 
-    token->kind = TK_INTEGER_CONSTANT;
     token->position = match_start;
     token->value = realloc(buffer.buffer, buffer.size);
 }

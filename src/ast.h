@@ -6,48 +6,97 @@
 #include <stdbool.h>
 #include "lexer.h"
 
-typedef struct AstNode ast_node_t;
-typedef struct AstNodeVector {
-    ast_node_t** buffer;
-    size_t size;
-    size_t capacity;
-} ast_node_vector_t;
-
-typedef struct Identifier {
-    char* name;
-} identifier_t;
-
-typedef struct Constant {
-    enum {
-        CONSTANT_INTEGER,
-        CONSTANT_FLOATING,
-        CONSTANT_CHARACTER,
-    } type;
-    union {
-        int64_t integer;
-        double floating;
-        char character;
-    };
-} constant_t;
+typedef struct Expression expression_t;
 
 typedef struct PrimaryExpression {
     enum {
         PE_IDENTIFIER,
         PE_CONSTANT,
         PE_STRING_LITERAL,
-        PE_EXPRESSION,
+        PE_EXPRESSION, // e.g. parenthesized expression "(1 + 2)"
     } type;
     union {
-        identifier_t identifier;
-        constant_t constant;
-        char* string_literal;
+        token_t token; // value of an identifier, constant, or string literal
+        expression_t* expression;
     };
 } primary_expression_t;
 
-typedef struct Declaration {
-    ast_node_t* declaration_specifiers;
-    ast_node_t* init_declarators;
-} declaration_t;
+typedef enum BinaryOperator {
+    BINARY_ADD,
+    BINARY_SUBTRACT,
+    BINARY_MULTIPLY,
+    BINARY_DIVIDE,
+    BINARY_MODULO,
+    BINARY_BITWISE_AND,
+    BINARY_BITWISE_OR,
+    BINARY_BITWISE_XOR,
+    BINARY_LOGICAL_AND,
+    BINARY_LOGICAL_OR,
+    BINARY_SHIFT_LEFT,
+    BINARY_SHIFT_RIGHT,
+    BINARY_EQUAL,
+    BINARY_NOT_EQUAL,
+    BINARY_LESS_THAN,
+    BINARY_LESS_THAN_OR_EQUAL,
+    BINARY_GREATER_THAN,
+    BINARY_GREATER_THAN_OR_EQUAL,
+    BINARY_COMMA,
+    BINARY_ASSIGN,
+    BINARY_ADD_ASSIGN,
+    BINARY_SUBTRACT_ASSIGN,
+    BINARY_MULTIPLY_ASSIGN,
+    BINARY_DIVIDE_ASSIGN,
+    BINARY_MODULO_ASSIGN,
+    BINARY_BITWISE_AND_ASSIGN,
+    BINARY_BITWISE_OR_ASSIGN,
+    BINARY_BITWISE_XOR_ASSIGN,
+    BINARY_SHIFT_LEFT_ASSIGN,
+    BINARY_SHIFT_RIGHT_ASSIGN,
+} binary_operator_t;
+
+typedef struct BinaryExpression {
+    expression_t* left;
+    expression_t* right;
+    binary_operator_t operator;
+} binary_expression_t;
+
+typedef struct UnaryExpression {
+    expression_t* operand;
+    enum {
+        UNARY_ADDRESS_OF,
+        UNARY_DEREFERENCE,
+        UNARY_PLUS,
+        UNARY_MINUS,
+        UNARY_BITWISE_NOT,
+        UNARY_LOGICAL_NOT,
+        UNARY_PRE_INCREMENT,
+        UNARY_PRE_DECREMENT,
+        UNARY_POST_INCREMENT,
+        UNARY_POST_DECREMENT,
+    } operator;
+} unary_expression_t;
+
+typedef struct TernaryExpression {
+    expression_t* condition;
+    expression_t* true_expression;
+    expression_t* false_expression;
+} ternary_expression_t;
+
+typedef struct Expression {
+    source_span_t span;
+    enum {
+        EXPRESSION_PRIMARY,
+        EXPRESSION_BINARY,
+        EXPRESSION_UNARY,
+        EXPRESSION_TERNARY,
+    } type;
+    union {
+        primary_expression_t primary;
+        binary_expression_t binary;
+        unary_expression_t unary;
+        ternary_expression_t ternary;
+    };
+} expression_t;
 
 typedef enum StorageClassSpecifier {
     STORAGE_CLASS_SPECIFIER_TYPEDEF,
@@ -122,176 +171,6 @@ static const char* function_specifier_names[] = {
         [FUNCTION_SPECIFIER_INLINE] = "inline",
 };
 
-typedef struct InitDeclarator {
-    ast_node_t* declarator;
-    ast_node_t* initializer;
-} init_declarator_t;
 
-typedef struct AbstractDeclarator {
-    ast_node_t* pointer;
-    ast_node_t* direct_abstract_declarator;
-} abstract_declarator_t;
-
-typedef struct DirectAbstractDeclarator {
-    enum DIRECT_ABSTRACT_DECLARATOR_TYPE {
-        DIRECT_ABSTRACT_DECL_ABSTRACT,
-        DIRECT_ABSTRACT_DECL_ARRAY,
-        DIRECT_ABSTRACT_DECL_FUNCTION,
-    } type;
-    union {
-        abstract_declarator_t abstract;
-        struct {
-            ast_node_t* type_qualifier_list;
-            ast_node_t* assignment_expression;
-            bool _static;
-        } array;
-        struct {
-            ast_node_t* param_type_list;
-        } function;
-    };
-    ast_node_t* next;
-    ast_node_t* prev;
-} direct_abstract_declarator_t;
-
-typedef struct Declarator {
-    ast_node_t* pointer;
-    ast_node_t* direct_declarator;
-} declarator_t;
-
-typedef struct DirectDeclarator {
-    enum DECL_TYPE {
-        DECL_IDENTIFIER,
-        DECL_ARRAY,
-        DECL_FUNCTION
-    } type;
-    union {
-        identifier_t identifier;
-        struct {
-            ast_node_t* type_qualifier_list;
-            ast_node_t* assignment_expression;
-            bool _static;
-            bool pointer;
-        } array;
-        struct {
-            ast_node_t* param_type_or_ident_list;
-        } function;
-    };
-    ast_node_t* next;
-    ast_node_t* prev;
-} direct_declarator_t;
-
-typedef struct Initializer {
-    enum INITIALIZER_TYPE {
-        INITIALIZER_EXPRESSION,
-        INITIALIZER_LIST, // struct or array initializer
-    } type;
-    union {
-        ast_node_t* expression;
-        ast_node_t* initializer_list;
-    };
-} initializer_t;
-
-typedef struct FunctionDefinition {
-    ast_node_t* declaration_specifiers;
-    ast_node_t* declarator;
-    ast_node_t* declaration_list;
-    ast_node_t* compound_statement;
-} function_definition_t;
-
-typedef struct ParameterDeclaration {
-    ast_node_t* declaration_specifiers;
-    ast_node_t* declarator; // declarator, or optional abstract declarator
-} parameter_declaration_t;
-
-typedef struct ParameterTypeList {
-    ast_node_vector_t parameter_list;
-    bool variadic;
-} parameter_type_list_t;
-
-typedef struct Pointer {
-    ast_node_t* type_qualifier_list;
-    ast_node_t* next_pointer;
-} pointer_t;
-
-typedef struct TranslationUnit {
-    ast_node_vector_t external_declarations;
-} translation_unit_t;
-
-typedef struct CompoundStatement {
-    ast_node_vector_t block_items;
-} compound_statement_t;
-
-typedef enum JumpStatementKind {
-    JMP_GOTO,
-    JMP_CONTINUE,
-    JMP_BREAK,
-    JMP_RETURN,
-} jump_statement_kind_t;
-
-typedef struct JumpStatement {
-    jump_statement_kind_t type;
-    union {
-        struct {
-            identifier_t identifier;
-        } _goto;
-        struct {
-            ast_node_t* expression;
-        } _return;
-    };
-} jump_statement_t;
-
-typedef enum AstNodeKind {
-    AST_ABSTRACT_DECLARATOR,
-    AST_EXPRESSION,
-    AST_PRIMARY_EXPRESSION,
-    AST_DECLARATION,
-    AST_DECLARATION_SPECIFIERS,
-    AST_STORAGE_CLASS_SPECIFIER,
-    AST_TYPE_SPECIFIER,
-    AST_TYPE_QUALIFIER,
-    AST_FUNCTION_SPECIFIER,
-    AST_INIT_DECLARATOR_LIST,
-    AST_INIT_DECLARATOR,
-    AST_DECLARATOR,
-    AST_DIRECT_ABSTRACT_DECLARATOR,
-    AST_DIRECT_DECLARATOR,
-    AST_INITIALIZER,
-    AST_FUNCTION_DEFINITION,
-    AST_TRANSLATION_UNIT,
-    AST_COMPOUND_STATEMENT,
-    AST_JUMP_STATEMENT,
-    AST_PARAMETER_TYPE_LIST,
-    AST_PARAMETER_DECLARATION,
-    AST_POINTER,
-} ast_node_kind_t;
-
-typedef struct AstNode {
-    ast_node_kind_t type;
-    source_position_t position;
-    // There's probably a better way to do this, but I'm not sure what it is
-    union {
-        abstract_declarator_t abstract_declarator;
-        direct_abstract_declarator_t direct_abstract_declarator;
-        primary_expression_t primary_expression;
-        declaration_t declaration;
-        ast_node_vector_t declaration_specifiers;
-        storage_class_specifier_t storage_class_specifier;
-        type_specifier_t type_specifier;
-        type_qualifier_t type_qualifier;
-        function_specifier_t function_specifier;
-        ast_node_vector_t init_declarator_list;
-        init_declarator_t init_declarator;
-        declarator_t declarator;
-        direct_declarator_t direct_declarator;
-        initializer_t initializer;
-        function_definition_t function_definition;
-        translation_unit_t translation_unit;
-        compound_statement_t compound_statement;
-        jump_statement_t jump_statement;
-        parameter_declaration_t parameter_declaration;
-        parameter_type_list_t parameter_type_list;
-        pointer_t pointer;
-    };
-} ast_node_t;
 
 #endif //C_COMPILER_AST_H

@@ -3,8 +3,8 @@
 #include "tests.h"
 #include "lexer.h"
 
-void test_simple_program() {
-    lexer_global_context_t context = {
+static lexer_global_context_t create_context() {
+    return (lexer_global_context_t) {
             .user_include_paths = NULL,
             .system_include_paths = NULL,
             .macro_definitions = {
@@ -13,6 +13,10 @@ void test_simple_program() {
                     .buckets = calloc(10, sizeof(hashtable_entry_t *)),
             }
     };
+}
+
+void test_simple_program() {
+    lexer_global_context_t context =  create_context();
 
     char* input = "/*multi line\ncomment*/\nint main() {\n    return 0; // comment\n}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -39,9 +43,22 @@ void test_simple_program() {
     CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_EOF);
 }
 
+void test_lex_float() {
+    lexer_global_context_t context = create_context();
+    char* input = "42.0";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    token_t token = lscan(&lexer);
+    printf("%s\n", token.value);
+    CU_ASSERT_EQUAL_FATAL(token.kind, TK_FLOATING_CONSTANT);
+    CU_ASSERT_STRING_EQUAL_FATAL(token.value, "42.0");
+    CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_EOF);
+}
+
 int lexer_tests_init_suite() {
     CU_pSuite pSuite = CU_add_suite("lexer", NULL, NULL);
-    if (NULL == CU_add_test(pSuite, "lex simple test program", test_simple_program)) {
+    if (NULL == CU_add_test(pSuite, "lex simple test program", test_simple_program) ||
+        NULL == CU_add_test(pSuite, "lex float constant", test_lex_float)
+    ) {
         CU_cleanup_registry();
         return CU_get_error();
     }

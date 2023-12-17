@@ -70,27 +70,41 @@ typedef enum TokenKind {
 
     /* Punctuators */
     TK_ASSIGN, // '='
-    TK_AMPERSAND,
-    TK_SEMICOLON,
-    TK_COMMA,
-    TK_COLON,
-    TK_EXCLAMATION,
-    TK_LPAREN,
-    TK_RPAREN,
-    TK_LBRACE,
-    TK_RBRACE,
-    TK_LBRACKET,
-    TK_RBRACKET,
-    TK_DOT,
-    TK_PLUS,
-    TK_MINUS,
-    TK_ARROW,
-    TK_STAR,
-    TK_SLASH,
+    TK_MULTIPLY_ASSIGN, // '*='
+    TK_DIVIDE_ASSIGN, // '/='
+    TK_MOD_ASSIGN, // '%='
+    TK_PLUS_ASSIGN, // '+='
+    TK_MINUS_ASSIGN, // '-='
+    TK_LSHIFT_ASSIGN, // '<<='
+    TK_RSHIFT_ASSIGN, // '>>='
+    TK_BITWISE_AND_ASSIGN, // '&='
+    TK_BITWISE_XOR_ASSIGN, // '^='
+    TK_BITWISE_OR_ASSIGN, // '|='
+    TK_AMPERSAND, // '&'
+    TK_LOGICAL_AND, // '&&'
+    TK_BITWISE_OR, // '&'
+    TK_LOGICAL_OR, // '||'
+    TK_BITWISE_XOR, // '^'
+    TK_SEMICOLON, // ';'
+    TK_COMMA, // ','
+    TK_COLON, // ':'
+    TK_EXCLAMATION, // '!'
+    TK_LPAREN, // '('
+    TK_RPAREN, // ')'
+    TK_LBRACE, // '{'
+    TK_RBRACE, // '}'
+    TK_LBRACKET, // '['
+    TK_RBRACKET, // ']'
+    TK_DOT, // '.'
+    TK_PLUS, // '+'
+    TK_MINUS, // '-'
+    TK_ARROW, // '->'
+    TK_STAR, // '*'
+    TK_SLASH, // '/'
     TK_EOF,
-    TK_TILDE,
-    TK_INCREMENT,
-    TK_DECREMENT,
+    TK_TILDE, // '~'
+    TK_INCREMENT, // '++'
+    TK_DECREMENT, // '--'
     TK_EQUALS, // '=='
     TK_NOT_EQUALS, // '!='
     TK_LESS_THAN, // '<'
@@ -98,6 +112,10 @@ typedef enum TokenKind {
     TK_LESS_THAN_EQUAL, // '<='
     TK_GREATER_THAN_EQUAL, // '>='
     TK_ELLIPSIS, // '...'
+    TK_PERCENT, // '%'
+    TK_LSHIFT, // '<<'
+    TK_RSHIFT, // '>>'
+    TK_TERNARY, // '?'
 } token_kind_t;
 
 static const char* token_kind_names[] = {
@@ -164,7 +182,21 @@ static const char* token_kind_names[] = {
 
         /* Punctuators */
         [TK_ASSIGN] = "TK_ASSIGN",
+        [TK_MULTIPLY_ASSIGN] = "TK_MULTIPLY_ASSIGN",
+        [TK_DIVIDE_ASSIGN] = "TK_DIVIDE_ASSIGN",
+        [TK_MOD_ASSIGN] = "TK_MOD_ASSIGN",
+        [TK_PLUS_ASSIGN] = "TK_PLUS_ASSIGN",
+        [TK_MINUS_ASSIGN] = "TK_MINUS_ASSIGN",
+        [TK_LSHIFT_ASSIGN] = "TK_LSHIFT_ASSIGN",
+        [TK_RSHIFT_ASSIGN] = "TK_RSHIFT_ASSIGN",
+        [TK_BITWISE_AND_ASSIGN] = "TK_BITWISE_AND_ASSIGN",
+        [TK_BITWISE_XOR_ASSIGN] = "TK_BITWISE_XOR_ASSIGN",
+        [TK_BITWISE_OR_ASSIGN] = "TK_BITWISE_OR_ASSIGN",
         [TK_AMPERSAND] = "TK_AMPERSAND",
+        [TK_LOGICAL_AND] = "TK_LOGICAL_AND",
+        [TK_BITWISE_OR] = "TK_BITWISE_OR",
+        [TK_LOGICAL_OR] = "TK_LOGICAL_OR",
+        [TK_BITWISE_XOR] = "TK_BITWISE_XOR",
         [TK_SEMICOLON] = "TK_SEMICOLON",
         [TK_COMMA] = "TK_COMMA",
         [TK_COLON] = "TK_COLON",
@@ -192,6 +224,10 @@ static const char* token_kind_names[] = {
         [TK_LESS_THAN_EQUAL] = "TK_LESS_THAN_EQUAL",
         [TK_GREATER_THAN_EQUAL] = "TK_GREATER_THAN_EQUAL",
         [TK_ELLIPSIS] = "TK_ELLIPSIS",
+        [TK_PERCENT] = "TK_PERCENT",
+        [TK_LSHIFT] = "TK_LSHIFT",
+        [TK_RSHIFT] = "TK_RSHIFT",
+        [TK_TERNARY] = "TK_TERNARY",
 };
 
 struct ReservedWord {
@@ -259,6 +295,11 @@ typedef struct SourcePosition {
     uint32_t line;
     uint32_t column;
 } source_position_t;
+
+typedef struct SourceSpan {
+    source_position_t start;
+    source_position_t end;
+} source_span_t;
 
 typedef struct Token {
     enum TokenKind kind;

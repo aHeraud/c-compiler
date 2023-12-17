@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
         );
         parser_t parser = pinit(lexer);
 
-        ast_node_t* translation_unit = malloc(sizeof(ast_node_t));
+        expression_t *translation_unit = malloc(sizeof(expression_t));
         if (!parse(&parser, translation_unit)) {
             fprintf(stderr, "Failed to parse file: %s\n", options.input_files.buffer[i]);
             return 1;
