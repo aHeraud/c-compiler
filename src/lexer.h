@@ -313,7 +313,15 @@ typedef struct TokenVector {
     size_t capacity;
 } token_vector_t;
 
-void append_token(token_t** buffer, size_t *size, size_t* capacity, token_t token);
+void append_token(token_t **buffer, size_t *size, size_t *capacity, token_t token);
+
+typedef struct TokenPtrVector {
+    token_t** buffer;
+    size_t size;
+    size_t capacity;
+} token_ptr_vector_t;
+
+void append_token_ptr(token_t ***buffer, size_t *size, size_t *capacity, token_t *token);
 
 typedef struct TokenNode {
     token_t token;

@@ -52,7 +52,7 @@ parser_t pinit(lexer_t lexer) {
 }
 
 bool parse(parser_t* parser, expression_t* node) {
-    return primary_expression(parser, node);
+    return parse_expression(parser, node);
 }
 
 parse_checkpoint_t checkpoint(const parser_t* parser) {
@@ -67,16 +67,17 @@ void backtrack(parser_t* parser, parse_checkpoint_t checkpoint) {
     parser->errors.size = checkpoint.error_index;
 }
 
-token_t* next_token(parser_t* parser) {
+token_t *next_token(parser_t* parser) {
     token_t* token;
     if (parser->next_token_index < parser->tokens.size) {
-        token = &parser->tokens.buffer[parser->next_token_index];
+        token = parser->tokens.buffer[parser->next_token_index];
     } else {
-        token_t next = lscan(&parser->lexer);
-        if (next.kind != TK_EOF) {
-            append_token(&parser->tokens.buffer, &parser->tokens.size, &parser->tokens.capacity, next);
+        token_t *next = malloc(sizeof(token_t));
+        *next = lscan(&parser->lexer);
+        if (next->kind != TK_EOF) {
+            append_token_ptr(&parser->tokens.buffer, &parser->tokens.size, &parser->tokens.capacity, next);
         }
-        token = &parser->tokens.buffer[parser->tokens.size - 1];
+        token = parser->tokens.buffer[parser->tokens.size - 1];
     }
     return token;
 }
@@ -130,27 +131,29 @@ bool require(parser_t* parser, token_kind_t kind, token_t** token_out, const cha
 
 // Expressions
 
-bool expression(parser_t *parser, expression_t *expr) {
-    if (!assignment_expression(parser, expr)) {
+bool parse_expression(parser_t *parser, expression_t *node) {
+    if (!parse_assignment_expression(parser, node)) {
         return false;
     }
 
-    while (accept(parser, TK_COMMA, NULL)) {
+    token_t *token = NULL;
+    while (accept(parser, TK_COMMA, &token)) {
         expression_t *right = malloc(sizeof(expression_t));
-        if (!assignment_expression(parser, right)) {
+        if (!parse_assignment_expression(parser, right)) {
             free(right);
             return false;
         }
 
         expression_t *left = malloc(sizeof(expression_t));
-        *left = *expr;
-        *expr = (expression_t) {
+        *left = *node;
+        *node = (expression_t) {
                 .span = spanning(left->span.start, right->span.end),
                 .type = EXPRESSION_BINARY,
                 .binary = {
                         .left = left,
                         .right = right,
-                        .operator = BINARY_COMMA,
+                        .binary_operator = BINARY_COMMA,
+                        .operator = token,
                 }
         };
     }
@@ -237,8 +240,8 @@ binary_operator_t get_binary_operator(const token_t *token) {
  * @param expr Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool assignment_expression(parser_t *parser, expression_t *expr) {
-    if (!conditional_expression(parser, expr)) {
+bool parse_assignment_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_conditional_expression(parser, expr)) {
         return false;
     }
 
@@ -258,7 +261,7 @@ bool assignment_expression(parser_t *parser, expression_t *expr) {
         accept(parser, TK_BITWISE_XOR_ASSIGN, &token)) {
 
         expression_t *right = malloc(sizeof(expression_t));
-        if (!assignment_expression(parser, right)) {
+        if (!parse_assignment_expression(parser, right)) {
             free(right);
             return false;
         }
@@ -271,7 +274,8 @@ bool assignment_expression(parser_t *parser, expression_t *expr) {
                 .binary = {
                         .left = left,
                         .right = right,
-                        .operator = get_binary_operator(token),
+                        .operator = token,
+                        .binary_operator = get_binary_operator(token),
                 }
         };
     }
@@ -289,8 +293,8 @@ bool assignment_expression(parser_t *parser, expression_t *expr) {
  * @param expr Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool conditional_expression(parser_t *parser, expression_t *expr) {
-    if (!logical_or_expression(parser, expr)) {
+bool parse_conditional_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_logical_or_expression(parser, expr)) {
         return false;
     }
 
@@ -300,20 +304,20 @@ bool conditional_expression(parser_t *parser, expression_t *expr) {
         *condition = *expr;
 
         expression_t *true_expression = malloc(sizeof(expression_t));
-        if (!expression(parser, true_expression)) {
+        if (!parse_expression(parser, true_expression)) {
             free(condition);
             free(true_expression);
             return false;
         }
 
-        if (!require(parser, TK_COLON, NULL, "conditional-expression")) {
+        if (!require(parser, TK_COLON, NULL, "conditional-parse_expression")) {
             free(condition);
             free(true_expression);
             return false;
         }
 
         expression_t *false_expression = malloc(sizeof(expression_t));
-        if (!conditional_expression(parser, false_expression)) {
+        if (!parse_conditional_expression(parser, false_expression)) {
             free(condition);
             free(true_expression);
             free(false_expression);
@@ -348,15 +352,15 @@ bool conditional_expression(parser_t *parser, expression_t *expr) {
  * @param expr Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool logical_or_expression(parser_t *parser, expression_t *expr) {
-    if (!logical_and_expression(parser, expr)) {
+bool parse_logical_or_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_logical_and_expression(parser, expr)) {
         return false;
     }
 
     token_t *token;
     while (accept(parser, TK_LOGICAL_OR, &token)) {
         expression_t *right = malloc(sizeof(expression_t));
-        if (!logical_and_expression(parser, right)) {
+        if (!parse_logical_and_expression(parser, right)) {
             free(right);
             return false;
         }
@@ -369,7 +373,8 @@ bool logical_or_expression(parser_t *parser, expression_t *expr) {
                 .binary = {
                         .left = left,
                         .right = right,
-                        .operator = BINARY_LOGICAL_OR,
+                        .operator = token,
+                        .binary_operator = BINARY_LOGICAL_OR,
                 }
         };
     }
@@ -392,15 +397,15 @@ bool logical_or_expression(parser_t *parser, expression_t *expr) {
  * @param expr Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool logical_and_expression(parser_t *parser, expression_t *expr) {
-    if (!inclusive_or_expression(parser, expr)) {
+bool parse_logical_and_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_inclusive_or_expression(parser, expr)) {
         return false;
     }
 
     token_t *token;
     while (accept(parser, TK_LOGICAL_AND, &token)) {
         expression_t *right = malloc(sizeof(expression_t));
-        if (!inclusive_or_expression(parser, right)) {
+        if (!parse_inclusive_or_expression(parser, right)) {
             free(right);
             return false;
         }
@@ -413,7 +418,8 @@ bool logical_and_expression(parser_t *parser, expression_t *expr) {
                 .binary = {
                         .left = left,
                         .right = right,
-                        .operator = BINARY_LOGICAL_AND,
+                        .operator = token,
+                        .binary_operator = BINARY_LOGICAL_AND,
                 }
         };
     }
@@ -436,15 +442,15 @@ bool logical_and_expression(parser_t *parser, expression_t *expr) {
  * @param expr Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool inclusive_or_expression(parser_t *parser, expression_t *expr) {
-    if (!exclusive_or_expression(parser, expr)) {
+bool parse_inclusive_or_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_exclusive_or_expression(parser, expr)) {
         return false;
     }
 
     token_t *token;
     while (accept(parser, TK_BITWISE_OR, &token)) {
         expression_t *right = malloc(sizeof(expression_t));
-        if (!exclusive_or_expression(parser, right)) {
+        if (!parse_exclusive_or_expression(parser, right)) {
             free(right);
             return false;
         }
@@ -457,7 +463,8 @@ bool inclusive_or_expression(parser_t *parser, expression_t *expr) {
                 .binary = {
                         .left = left,
                         .right = right,
-                        .operator = BINARY_BITWISE_OR,
+                        .operator = token,
+                        .binary_operator = BINARY_BITWISE_OR,
                 }
         };
     }
@@ -480,15 +487,15 @@ bool inclusive_or_expression(parser_t *parser, expression_t *expr) {
  * @param expr Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool exclusive_or_expression(parser_t *parser, expression_t *expr) {
-    if (!equality_expression(parser, expr)) {
+bool parse_exclusive_or_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_equality_expression(parser, expr)) {
         return false;
     }
 
     token_t *token;
     while (accept(parser, TK_BITWISE_XOR, &token)) {
         expression_t *right = malloc(sizeof(expression_t));
-        if (!equality_expression(parser, right)) {
+        if (!parse_equality_expression(parser, right)) {
             free(right);
             return false;
         }
@@ -501,7 +508,8 @@ bool exclusive_or_expression(parser_t *parser, expression_t *expr) {
                 .binary = {
                         .left = left,
                         .right = right,
-                        .operator = BINARY_BITWISE_XOR,
+                        .operator = token,
+                        .binary_operator = BINARY_BITWISE_XOR,
                 }
         };
     }
@@ -524,15 +532,15 @@ bool exclusive_or_expression(parser_t *parser, expression_t *expr) {
  * @param node Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool and_expression(parser_t* parser, expression_t* expr) {
-    if (!equality_expression(parser, expr)) {
+bool parse_and_expression(parser_t* parser, expression_t* expr) {
+    if (!parse_equality_expression(parser, expr)) {
         return false;
     }
 
     token_t *token;
     while (accept(parser, TK_AMPERSAND, &token)) {
         expression_t *right = malloc(sizeof(expression_t));
-        if (!equality_expression(parser, right)) {
+        if (!parse_equality_expression(parser, right)) {
             free(right);
             return false;
         }
@@ -545,7 +553,8 @@ bool and_expression(parser_t* parser, expression_t* expr) {
                 .binary = {
                         .left = left,
                         .right = right,
-                        .operator = BINARY_BITWISE_AND,
+                        .operator = token,
+                        .binary_operator = BINARY_BITWISE_AND,
                 }
         };
     }
@@ -570,8 +579,8 @@ bool equality_expression_prime(parser_t *parser, expression_t *expr, const token
  * @param expr Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool equality_expression(parser_t *parser, expression_t *expr) {
-    if (!relational_expression(parser, expr)) {
+bool parse_equality_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_relational_expression(parser, expr)) {
         return false;
     }
 
@@ -585,7 +594,7 @@ bool equality_expression(parser_t *parser, expression_t *expr) {
 
 bool equality_expression_prime(parser_t *parser, expression_t *expr, const token_t *operator) {
     expression_t *right = malloc(sizeof(expression_t));
-    if (!relational_expression(parser, right)) {
+    if (!parse_relational_expression(parser, right)) {
         free(right);
         return false;
     }
@@ -600,7 +609,8 @@ bool equality_expression_prime(parser_t *parser, expression_t *expr, const token
             .binary = {
                     .left = left,
                     .right = right,
-                    .operator = binary_operator,
+                    .operator = operator,
+                    .binary_operator = binary_operator,
             }
     };
 
@@ -627,8 +637,8 @@ bool relational_expression_prime(parser_t *parser, expression_t *expr, const tok
  * @param expr Expression node to store the result in
  * @return false if an error occurred, true otherwise
  */
-bool relational_expression(parser_t *parser, expression_t *expr) {
-    if (!shift_expression(parser, expr)) {
+bool parse_relational_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_shift_expression(parser, expr)) {
         return false;
     }
 
@@ -645,7 +655,7 @@ bool relational_expression(parser_t *parser, expression_t *expr) {
 
 bool relational_expression_prime(parser_t *parser, expression_t *expr, const token_t *operator) {
     expression_t *right = malloc(sizeof(expression_t));
-    if (!shift_expression(parser, right)) {
+    if (!parse_shift_expression(parser, right)) {
         free(right);
         return false;
     }
@@ -660,7 +670,8 @@ bool relational_expression_prime(parser_t *parser, expression_t *expr, const tok
             .binary = {
                     .left = left,
                     .right = right,
-                    .operator = binary_operator,
+                    .operator = operator,
+                    .binary_operator = binary_operator,
             }
     };
 
@@ -692,8 +703,8 @@ bool shift_expression_prime(parser_t *parser, expression_t *expr, const token_t 
  * @param expr Expression node to store the resulting expression in
  * @return false if an error occurred, true otherwise
  */
-bool shift_expression(parser_t *parser, expression_t *expr) {
-    if (!additive_expression(parser, expr)) {
+bool parse_shift_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_additive_expression(parser, expr)) {
         return false;
     }
 
@@ -708,7 +719,7 @@ bool shift_expression(parser_t *parser, expression_t *expr) {
 
 bool shift_expression_prime(parser_t *parser, expression_t *expr, const token_t *operator) {
     expression_t *right = malloc(sizeof(expression_t));
-    if (!additive_expression(parser, right)) {
+    if (!parse_additive_expression(parser, right)) {
         free(right);
         return false;
     }
@@ -721,7 +732,8 @@ bool shift_expression_prime(parser_t *parser, expression_t *expr, const token_t 
             .binary = {
                     .left = left,
                     .right = right,
-                    .operator = operator->kind == TK_LSHIFT ? BINARY_SHIFT_LEFT : BINARY_SHIFT_RIGHT,
+                    .operator = operator,
+                    .binary_operator = operator->kind == TK_LSHIFT ? BINARY_SHIFT_LEFT : BINARY_SHIFT_RIGHT,
             }
     };
 
@@ -752,8 +764,8 @@ bool additive_expression_prime(parser_t *parser, expression_t *expr, const token
  * @param expr Expression node to store the resulting expression in
  * @return false if an error occurred, true otherwise
  */
-bool additive_expression(parser_t* parser, expression_t* expr) {
-    if (!multiplicative_expression(parser, expr)) {
+bool parse_additive_expression(parser_t* parser, expression_t* expr) {
+    if (!parse_multiplicative_expression(parser, expr)) {
         return false;
     }
 
@@ -767,7 +779,7 @@ bool additive_expression(parser_t* parser, expression_t* expr) {
 
 bool additive_expression_prime(parser_t* parser, expression_t* expr, const token_t *operator) {
     expression_t *right = malloc(sizeof(expression_t));
-    if (!cast_expression(parser, right)) {
+    if (!parse_cast_expression(parser, right)) {
         free(right);
         return false;
     }
@@ -780,7 +792,8 @@ bool additive_expression_prime(parser_t* parser, expression_t* expr, const token
             .binary = {
                     .left = left,
                     .right = right,
-                    .operator = operator-> kind == TK_PLUS ? BINARY_ADD : BINARY_SUBTRACT
+                    .operator = operator,
+                    .binary_operator = operator-> kind == TK_PLUS ? BINARY_ADD : BINARY_SUBTRACT
             }
     };
 
@@ -809,12 +822,12 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* node, const
  *                                | '/' <cast-expression> <multiplicative-expression'>
  *                                | '%' <cast-expression> <multiplicative-expression'>
  *
- * @param parser
- * @param node
+ * @param parser Parser instance
+ * @param expr Expression node to store the resulting expression in
  * @return false if an error occurred, true otherwise
  */
-bool multiplicative_expression(parser_t* parser, expression_t* expr) {
-    if (!cast_expression(parser, expr)) {
+bool parse_multiplicative_expression(parser_t* parser, expression_t* expr) {
+    if (!parse_cast_expression(parser, expr)) {
         return false;
     }
 
@@ -830,7 +843,7 @@ bool multiplicative_expression(parser_t* parser, expression_t* expr) {
 
 bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const token_t *operator) {
     expression_t *right = malloc(sizeof(expression_t));
-    if (!cast_expression(parser, right)) {
+    if (!parse_cast_expression(parser, right)) {
         free(right);
         return false;
     }
@@ -843,7 +856,8 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const
             .binary = {
                 .left = left,
                 .right = right,
-                .operator = operator-> kind == TK_STAR ? BINARY_MULTIPLY :
+                .operator = operator,
+                .binary_operator = operator-> kind == TK_STAR ? BINARY_MULTIPLY :
                             operator-> kind == TK_SLASH ? BINARY_DIVIDE :
                             BINARY_MODULO,
             }
@@ -859,19 +873,19 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const
     }
 }
 
-bool cast_expression(parser_t *parser, expression_t *expr) {
+bool parse_cast_expression(parser_t *parser, expression_t *expr) {
     if (accept(parser, TK_LPAREN, NULL)) {
-        fprintf(stderr, "TODO: Implement parsing cast-expression ::= '(' <type-name> ')' <cast-expression>\n");
+        fprintf(stderr, "TODO: Implement parsing cast-parse_expression ::= '(' <type-name> ')' <cast-expression>\n");
         assert(false);
     } else {
-        return unary_expression(parser, expr);
+        return parse_unary_expression(parser, expr);
     }
 }
 
 // helper function to parse: <unary-operator> <cast-expression>
 bool unary_op(parser_t *parser, expression_t* expr, token_t *token) {
     expression_t *operand = malloc(sizeof(expression_t));
-    if (!cast_expression(parser, operand)) {
+    if (!parse_cast_expression(parser, operand)) {
         free(operand);
         return false;
     }
@@ -911,12 +925,12 @@ bool unary_op(parser_t *parser, expression_t* expr, token_t *token) {
     return true;
 }
 
-bool unary_expression(parser_t *parser, expression_t *expr) {
+bool parse_unary_expression(parser_t *parser, expression_t *expr) {
     token_t *token;
 
     if (accept(parser, TK_INCREMENT, &token)) {
         expression_t *operand = malloc(sizeof(expression_t));
-        if (!unary_expression(parser, operand)) {
+        if (!parse_unary_expression(parser, operand)) {
             free(operand);
             return false;
         }
@@ -932,7 +946,7 @@ bool unary_expression(parser_t *parser, expression_t *expr) {
         return true;
     } else if (accept(parser, TK_DECREMENT, &token)) {
         expression_t *operand = malloc(sizeof(expression_t));
-        if (!unary_expression(parser, operand)) {
+        if (!parse_unary_expression(parser, operand)) {
             free(operand);
             return false;
         }
@@ -954,69 +968,137 @@ bool unary_expression(parser_t *parser, expression_t *expr) {
                accept(parser, TK_EXCLAMATION, &token)) {
         return unary_op(parser, expr, token);
     } else if (accept(parser, TK_SIZEOF, &token)) {
-        fprintf(stderr, "TODO: Implement parsing unary-expression ::= 'sizeof' unary-expression\n");
+        fprintf(stderr, "TODO: Implement parsing unary-expression ::= 'sizeof' unary-parse_expression\n");
         assert(false);
     } else {
-        return postfix_expression(parser, expr);
+        return parse_postfix_expression(parser, expr);
     }
 }
 
-bool argument_expression_list(parser_t *parser, expression_t *node) {
-    return postfix_expression(parser, node);
-}
-
-bool postfix_expression(parser_t *parser, expression_t *node) {
-    expression_t primary;
-    if (!primary_expression(parser, &primary)) {
+bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
+    if (!parse_primary_expression(parser, expr)) {
         return false;
     }
 
-    if (accept(parser, TK_LBRACE, NULL)) {
+    token_t *token = NULL;
+    if (accept(parser, TK_LBRACKET, NULL)) {
         // array indexing
-        fprintf(stderr, "TODO: Implement parsing postfix-expression ::= <primary-expression> '[' <expression> ']'\n");
-        assert(false);
+        expression_t *index = malloc(sizeof(expression_t));
+        if (!parse_expression(parser, index)) {
+            free(index);
+            return false;
+        }
+
+        if (!require(parser, TK_RBRACKET, NULL, "postfix-parse_expression")) {
+            free(index);
+            return false;
+        }
+
+        expression_t *array = malloc(sizeof(expression_t));
+        *array = *expr;
+
+        *expr = (expression_t) {
+            .span = spanning(array->span.start, *current_position(parser)),
+            .type = EXPRESSION_ARRAY_SUBSCRIPT,
+            .array_subscript = {
+                .array = array,
+                .index = index,
+            },
+        };
+
+        return true;
     } else if (accept(parser, TK_LPAREN, NULL)) {
         // function call
-        fprintf(stderr, "TODO: Implement parsing postfix-expression ::= <primary-expression> '(' <argument-expression-list>? ')'\n");
-        assert(false);
-    } else if (accept(parser, TK_DOT, NULL)) {
+        // parse argument list
+        ptr_vector_t arguments = {.size = 0, .capacity = 0, .buffer = NULL};
+        while (next_token(parser) ->kind != TK_RPAREN && next_token(parser)->kind != TK_EOF) {
+            expression_t *argument = malloc(sizeof(expression_t));
+            if (!parse_assignment_expression(parser, argument)) {
+                free(argument);
+                // TODO: cleanup arguments
+                return false;
+            }
+
+            append_ptr(&arguments.buffer, &arguments.size, &arguments.capacity, argument);
+
+            if (!accept(parser, TK_COMMA, NULL)) {
+                break;
+            }
+        }
+
+        if (!require(parser, TK_RPAREN, NULL, "argument-parse_expression-list")) {
+            // TODO: cleanup
+            return false;
+        }
+
+        expression_t *callee = malloc(sizeof(expression_t));
+        *callee = *expr;
+
+        *expr = (expression_t) {
+            .span = spanning(callee->span.start, *current_position(parser)),
+            .type = EXPRESSION_CALL,
+            .call = {
+                .callee = callee,
+                .arguments = arguments,
+            },
+        };
+
+        return true;
+    } else if (accept(parser, TK_DOT, &token) || accept(parser, TK_ARROW, &token)) {
         // struct member access
-        fprintf(stderr, "TODO: Implement parsing postfix-expression ::= <primary-expression> '.' <identifier>\n");
-        assert(false);
-    } else if (accept(parser, TK_ARROW, NULL)) {
-        // struct member access through pointer
-        fprintf(stderr, "TODO: Implement parsing postfix-expression ::= <primary-expression> '->' <identifier>\n");
-        assert(false);
+        token_t *identifier;
+        if (!require(parser, TK_IDENTIFIER, &identifier, "postfix-parse_expression")) {
+            return false;
+        }
+
+        expression_t *struct_or_union = malloc(sizeof(expression_t));
+        *struct_or_union = *expr;
+
+        *expr = (expression_t) {
+            .span = spanning(struct_or_union->span.start, *current_position(parser)),
+            .type = EXPRESSION_MEMBER_ACCESS,
+            .member_access = {
+                .struct_or_union = struct_or_union,
+                .operator = *token,
+                .member = *identifier,
+            },
+        };
+        return true;
     } else if (accept(parser, TK_INCREMENT, NULL)) {
-        *node = (expression_t) {
-            .span = SPAN_STARTING(primary.span.start),
+        // post-increment
+        expression_t *operand = malloc(sizeof(expression_t));
+        *operand = *expr;
+        *expr = (expression_t) {
+            .span = SPAN_STARTING(operand->span.start),
             .type = EXPRESSION_UNARY,
             .unary = {
                     .operator = UNARY_POST_INCREMENT,
-                    .operand = &primary,
+                    .operand = operand,
             },
         };
         return true;
     } else if (accept(parser, TK_DECREMENT, NULL)) {
-        *node = (expression_t) {
+        expression_t *operand = malloc(sizeof(expression_t));
+        *operand = *expr;
+
+        *expr = (expression_t) {
             .span = {
-                .start = primary.span.start,
+                .start = operand->span.start,
                 .end = *current_position(parser),
             },
             .type = EXPRESSION_UNARY,
             .unary = {
                 .operator = UNARY_POST_DECREMENT,
-                .operand = &primary,
+                .operand = operand,
             },
         };
         return true;
     } else {
-        *node = primary;
         return true;
     }
 }
 
-bool primary_expression(parser_t* parser, expression_t* expr) {
+bool parse_primary_expression(parser_t* parser, expression_t* expr) {
     token_t *token;
     source_position_t start = *current_position(parser);
 
@@ -1054,12 +1136,12 @@ bool primary_expression(parser_t* parser, expression_t* expr) {
         return true;
     } else if (accept(parser, TK_LPAREN, &token)) {
         expression_t *expr2 = malloc(sizeof(expression_t));
-        if (!expression(parser, expr2)) {
+        if (!parse_expression(parser, expr2)) {
             free(expr2);
             return false;
         }
 
-        if (!require(parser, TK_RPAREN, NULL, "primary-expression")) {
+        if (!require(parser, TK_RPAREN, NULL, "primary-parse_expression")) {
             free(expr2);
             return false;
         }
@@ -1076,7 +1158,7 @@ bool primary_expression(parser_t* parser, expression_t* expr) {
         return true;
     } else {
         // TODO: error handling/recovery
-        fprintf(stderr, "Expected primary-expression at \n");
+        fprintf(stderr, "Expected primary-parse_expression at \n");
         return false;
     }
 }

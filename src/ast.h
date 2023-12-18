@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include "lexer.h"
 
+typedef struct Statement statement_t;
 typedef struct Expression expression_t;
 
 typedef struct PrimaryExpression {
@@ -55,9 +56,10 @@ typedef enum BinaryOperator {
 } binary_operator_t;
 
 typedef struct BinaryExpression {
-    expression_t* left;
-    expression_t* right;
-    binary_operator_t operator;
+    expression_t *left;
+    expression_t *right;
+    const token_t *operator;
+    binary_operator_t binary_operator;
 } binary_expression_t;
 
 typedef struct UnaryExpression {
@@ -82,6 +84,22 @@ typedef struct TernaryExpression {
     expression_t* false_expression;
 } ternary_expression_t;
 
+typedef struct CallExpression {
+    expression_t* callee;
+    ptr_vector_t arguments;
+} call_expression_t;
+
+typedef struct ArraySubscriptExpression {
+    expression_t* array;
+    expression_t* index;
+} array_subscript_expression_t;
+
+typedef struct MemberAccessExpression {
+    expression_t* struct_or_union;
+    token_t operator; // "." or "->"
+    token_t member; // identifier
+} member_access_expression_t;
+
 typedef struct Expression {
     source_span_t span;
     enum {
@@ -89,12 +107,18 @@ typedef struct Expression {
         EXPRESSION_BINARY,
         EXPRESSION_UNARY,
         EXPRESSION_TERNARY,
+        EXPRESSION_CALL,
+        EXPRESSION_ARRAY_SUBSCRIPT,
+        EXPRESSION_MEMBER_ACCESS,
     } type;
     union {
         primary_expression_t primary;
         binary_expression_t binary;
         unary_expression_t unary;
         ternary_expression_t ternary;
+        call_expression_t call;
+        array_subscript_expression_t array_subscript;
+        member_access_expression_t member_access;
     };
 } expression_t;
 
@@ -171,6 +195,14 @@ static const char* function_specifier_names[] = {
         [FUNCTION_SPECIFIER_INLINE] = "inline",
 };
 
-
+typedef struct Statement {
+    enum {
+        STATEMENT_EXPRESSION,
+    } type;
+    union {
+        expression_t *expression;
+    };
+    token_t terminator;
+} statement_t;
 
 #endif //C_COMPILER_AST_H

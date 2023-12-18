@@ -37,6 +37,67 @@ void ppexpr(FILE *__restrict stream, int indent_level, expression_t* expr) {
                     break;
             }
             break;
+        case EXPRESSION_BINARY:
+            fprintf(stream, "- Binary Expression\n");
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Operator: %d\n", expr->binary.binary_operator); // TODO: Print operator name
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Left\n");
+            ppexpr(stream, indent_level + 2, expr->binary.left);
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Right\n");
+            ppexpr(stream, indent_level + 2, expr->binary.right);
+            break;
+        case EXPRESSION_UNARY:
+            fprintf(stream, "- Unary Expression\n");
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Operator: %d\n", expr->unary.operator); // TODO: Print operator name
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Operand\n");
+            ppexpr(stream, indent_level + 2, expr->unary.operand);
+            break;
+        case EXPRESSION_TERNARY:
+            fprintf(stream, "- Ternary Expression\n");
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Condition\n");
+            ppexpr(stream, indent_level + 2, expr->ternary.condition);
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- True Expression\n");
+            ppexpr(stream, indent_level + 2, expr->ternary.true_expression);
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- False Expression\n");
+            ppexpr(stream, indent_level + 2, expr->ternary.false_expression);
+            break;
+        case EXPRESSION_CALL:
+            fprintf(stream, "- Call Expression\n");
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Callee\n");
+            ppexpr(stream, indent_level + 2, expr->call.callee);
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Arguments\n");
+            for (size_t i = 0; i < expr->call.arguments.size; i++) {
+                ppexpr(stream, indent_level + 2, expr->call.arguments.buffer[i]);
+            }
+            break;
+        case EXPRESSION_ARRAY_SUBSCRIPT:
+            fprintf(stream, "- Array Subscript Expression\n");
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Array\n");
+            ppexpr(stream, indent_level + 2, expr->array_subscript.array);
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Index\n");
+            ppexpr(stream, indent_level + 2, expr->array_subscript.index);
+            break;
+        case EXPRESSION_MEMBER_ACCESS:
+            fprintf(stream, "- Member Access Expression\n");
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Struct or Union\n");
+            ppexpr(stream, indent_level + 2, expr->member_access.struct_or_union);
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Operator: %s\n", expr->member_access.operator.value);
+            indent(stream, indent_level + 1);
+            fprintf(stream, "- Member: %s\n", expr->member_access.member.value);
+            break;
         default:
             fprintf(stderr, "Unknown expression type: %d\n", expr->type);
             assert(false);

@@ -77,11 +77,14 @@ bool expression_eq(const expression_t *left, const expression_t *right) {
                 case PE_EXPRESSION:
                     return expression_eq(left->primary.expression, right->primary.expression);
                 default:
-                    perror("Invalid primary expression type");
+                    perror("Invalid primary parse_expression type");
                     assert(false);
             }
         case EXPRESSION_BINARY:
-            if (left->binary.operator != right->binary.operator) {
+            if (left->binary.binary_operator != right->binary.binary_operator) {
+                return false;
+            }
+            if (left->binary.operator->kind != right->binary.operator->kind) {
                 return false;
             }
             return expression_eq(left->binary.left, right->binary.left) &&

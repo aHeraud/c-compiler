@@ -26,6 +26,17 @@ void append_token(token_t** buffer, size_t *size, size_t* capacity, token_t toke
     *size += 1;
 }
 
+void append_token_ptr(token_t ***buffer, size_t *size, size_t *capacity, token_t *token) {
+    if (*size + 1 > *capacity) {
+        *capacity > 0 ? (*capacity *= 2) : (*capacity = 1);
+        *buffer = realloc(*buffer, *capacity * sizeof(token_t*));
+        assert(buffer != NULL);
+    }
+
+    (*buffer)[*size] = token;
+    *size += 1;
+}
+
 char ladvance(struct Lexer* lexer) {
     if (lexer->input_offset >= lexer->input_len) {
         return '\0';

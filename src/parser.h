@@ -6,7 +6,7 @@
 #include "lexer.h"
 
 typedef struct ParseError {
-    token_t* token;
+    const token_t *token;
     const char* production_name;
     enum ParseErrorType {
         UNEXPECTED_TOKEN,
@@ -35,7 +35,7 @@ VEC_DEFINE(ParseErrorVector, parse_error_vector_t, parse_error_t)
  */
 typedef struct Parser {
     lexer_t lexer;
-    token_vector_t tokens;
+    token_ptr_vector_t tokens;
     /**
      * The index of the _next_ token (e.g. the last token consumed by the parser is at token_index - 1).
      */
@@ -46,25 +46,24 @@ typedef struct Parser {
 parser_t pinit(lexer_t lexer);
 bool parse(parser_t* parser, expression_t *node);
 
-bool primary_expression(parser_t *parser, expression_t *expr);
-bool postfix_expression(parser_t *parser, expression_t *expr);
-bool argument_expression_list(parser_t *parser, expression_t *expr);
-bool unary_expression(parser_t *parser, expression_t  *expr);
-bool cast_expression(parser_t *parser, expression_t *expr);
-bool multiplicative_expression(parser_t *parser, expression_t* expr);
-bool additive_expression(parser_t *parser, expression_t *expr);
-bool shift_expression(parser_t *parser, expression_t *expr);
-bool relational_expression(parser_t *parser, expression_t *expr);
-bool equality_expression(parser_t *parser, expression_t *expr);
-bool and_expression(parser_t *parser, expression_t *expr);
-bool exclusive_or_expression(parser_t *parser, expression_t *node);
-bool inclusive_or_expression(parser_t *parser, expression_t *node);
-bool logical_and_expression(parser_t *parser, expression_t *node);
-bool logical_or_expression(parser_t *parser, expression_t *node);
-bool conditional_expression(parser_t *parser, expression_t *node);
-bool assignment_expression(parser_t *parser, expression_t *node);
-bool assignment_operator(parser_t *parser, expression_t *node);
-bool expression(parser_t *parser, expression_t *node);
+// Expressions
+bool parse_primary_expression(parser_t *parser, expression_t *expr);
+bool parse_postfix_expression(parser_t *parser, expression_t *expr);
+bool parse_unary_expression(parser_t *parser, expression_t  *expr);
+bool parse_cast_expression(parser_t *parser, expression_t *expr);
+bool parse_multiplicative_expression(parser_t *parser, expression_t* expr);
+bool parse_additive_expression(parser_t *parser, expression_t *expr);
+bool parse_shift_expression(parser_t *parser, expression_t *expr);
+bool parse_relational_expression(parser_t *parser, expression_t *expr);
+bool parse_equality_expression(parser_t *parser, expression_t *expr);
+bool parse_and_expression(parser_t *parser, expression_t *expr);
+bool parse_exclusive_or_expression(parser_t *parser, expression_t *expr);
+bool parse_inclusive_or_expression(parser_t *parser, expression_t *expr);
+bool parse_logical_and_expression(parser_t *parser, expression_t *expr);
+bool parse_logical_or_expression(parser_t *parser, expression_t *expr);
+bool parse_conditional_expression(parser_t *parser, expression_t *expr);
+bool parse_assignment_expression(parser_t *parser, expression_t *expr);
+bool parse_expression(parser_t *parser, expression_t *expr);
 
 //bool declaration(parser_t* parser, ast_node_t* node);
 //bool declaration_specifiers(parser_t* parser, ast_node_t* node);
@@ -100,17 +99,17 @@ bool expression(parser_t *parser, expression_t *node);
 //bool designation(parser_t* parser, ast_node_t* node);
 //bool designator_list(parser_t* parser, ast_node_t* node);
 //bool designator(parser_t* parser, ast_node_t* node);
-//
-//bool statement(parser_t* parser, ast_node_t* node);
+
+bool parse_statement(parser_t *parser, statement_t *statement);
 //bool labeled_statement(parser_t* parser, ast_node_t* node);
 //bool compound_statement(parser_t* parser, ast_node_t* node);
 //bool block_item_list(parser_t* parser, ast_node_t* node);
 //bool block_item(parser_t* parser, ast_node_t* node);
-//bool expression_statement(parser_t* parser, ast_node_t* node);
+bool parse_expression_statement(parser_t *parser, statement_t *statement);
 //bool selection_statement(parser_t* parser, ast_node_t* node);
 //bool iteration_statement(parser_t* parser, ast_node_t* node);
 //bool jump_statement(parser_t* parser, ast_node_t* node);
-//
+
 //bool translation_unit(parser_t* parser, ast_node_t* node);
 //bool external_declaration(parser_t* parser, ast_node_t* node);
 //bool function_definition(parser_t* parser, ast_node_t* node);
