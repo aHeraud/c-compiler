@@ -6,6 +6,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "util/ast-printer.h"
+#include "codegen.h"
 
 // TODO: Set based on current platform
 char* DEFAULT_SYSTEM_INCLUDE_DIRECTORIES[2] = {
@@ -141,9 +142,10 @@ int main(int argc, char** argv) {
     }
 
     for (size_t i = 0; i < options.input_files.size; i++) {
-        FILE* file = fopen(options.input_files.buffer[i], "r");
+        const char* input_file_name = options.input_files.buffer[i];
+        FILE* file = fopen(input_file_name, "r");
         if (file == NULL) {
-            fprintf(stderr, "Failed to open file: %s\n", options.input_files.buffer[i]);
+            fprintf(stderr, "Failed to open file: %s\n", input_file_name);
             return 1;
         }
 
@@ -151,7 +153,7 @@ int main(int argc, char** argv) {
         size_t len = 0;
         ssize_t bytes_read = getdelim( &source_buffer, &len, '\0', file);
         if (bytes_read < 0) {
-            fprintf(stderr, "Failed to read file: %s\n", options.input_files.buffer[i]);
+            fprintf(stderr, "Failed to read file: %s\n", input_file_name);
             return 1;
         }
         fclose(file);
@@ -173,9 +175,9 @@ int main(int argc, char** argv) {
         );
         parser_t parser = pinit(lexer);
 
-        statement_t *translation_unit = malloc(sizeof(expression_t));
+        function_definition_t *translation_unit = malloc(sizeof(function_definition_t));
         if (!parse(&parser, translation_unit)) {
-            fprintf(stderr, "Failed to parse file: %s\n", options.input_files.buffer[i]);
+            fprintf(stderr, "Failed to parse file: %s\n",input_file_name);
             for (size_t e = 0; e < parser.errors.size; e++) {
                 print_parse_error(stderr, &parser.errors.buffer[e]);
             }
@@ -183,7 +185,18 @@ int main(int argc, char** argv) {
         }
 
         if (options.print_ast) {
-            format_statement(stdout, translation_unit);
+            //format_statement(stdout, translation_unit); // fix me
         }
+
+        size_t file_name_len = strlen(input_file_name);
+        char* output_file_name = malloc(file_name_len + 3 + 1);
+        strcpy(output_file_name, input_file_name);
+        if (file_name_len > 2 && strcmp(input_file_name + file_name_len - 2, ".c") == 0) {
+            strcpy(output_file_name + file_name_len - 2, ".ll");
+        } else {
+            strcpy(output_file_name + file_name_len, ".ll");
+        }
+
+        codegen(input_file_name, output_file_name, translation_unit);
     }
 }

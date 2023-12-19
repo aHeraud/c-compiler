@@ -79,8 +79,8 @@ parser_t pinit(lexer_t lexer) {
 
 void recover(parser_t *parser);
 
-bool parse(parser_t* parser, statement_t *node) {
-    bool success = parse_statement(parser, node);
+bool parse(parser_t* parser, function_definition_t *node) {
+    bool success = parse_function_definition(parser, node);
     // for now we just ignore any unparsed tokens
     return success && parser->errors.size == 0;
 }
@@ -191,14 +191,17 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
         return true;
     }
 
-    if (accept(parser, TK_LBRACE, NULL)) {
-        return parse_compound_statement(parser, stmt);
+    token_t *begin = NULL;
+    if (accept(parser, TK_LBRACE, &begin)) {
+        return parse_compound_statement(parser, stmt, begin);
+    } else if (accept(parser, TK_RETURN, &begin)) {
+        return parse_return_statement(parser, stmt, begin);
     } else {
         return parse_expression_statement(parser, stmt);
     }
 }
 
-bool parse_compound_statement(parser_t *parser, statement_t *stmt) {
+bool parse_compound_statement(parser_t *parser, statement_t *stmt, token_t* open_brace) {
     ptr_vector_t statements = {.buffer = NULL, .size = 0, .capacity = 0};
 
     token_t *last_token;
@@ -220,6 +223,7 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt) {
         *stmt = (statement_t) {
                 .type = STATEMENT_COMPOUND,
                 .compound = {
+                        .open_brace = open_brace,
                         .statements = statements,
                 },
                 .terminator = last_token,
@@ -240,6 +244,36 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt) {
         });
         return false;
     }
+}
+
+bool parse_return_statement(parser_t *parser, statement_t *stmt, token_t *keyword) {
+    token_t *terminator;
+    expression_t *expr = NULL;
+
+    if (!accept(parser, TK_SEMICOLON, &terminator)) {
+        expr = malloc(sizeof(expression_t));
+        if (!parse_expression(parser, expr)) {
+            free(expr);
+            return false;
+        }
+
+        // Should we insert a semicolon here for error recovery?
+        if (!require(parser, TK_SEMICOLON, &terminator, "return-statement", "expression")) {
+            free(expr);
+            return false;
+        }
+    }
+
+    *stmt = (statement_t) {
+            .type = STATEMENT_RETURN,
+            .return_ = {
+                    .keyword = keyword,
+                    .expression = expr,
+            },
+            .terminator = terminator,
+    };
+
+    return true;
 }
 
 bool parse_expression_statement(parser_t *parser, statement_t *stmt) {
@@ -1308,4 +1342,68 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
         append_parse_error(&parser->errors, error);
         return false;
     }
+}
+
+// External definitions
+
+// temporary function to parse a function definition, will be replaced by a more general external definition parser later
+bool parse_function_definition(parser_t *parser, function_definition_t *fn) {
+    type_t return_type;
+    if (accept(parser, TK_INT, NULL)) {
+        return_type = (type_t) {
+            .kind = TYPE_INTEGER,
+            .integer = {
+                .is_signed = true,
+                .size = INTEGER_TYPE_INT
+            },
+        };
+    } else if (accept(parser, TK_VOID, NULL)) {
+        return_type = (type_t) {
+            .kind = TYPE_VOID,
+        };
+    } else {
+        append_parse_error(&parser->errors, (parse_error_t) {
+            .token = next_token(parser),
+            .previous_token = parser->next_token_index > 0 ? parser->tokens.buffer[parser->next_token_index - 1] : NULL,
+            .production_name = "function-definition",
+            .previous_production_name = NULL,
+            .type = PARSE_ERROR_EXPECTED_TOKEN,
+            .expected_token = {
+                .expected_count = 2,
+                .expected = {TK_INT, TK_VOID},
+            },
+        });
+    }
+
+    token_t *identifier;
+    if (!require(parser, TK_IDENTIFIER, &identifier, "function-definition", "declaration-specifiers")) {
+        return false;
+    }
+
+    if (!require(parser, TK_LPAREN, NULL, "function-definition", "declarator")) {
+        return false;
+    }
+
+    if (!require(parser, TK_RPAREN, NULL, "function-definition", "declarator")) {
+        return false;
+    }
+
+    token_t *body_start;
+    if (!require(parser, TK_LBRACE, &body_start, "function-definition", "compound-statement")) {
+        return false;
+    }
+
+    statement_t *body = malloc(sizeof(statement_t));
+    if (!parse_compound_statement(parser, body, body_start)) {
+        free(body);
+        return false;
+    }
+
+    *fn = (function_definition_t) {
+        .identifier = identifier,
+        .return_type = return_type,
+        .body = body,
+    };
+
+    return true;
 }

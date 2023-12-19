@@ -593,6 +593,26 @@ void test_parse_compound_statement_with_error() {
     CU_ASSERT_TRUE_FATAL(parser.errors.size == 1)
 }
 
+void test_parse_return_statement() {
+    lexer_global_context_t context = create_context();
+    char *input = "return 1;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    statement_t *expected = malloc(sizeof(statement_t));
+    *expected = (statement_t) {
+            .type = STATEMENT_RETURN,
+            .return_ = {
+                    .keyword = token(TK_RETURN, "return"),
+                    .expression = integer_constant("1"),
+            },
+            .terminator = token(TK_SEMICOLON, ";"),
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
+}
+
 int parser_tests_init_suite() {
     CU_pSuite pSuite = CU_add_suite("parser", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "primary expression - identifier", test_parse_primary_expression_ident) ||
@@ -618,7 +638,8 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "empty statement", test_parse_empty_statement) ||
         NULL == CU_add_test(pSuite, "expression statement", test_parse_expression_statement) ||
         NULL == CU_add_test(pSuite, "compound statement", test_parse_compound_statement) ||
-        NULL == CU_add_test(pSuite, "compound statement with parse error", test_parse_compound_statement_with_error)
+        NULL == CU_add_test(pSuite, "compound statement with parse error", test_parse_compound_statement_with_error) ||
+        NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement)
     ) {
         CU_cleanup_registry();
         return CU_get_error();

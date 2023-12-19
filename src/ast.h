@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include "lexer.h"
+#include "types.h"
 
 typedef struct Statement statement_t;
 typedef struct Expression expression_t;
@@ -197,17 +198,30 @@ static const char* function_specifier_names[] = {
 
 typedef struct Statement {
     enum {
-        STATEMENT_EXPRESSION,
         STATEMENT_COMPOUND,
         STATEMENT_EMPTY,
+        STATEMENT_EXPRESSION,
+        STATEMENT_RETURN,
     } type;
     union {
-        expression_t *expression;
         struct {
+            token_t *open_brace;
             ptr_vector_t statements;
         } compound;
+        expression_t *expression;
+        struct {
+            token_t *keyword;
+            expression_t *expression;
+        } return_;
     };
     token_t *terminator;
 } statement_t;
+
+// Very primitive definition for now, add support for parameters, etc. later
+typedef struct FunctionDefinition {
+    type_t return_type;
+    token_t *identifier;
+    statement_t *body;
+} function_definition_t;
 
 #endif //C_COMPILER_AST_H

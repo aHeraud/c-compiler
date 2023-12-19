@@ -149,5 +149,11 @@ bool statement_eq(const statement_t *left, const statement_t *right) {
                 }
             }
             return true;
+        case STATEMENT_RETURN:
+            assert(left->return_.keyword != NULL && right->return_.keyword != NULL);
+            if (left->return_.keyword->kind != right->return_.keyword->kind) {
+                return false;
+            }
+            return expression_eq(left->return_.expression, right->return_.expression);
     }
 }
