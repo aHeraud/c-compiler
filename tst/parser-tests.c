@@ -83,6 +83,16 @@ token_t *token(token_kind_t kind, const char* value) {
     return token;
 }
 
+statement_t *expression_statement(expression_t *expression) {
+    statement_t *stmt = malloc(sizeof(statement_t));
+    *stmt = (statement_t) {
+            .type = STATEMENT_EXPRESSION,
+            .expression = expression,
+            .terminator = token(TK_SEMICOLON, ";"),
+    };
+    return stmt;
+}
+
 void test_parse_primary_expression_ident() {
     lexer_global_context_t context = create_context();
     char* input = "bar";
@@ -162,6 +172,7 @@ void test_parse_primary_expression_parenthesized() {
             .type = PE_EXPRESSION,
             .expression = integer_constant("42"),
     });
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
 }
 
 void test_parse_postfix_expression_function_call() {
@@ -170,7 +181,7 @@ void test_parse_postfix_expression_function_call() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t expr;
-    CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr));
+    CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr))
     expression_t *arg_buffer[] = {
             integer_constant("4"),
             integer_constant("2"),
@@ -188,7 +199,7 @@ void test_parse_postfix_expression_function_call() {
             .arguments = arguments,
         },
     };
-    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
 void test_parse_postfix_expression_array_subscript() {
@@ -197,7 +208,7 @@ void test_parse_postfix_expression_array_subscript() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t expr;
-    CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr));
+    CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr))
     expression_t expected = (expression_t) {
             .span = dummy_span(),
             .type = EXPRESSION_ARRAY_SUBSCRIPT,
@@ -205,12 +216,13 @@ void test_parse_postfix_expression_array_subscript() {
                     .array = make_identifier("arr"),
                     .index = binary((binary_expression_t) {
                             .binary_operator = BINARY_ADD,
+                            .operator = token(TK_PLUS, "+"),
                             .left = integer_constant("1"),
                             .right = integer_constant("1"),
                     }),
             },
     };
-    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
 void test_parse_postfix_expression_member_access() {
@@ -219,7 +231,7 @@ void test_parse_postfix_expression_member_access() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t expr;
-    CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr));
+    CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr))
     expression_t expected = (expression_t) {
             .span = dummy_span(),
             .type = EXPRESSION_MEMBER_ACCESS,
@@ -237,7 +249,7 @@ void test_parse_postfix_expression_member_access() {
                     },
             },
     };
-    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
 void test_parse_multiplicative_expression() {
@@ -246,7 +258,7 @@ void test_parse_multiplicative_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_multiplicative_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_multiplicative_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = binary((binary_expression_t) {
                     .left = binary((binary_expression_t) {
@@ -263,7 +275,7 @@ void test_parse_multiplicative_expression() {
             .binary_operator = BINARY_MODULO,
             .operator = token(TK_PERCENT, "%"),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_additive_expression() {
@@ -272,7 +284,7 @@ void test_parse_additive_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_additive_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_additive_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = binary((binary_expression_t) {
                     .left = integer_constant("1"),
@@ -284,7 +296,7 @@ void test_parse_additive_expression() {
             .binary_operator = BINARY_SUBTRACT,
             .operator = token(TK_MINUS, "-"),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_shift_expression() {
@@ -293,7 +305,7 @@ void test_parse_shift_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_shift_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_shift_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = binary((binary_expression_t) {
                     .left = integer_constant("1"),
@@ -305,7 +317,7 @@ void test_parse_shift_expression() {
             .binary_operator = BINARY_SHIFT_RIGHT,
             .operator = token(TK_RSHIFT, ">>"),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_relational_expression() {
@@ -314,7 +326,7 @@ void test_parse_relational_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_relational_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_relational_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = binary((binary_expression_t) {
                     .left = binary((binary_expression_t) {
@@ -336,7 +348,7 @@ void test_parse_relational_expression() {
             .binary_operator = BINARY_GREATER_THAN_OR_EQUAL,
             .operator = token(TK_GREATER_THAN_EQUAL, ">="),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_equality_expression() {
@@ -345,7 +357,7 @@ void test_parse_equality_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_equality_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_equality_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = binary((binary_expression_t) {
                     .left = integer_constant("1"),
@@ -357,7 +369,7 @@ void test_parse_equality_expression() {
             .binary_operator = BINARY_NOT_EQUAL,
             .operator = token(TK_NOT_EQUALS, "!="),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_and_expression() {
@@ -366,14 +378,14 @@ void test_parse_and_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_and_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_and_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
             .binary_operator = BINARY_BITWISE_AND,
             .operator = token(TK_AMPERSAND, "&"),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_xor_expression() {
@@ -382,14 +394,14 @@ void test_parse_xor_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_exclusive_or_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_exclusive_or_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
             .binary_operator = BINARY_BITWISE_XOR,
             .operator = token(TK_BITWISE_XOR, "^"),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_inclusive_or_expression() {
@@ -398,14 +410,14 @@ void test_parse_inclusive_or_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_inclusive_or_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_inclusive_or_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
             .binary_operator = BINARY_BITWISE_OR,
             .operator = token(TK_BITWISE_OR, "|"),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_logical_and_expression() {
@@ -414,14 +426,14 @@ void test_parse_logical_and_expression() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     expression_t node;
-    CU_ASSERT_TRUE_FATAL(parse_logical_and_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_logical_and_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
             .binary_operator = BINARY_LOGICAL_AND,
             .operator = token(TK_LOGICAL_AND, "&&"),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_logical_or_expression() {
@@ -431,14 +443,14 @@ void test_parse_logical_or_expression() {
     parser_t parser = pinit(lexer);
     expression_t node;
 
-    CU_ASSERT_TRUE_FATAL(parse_logical_or_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_logical_or_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
             .binary_operator = BINARY_LOGICAL_OR,
             .operator = token(TK_LOGICAL_OR, "||"),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
 void test_parse_conditional_expression() {
@@ -448,7 +460,7 @@ void test_parse_conditional_expression() {
     parser_t parser = pinit(lexer);
     expression_t node;
 
-    CU_ASSERT_TRUE_FATAL(parse_conditional_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_conditional_expression(&parser, &node))
     expression_t expected = (expression_t) {
             .span = dummy_span(),
             .type = EXPRESSION_TERNARY,
@@ -458,7 +470,7 @@ void test_parse_conditional_expression() {
                     .false_expression = integer_constant("3"),
             },
     };
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, &expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, &expected))
 }
 
 void test_parse_assignment_expression() {
@@ -468,14 +480,117 @@ void test_parse_assignment_expression() {
     parser_t parser = pinit(lexer);
     expression_t node;
 
-    CU_ASSERT_TRUE_FATAL(parse_assignment_expression(&parser, &node));
+    CU_ASSERT_TRUE_FATAL(parse_assignment_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
             .left = make_identifier("val"),
             .right = integer_constant("2"),
             .binary_operator = BINARY_ASSIGN,
             .operator = token(TK_ASSIGN, "="),
     });
-    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected));
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
+}
+
+void test_parse_empty_statement() {
+    lexer_global_context_t context = create_context();
+    char *input = ";";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    statement_t *expected = malloc(sizeof(statement_t));
+    *expected = (statement_t) {
+            .type = STATEMENT_EMPTY,
+            .terminator = token(TK_SEMICOLON, ";"),
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
+}
+
+void test_parse_expression_statement() {
+    lexer_global_context_t context = create_context();
+    char *input = "1;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    statement_t *expected = malloc(sizeof(statement_t));
+    *expected = (statement_t) {
+            .type = STATEMENT_EXPRESSION,
+            .expression = integer_constant("1"),
+            .terminator = token(TK_SEMICOLON, ";"),
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
+}
+
+void test_parse_compound_statement() {
+    lexer_global_context_t context = create_context();
+    char *input = "{ 1; 'a'; 1.0; }";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    statement_t *expected = malloc(sizeof(statement_t));
+    statement_t *statements[3] = {
+            expression_statement(integer_constant("1")),
+            expression_statement(primary((primary_expression_t) {
+                    .type = PE_CONSTANT,
+                    .token = (token_t) {
+                            .kind = TK_CHAR_LITERAL,
+                            .value = "'a'",
+                            .position = dummy_position(),
+                    },
+            })),
+            expression_statement(primary((primary_expression_t) {
+                    .type = PE_CONSTANT,
+                    .token = (token_t) {
+                            .kind = TK_FLOATING_CONSTANT,
+                            .value = "1.0",
+                            .position = dummy_position(),
+                    },
+            })),
+    };
+    *expected = (statement_t) {
+        .type = STATEMENT_COMPOUND,
+        .compound = {
+            .statements = {
+                .size = 3,
+                .capacity = 3,
+                .buffer = (void**) statements,
+            },
+        },
+        .terminator = token(TK_RBRACE, "}"),
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
+}
+
+void test_parse_compound_statement_with_error() {
+    // The parser should recover, and continue parsing the rest of the statements.
+    lexer_global_context_t context = create_context();
+    char *input = "{ a-; 1; }";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    statement_t *expected = malloc(sizeof(statement_t));
+    statement_t *statements[1] = {
+            expression_statement(integer_constant("1")),
+    };
+    *expected = (statement_t) {
+            .type = STATEMENT_COMPOUND,
+            .compound = {
+                    .statements = {
+                            .size = 1,
+                            .capacity = 1,
+                            .buffer = (void**) statements,
+                    },
+            },
+            .terminator = token(TK_RBRACE, "}"),
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
+    CU_ASSERT_TRUE_FATAL(parser.errors.size == 1)
 }
 
 int parser_tests_init_suite() {
@@ -499,7 +614,11 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "logical and expression", test_parse_logical_and_expression) ||
         NULL == CU_add_test(pSuite, "logical or expression", test_parse_logical_or_expression) ||
         NULL == CU_add_test(pSuite, "conditional expression", test_parse_conditional_expression) ||
-        NULL == CU_add_test(pSuite, "assignment expression", test_parse_assignment_expression)
+        NULL == CU_add_test(pSuite, "assignment expression", test_parse_assignment_expression) ||
+        NULL == CU_add_test(pSuite, "empty statement", test_parse_empty_statement) ||
+        NULL == CU_add_test(pSuite, "expression statement", test_parse_expression_statement) ||
+        NULL == CU_add_test(pSuite, "compound statement", test_parse_compound_statement) ||
+        NULL == CU_add_test(pSuite, "compound statement with parse error", test_parse_compound_statement_with_error)
     ) {
         CU_cleanup_registry();
         return CU_get_error();

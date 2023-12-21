@@ -98,5 +98,56 @@ bool expression_eq(const expression_t *left, const expression_t *right) {
             return expression_eq(left->ternary.condition, right->ternary.condition) &&
                    expression_eq(left->ternary.true_expression, right->ternary.true_expression) &&
                    expression_eq(left->ternary.false_expression, right->ternary.false_expression);
+        case EXPRESSION_CALL:
+            if (!expression_eq(left->call.callee, right->call.callee)) {
+                return false;
+            }
+            if (left->call.arguments.size != right->call.arguments.size) {
+                return false;
+            }
+            for (size_t i = 0; i < left->call.arguments.size; i++) {
+                if (!expression_eq(left->call.arguments.buffer[i], right->call.arguments.buffer[i])) {
+                    return false;
+                }
+            }
+            return true;
+        case EXPRESSION_ARRAY_SUBSCRIPT:
+            return expression_eq(left->array_subscript.array, right->array_subscript.array) &&
+                   expression_eq(left->array_subscript.index, right->array_subscript.index);
+        case EXPRESSION_MEMBER_ACCESS:
+            if (left->member_access.operator.kind != right->member_access.operator.kind) {
+                return false;
+            }
+            if (left->member_access.member.kind != right->member_access.member.kind) {
+                return false;
+            }
+            return expression_eq(left->member_access.struct_or_union, right->member_access.struct_or_union);
+    }
+}
+
+bool statement_eq(const statement_t *left, const statement_t *right) {
+    if (left == NULL || right == NULL) {
+        return left == right;
+    }
+
+    if (left->type != right->type) {
+        return false;
+    }
+
+    switch (left->type) {
+        case STATEMENT_EMPTY:
+            return true;
+        case STATEMENT_EXPRESSION:
+            return expression_eq(left->expression, right->expression);
+        case STATEMENT_COMPOUND:
+            if (left->compound.statements.size != right->compound.statements.size) {
+                return false;
+            }
+            for (size_t i = 0; i < left->compound.statements.size; i++) {
+                if (!statement_eq(left->compound.statements.buffer[i], right->compound.statements.buffer[i])) {
+                    return false;
+                }
+            }
+            return true;
     }
 }

@@ -27,12 +27,12 @@ add_library(cclib STATIC
         src/util/read-lines.h src/util/read-lines.c
         src/util/vectors.h src/util/vectors.c
         src/parser.c src/parser.h
-        src/util/ast-printer.h src/util/ast-printer.c src/ast.h src/ast.h
+        src/util/ast-printer.h src/util/ast-printer.c src/ast.h
         src/util/hashtable.c src/util/hashtable.h
 )
 
-add_executable(cc src/main.c src/ast.h
-)
+add_executable(cc src/main.c)
+
 target_link_libraries(cc PUBLIC cclib)
 
 set(CUNIT_DISABLE_TESTS TRUE)
@@ -48,7 +48,8 @@ add_executable(unit-tests
         tst/preprocessor-tests.c
         tst/util/hashtable-tests.c
         tst/test-common.h
-        tst/test-common.c)
+        tst/test-common.c
+)
 target_link_libraries(unit-tests PUBLIC cunit)
 target_link_libraries(unit-tests PUBLIC cclib)
 

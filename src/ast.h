@@ -198,11 +198,16 @@ static const char* function_specifier_names[] = {
 typedef struct Statement {
     enum {
         STATEMENT_EXPRESSION,
+        STATEMENT_COMPOUND,
+        STATEMENT_EMPTY,
     } type;
     union {
         expression_t *expression;
+        struct {
+            ptr_vector_t statements;
+        } compound;
     };
-    token_t terminator;
+    token_t *terminator;
 } statement_t;
 
 #endif //C_COMPILER_AST_H

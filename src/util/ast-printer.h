@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "parser.h"
 
-void ppast(FILE *__restrict stream, expression_t *node);
+void format_expression(FILE *__restrict stream, expression_t *node);
+void format_statement(FILE *__restrict stream, statement_t *node);
 
 #endif //C_COMPILER_AST_PRINTER_H

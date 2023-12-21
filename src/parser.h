@@ -7,22 +7,25 @@
 
 typedef struct ParseError {
     const token_t *token;
+    const token_t *previous_token;
     const char* production_name;
+    const char* previous_production_name;
     enum ParseErrorType {
-        UNEXPECTED_TOKEN,
-        UNEXPECTED_END_OF_INPUT,
+        PARSE_ERROR_EXPECTED_TOKEN,
+        PARSE_ERROR_UNEXPECTED_END_OF_INPUT,
     } type;
     union {
         struct {
-            token_kind_t expected;
-            token_kind_t actual;
-        } unexpected_token;
+            size_t expected_count;
+            token_kind_t expected[10];
+        } expected_token;
         struct {
             token_kind_t expected;
         } unexpected_end_of_input;
     };
 } parse_error_t;
 
+void print_parse_error(FILE *__restrict stream, parse_error_t *error);
 VEC_DEFINE(ParseErrorVector, parse_error_vector_t, parse_error_t)
 
 /**
@@ -44,7 +47,7 @@ typedef struct Parser {
 } parser_t;
 
 parser_t pinit(lexer_t lexer);
-bool parse(parser_t* parser, expression_t *node);
+bool parse(parser_t* parser, statement_t *node);
 
 // Expressions
 bool parse_primary_expression(parser_t *parser, expression_t *expr);
@@ -102,7 +105,7 @@ bool parse_expression(parser_t *parser, expression_t *expr);
 
 bool parse_statement(parser_t *parser, statement_t *statement);
 //bool labeled_statement(parser_t* parser, ast_node_t* node);
-//bool compound_statement(parser_t* parser, ast_node_t* node);
+bool parse_compound_statement(parser_t* parser, statement_t *node);
 //bool block_item_list(parser_t* parser, ast_node_t* node);
 //bool block_item(parser_t* parser, ast_node_t* node);
 bool parse_expression_statement(parser_t *parser, statement_t *statement);

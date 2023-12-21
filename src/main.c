@@ -173,14 +173,17 @@ int main(int argc, char** argv) {
         );
         parser_t parser = pinit(lexer);
 
-        expression_t *translation_unit = malloc(sizeof(expression_t));
+        statement_t *translation_unit = malloc(sizeof(expression_t));
         if (!parse(&parser, translation_unit)) {
             fprintf(stderr, "Failed to parse file: %s\n", options.input_files.buffer[i]);
+            for (size_t e = 0; e < parser.errors.size; e++) {
+                print_parse_error(stderr, &parser.errors.buffer[e]);
+            }
             return 1;
         }
 
         if (options.print_ast) {
-            ppast(stdout, translation_unit);
+            format_statement(stdout, translation_unit);
         }
     }
 }

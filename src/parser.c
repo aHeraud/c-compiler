@@ -9,6 +9,32 @@
 #include "parser.h"
 #include "lexer.h"
 
+void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
+    source_position_t position = error->token->position;
+    fprintf(stream, "%s:%d:%d: error: ", position.path, position.line, position.column);
+    switch (error->type) {
+        case PARSE_ERROR_EXPECTED_TOKEN:
+            fprintf(stream, error->expected_token.expected_count > 1 ? "expected one of " : "expected ");
+            for (size_t i = 0; i < error->expected_token.expected_count; i++) {
+                fprintf(stream, "%s", token_kind_display_names[error->expected_token.expected[i]]);
+                if (i < error->expected_token.expected_count - 1) {
+                    fprintf(stream, ", ");
+                } else if (i == error->expected_token.expected_count - 2) {
+                    fprintf(stream, " or ");
+                }
+            }
+
+            if (error->previous_production_name != NULL ) {
+                fprintf(stream, " after %s\n", error->previous_production_name);
+            }
+            break;
+        case PARSE_ERROR_UNEXPECTED_END_OF_INPUT:
+            fprintf(stream, "Unexpected end of input\n");
+            fprintf(stream, "Expected token: %s\n", token_kind_display_names[error->unexpected_end_of_input.expected]);
+            break;
+    }
+}
+
 source_span_t spanning_tokens(token_t *start, token_t *end) {
     return (source_span_t) {
             .start = start->position,
@@ -51,8 +77,12 @@ parser_t pinit(lexer_t lexer) {
     };
 }
 
-bool parse(parser_t* parser, expression_t* node) {
-    return parse_expression(parser, node);
+void recover(parser_t *parser);
+
+bool parse(parser_t* parser, statement_t *node) {
+    bool success = parse_statement(parser, node);
+    // for now we just ignore any unparsed tokens
+    return success && parser->errors.size == 0;
 }
 
 parse_checkpoint_t checkpoint(const parser_t* parser) {
@@ -98,17 +128,20 @@ bool accept(parser_t* parser, token_kind_t kind, token_t** token_out) {
     }
 }
 
-bool require(parser_t* parser, token_kind_t kind, token_t** token_out, const char* production_name) {
+bool require(parser_t* parser, token_kind_t kind, token_t** token_out, const char* production_name, const char* previous_production_name) {
     if (accept(parser, kind, token_out)) {
         return true;
     } else {
+        token_t* previous_token = parser->next_token_index > 0 ? parser->tokens.buffer[parser->next_token_index - 1] : NULL;
         token_t* token = next_token(parser);
         parse_error_t error;
         if (token->kind == TK_EOF) {
             error = (parse_error_t) {
                     .token = token,
+                    .previous_token = previous_token,
                     .production_name = production_name,
-                    .type = UNEXPECTED_END_OF_INPUT,
+                    .previous_production_name = previous_production_name,
+                    .type = PARSE_ERROR_UNEXPECTED_END_OF_INPUT,
                     .unexpected_end_of_input = {
                             .expected = kind,
                     },
@@ -116,11 +149,13 @@ bool require(parser_t* parser, token_kind_t kind, token_t** token_out, const cha
         } else {
             error = (parse_error_t) {
                     .token = token,
+                    .previous_token = previous_token,
                     .production_name = production_name,
-                    .type = UNEXPECTED_TOKEN,
-                    .unexpected_token = {
-                            .expected = kind,
-                            .actual = token->kind,
+                    .previous_production_name = previous_production_name,
+                    .type = PARSE_ERROR_EXPECTED_TOKEN,
+                    .expected_token = {
+                            .expected_count = 1,
+                            .expected = {kind},
                     },
             };
         }
@@ -128,6 +163,107 @@ bool require(parser_t* parser, token_kind_t kind, token_t** token_out, const cha
         return false;
     }
 }
+
+/**
+ * Recovers from a parse error by skipping tokens until a semicolon is found.
+ * @param parser Parser instance
+ */
+void recover(parser_t *parser) {
+    token_t *token = next_token(parser);
+    while (token->kind != TK_EOF) {
+        if (token->kind == TK_SEMICOLON) {
+            parser->next_token_index++;
+            break;
+        }
+        token = next_token(parser);
+    }
+}
+
+// Statements
+
+bool parse_statement(parser_t *parser, statement_t *stmt) {
+    token_t *terminator;
+    if (accept(parser, TK_SEMICOLON, &terminator)) {
+        *stmt = (statement_t) {
+                .type = STATEMENT_EMPTY,
+                .terminator = terminator,
+        };
+        return true;
+    }
+
+    if (accept(parser, TK_LBRACE, NULL)) {
+        return parse_compound_statement(parser, stmt);
+    } else {
+        return parse_expression_statement(parser, stmt);
+    }
+}
+
+bool parse_compound_statement(parser_t *parser, statement_t *stmt) {
+    ptr_vector_t statements = {.buffer = NULL, .size = 0, .capacity = 0};
+
+    token_t *last_token;
+    while (!accept(parser, TK_RBRACE, &last_token) && !accept(parser, TK_EOF, &last_token)) {
+        statement_t *statement = malloc(sizeof(statement_t));
+        if (!parse_statement(parser, statement)) {
+            // We can recover from parse errors following a parse error in a statement by skipping tokens until
+            // we find a semicolon.
+            // An error has already been appended to the parser's error vector at this point.
+            free(statement);
+            recover(parser);
+            continue;
+        }
+        append_ptr((void ***) &statements.buffer, &statements.size, &statements.capacity, statement);
+    }
+    shrink_ptr_vector((void ***) &statements.buffer, &statements.size, &statements.capacity);
+
+    if (last_token->kind == TK_RBRACE) {
+        *stmt = (statement_t) {
+                .type = STATEMENT_COMPOUND,
+                .compound = {
+                        .statements = statements,
+                },
+                .terminator = last_token,
+        };
+        return true;
+    } else {
+        // TODO: free allocated statements?
+        free(statements.buffer);
+        append_parse_error(&parser->errors, (parse_error_t) {
+                .token = last_token,
+                .previous_token = parser->next_token_index > 0 ? parser->tokens.buffer[parser->next_token_index - 1] : NULL,
+                .production_name = "compound-statement",
+                .previous_production_name = NULL,
+                .type = PARSE_ERROR_UNEXPECTED_END_OF_INPUT,
+                .unexpected_end_of_input = {
+                        .expected = TK_RBRACE,
+                },
+        });
+        return false;
+    }
+}
+
+bool parse_expression_statement(parser_t *parser, statement_t *stmt) {
+    token_t *terminator; // hasta la vista baby
+    expression_t *expr = malloc(sizeof(expression_t));
+    if (!parse_expression(parser, expr)) {
+        free(expr);
+        return false;
+    }
+
+    if (!require(parser, TK_SEMICOLON, &terminator, "statement", "expression")) {
+        free(expr);
+        return false;
+    }
+
+    *stmt = (statement_t) {
+            .type = STATEMENT_EXPRESSION,
+            .expression = expr,
+            .terminator = terminator,
+    };
+
+    return true;
+}
+
 
 // Expressions
 
@@ -310,7 +446,7 @@ bool parse_conditional_expression(parser_t *parser, expression_t *expr) {
             return false;
         }
 
-        if (!require(parser, TK_COLON, NULL, "conditional-parse_expression")) {
+        if (!require(parser, TK_COLON, NULL, "conditional-expression", "expression")) {
             free(condition);
             free(true_expression);
             return false;
@@ -875,7 +1011,7 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const
 
 bool parse_cast_expression(parser_t *parser, expression_t *expr) {
     if (accept(parser, TK_LPAREN, NULL)) {
-        fprintf(stderr, "TODO: Implement parsing cast-parse_expression ::= '(' <type-name> ')' <cast-expression>\n");
+        fprintf(stderr, "TODO: Implement parsing cast-expression ::= '(' <type-name> ')' <cast-expression>\n");
         assert(false);
     } else {
         return parse_unary_expression(parser, expr);
@@ -968,7 +1104,7 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
                accept(parser, TK_EXCLAMATION, &token)) {
         return unary_op(parser, expr, token);
     } else if (accept(parser, TK_SIZEOF, &token)) {
-        fprintf(stderr, "TODO: Implement parsing unary-expression ::= 'sizeof' unary-parse_expression\n");
+        fprintf(stderr, "TODO: Implement parsing unary-expression ::= 'sizeof' unary-expression\n");
         assert(false);
     } else {
         return parse_postfix_expression(parser, expr);
@@ -989,7 +1125,7 @@ bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
             return false;
         }
 
-        if (!require(parser, TK_RBRACKET, NULL, "postfix-parse_expression")) {
+        if (!require(parser, TK_RBRACKET, NULL, "postfix-expression", "expression")) {
             free(index);
             return false;
         }
@@ -1026,7 +1162,7 @@ bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
             }
         }
 
-        if (!require(parser, TK_RPAREN, NULL, "argument-parse_expression-list")) {
+        if (!require(parser, TK_RPAREN, NULL, "argument-expression-list", "")) {
             // TODO: cleanup
             return false;
         }
@@ -1047,7 +1183,7 @@ bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
     } else if (accept(parser, TK_DOT, &token) || accept(parser, TK_ARROW, &token)) {
         // struct member access
         token_t *identifier;
-        if (!require(parser, TK_IDENTIFIER, &identifier, "postfix-parse_expression")) {
+        if (!require(parser, TK_IDENTIFIER, &identifier, "postfix-expression", "expression")) {
             return false;
         }
 
@@ -1141,7 +1277,7 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
             return false;
         }
 
-        if (!require(parser, TK_RPAREN, NULL, "primary-parse_expression")) {
+        if (!require(parser, TK_RPAREN, NULL, "primary-expression", "expression")) {
             free(expr2);
             return false;
         }
@@ -1157,8 +1293,19 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
 
         return true;
     } else {
-        // TODO: error handling/recovery
-        fprintf(stderr, "Expected primary-parse_expression at \n");
+        token_t *prev_token = parser->next_token_index > 0 ? parser->tokens.buffer[parser->next_token_index - 1] : NULL;
+        parse_error_t error = (parse_error_t) {
+            .token = next_token(parser),
+            .previous_token = prev_token,
+            .production_name = "primary-expression",
+            .previous_production_name = NULL,
+            .type = PARSE_ERROR_EXPECTED_TOKEN,
+            .expected_token = {
+                .expected_count = 6,
+                .expected = {TK_IDENTIFIER, TK_INTEGER_CONSTANT, TK_FLOATING_CONSTANT, TK_CHAR_LITERAL, TK_STRING_LITERAL, TK_LPAREN },
+            },
+        };
+        append_parse_error(&parser->errors, error);
         return false;
     }
 }
