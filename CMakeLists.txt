@@ -35,9 +35,9 @@ add_library(cclib STATIC
         src/parser.c src/parser.h
         src/util/ast-printer.h src/util/ast-printer.c src/ast.h
         src/util/hashtable.c src/util/hashtable.h
-        src/codegen.c
         src/codegen.h
         src/types.h
+        src/codegen.c
 )
 
 add_executable(cc src/main.c src/codegen.h)

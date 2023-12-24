@@ -197,6 +197,8 @@ int main(int argc, char** argv) {
             strcpy(output_file_name + file_name_len, ".ll");
         }
 
-        codegen(input_file_name, output_file_name, translation_unit);
+        codegen_context_t *codegen_ctx = codegen_init(input_file_name);
+        visit_function_definition(codegen_ctx, translation_unit);
+        codegen_finalize(codegen_ctx, output_file_name);
     }
 }
