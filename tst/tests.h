@@ -8,5 +8,6 @@ int lexer_tests_init_suite();
 int preprocessor_tests_init_suite();
 int parser_tests_init_suite();
 int hashtable_tests_init_suite();
+int types_tests_init_suite();
 
 #endif //C_COMPILER_TESTS_H

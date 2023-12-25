@@ -35,12 +35,11 @@ add_library(cclib STATIC
         src/parser.c src/parser.h
         src/util/ast-printer.h src/util/ast-printer.c src/ast.h
         src/util/hashtable.c src/util/hashtable.h
-        src/codegen.h
-        src/types.h
-        src/codegen.c
+        src/codegen.c src/codegen.h
+        src/types.c src/types.h
 )
 
-add_executable(cc src/main.c src/codegen.h)
+add_executable(cc src/main.c)
 
 target_link_libraries(cc PUBLIC cclib)
 target_link_libraries(cc PUBLIC LLVM) # TODO: only link the required libraries, not all of LLVM
@@ -59,7 +58,7 @@ add_executable(unit-tests
         tst/util/hashtable-tests.c
         tst/test-common.h
         tst/test-common.c
-        src/codegen.h
+        tst/types-test.c
 )
 target_link_libraries(unit-tests PUBLIC cunit)
 target_link_libraries(unit-tests PUBLIC cclib)

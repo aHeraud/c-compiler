@@ -8,7 +8,10 @@
 
 #include "ast.h"
 #include "codegen.h"
+#include "types.h"
 #include "util/hashtable.h"
+
+LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, const type_t *from, const type_t *to);
 
 codegen_context_t *codegen_init(const char* module_name) {
     codegen_context_t *context = malloc(sizeof(codegen_context_t));
@@ -95,6 +98,14 @@ void visit_function_definition(codegen_context_t *context, const function_defini
     for (size_t i = 0; i < statements->size; i++) {
         const statement_t *statement = statements->buffer[i];
         visit_statement(context, statement);
+    }
+
+    // Implicit return statement
+    // TODO: add validation for return type, and add implicit return statement if necessary for non-void functions
+    LLVMValueRef last_ins = LLVMGetLastInstruction(context->llvm_current_block);
+    LLVMOpcode last_op = LLVMGetInstructionOpcode(last_ins);
+    if (last_op != LLVMRet) {
+        LLVMBuildRetVoid(context->llvm_builder);
     }
 
     leave_scope(context);
@@ -191,27 +202,78 @@ expression_result_t visit_arithmetic_binary_expression(codegen_context_t *contex
     expression_result_t left = visit_expression(context, expression->binary.left);
     expression_result_t right = visit_expression(context, expression->binary.right);
 
-    assert(left.type->kind == TYPE_INTEGER && right.type->kind == TYPE_INTEGER); // TODO: handle other types
-    assert(left.type->integer.size == right.type->integer.size); // TODO: handle implicit type conversion
-    assert(left.type->integer.is_signed == right.type->integer.is_signed);
+    // Validate the types of the left and right operands.
+    if (expression->binary.arithmetic_operator == BINARY_ARITHMETIC_MODULO) {
+        // The arguments to the modulo operator must be integers.
+        // TODO: better error handling
+        if (!is_integer_type(left.type) || !is_integer_type(right.type)) {
+            source_position_t position = expression->binary.operator->position;
+            fprintf(stderr, "%s:%d:%d: error: invalid operands to modulo operator\n",
+                    position.path, position.line, position.column);
+            exit(1);
+        }
+    } else {
+        // Otherwise, they must be arithmetic types (integers, float).
+        // TODO: better error handling
+        // TODO: pointer arithmetic
+        if (!is_arithmetic_type(left.type) || !is_arithmetic_type(right.type)) {
+            source_position_t position = expression->binary.operator->position;
+            fprintf(stderr, "%s:%d:%d: error: invalid operands to arithmetic operator\n",
+                    position.path, position.line, position.column);
+            exit(1);
+        }
+    }
+
+    // Handle implicit type conversions
+    const type_t *common_type = get_common_type(left.type, right.type);
+    if (!types_equal(left.type, common_type)) {
+        left = (expression_result_t) {
+                .type = common_type,
+                .llvm_value = convert_to_type(context, left.llvm_value, left.type, common_type),
+                .llvm_type = llvm_type_for(common_type),
+        };
+    }
+    if (!types_equal(right.type, common_type)) {
+        right = (expression_result_t) {
+                .type = common_type,
+                .llvm_value = convert_to_type(context, right.llvm_value, right.type, common_type),
+                .llvm_type = llvm_type_for(common_type),
+        };
+    }
 
     LLVMValueRef result;
 
     switch (expression->binary.arithmetic_operator) {
         case BINARY_ARITHMETIC_ADD:
-            result = LLVMBuildAdd(context->llvm_builder, left.llvm_value, right.llvm_value, "addtmp");
+            if (common_type->kind == TYPE_FLOATING) {
+                result = LLVMBuildFAdd(context->llvm_builder, left.llvm_value, right.llvm_value, "addtmp");
+            } else {
+                result = LLVMBuildAdd(context->llvm_builder, left.llvm_value, right.llvm_value, "addtmp");
+            }
             break;
         case BINARY_ARITHMETIC_SUBTRACT:
-            result = LLVMBuildSub(context->llvm_builder, left.llvm_value, right.llvm_value, "subtmp");
+            if (common_type->kind == TYPE_FLOATING) {
+                result = LLVMBuildFSub(context->llvm_builder, left.llvm_value, right.llvm_value, "subtmp");
+            } else {
+                result = LLVMBuildSub(context->llvm_builder, left.llvm_value, right.llvm_value, "subtmp");
+            }
             break;
         case BINARY_ARITHMETIC_MULTIPLY:
-            result = LLVMBuildMul(context->llvm_builder, left.llvm_value, right.llvm_value, "multmp");
+            if (common_type->kind == TYPE_FLOATING) {
+                result = LLVMBuildFMul(context->llvm_builder, left.llvm_value, right.llvm_value, "multmp");
+            } else {
+                result = LLVMBuildMul(context->llvm_builder, left.llvm_value, right.llvm_value, "multmp");
+            }
             break;
         case BINARY_ARITHMETIC_DIVIDE:
-            if (left.type->integer.is_signed) {
-                result = LLVMBuildSDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "divtmp");
+            if (common_type->kind == TYPE_FLOATING) {
+                result = LLVMBuildFDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "divtmp");
             } else {
-                result = LLVMBuildUDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "divtmp");
+                if (left.type->integer.is_signed) {
+                    result = LLVMBuildSDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "divtmp");
+                } else {
+                    result = LLVMBuildUDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "divtmp");
+                }
             }
             break;
         case BINARY_ARITHMETIC_MODULO:
@@ -239,10 +301,35 @@ expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, 
     expression_result_t left = visit_expression(context, expression->binary.left);
     expression_result_t right = visit_expression(context, expression->binary.right);
 
+    // Validate operand types: for bitwise operators, the operands must be integers.
+    if (left.type->kind != TYPE_INTEGER || right.type->kind != TYPE_INTEGER) {
+        source_position_t position = expression->binary.operator->position;
+        fprintf(stderr, "%s:%d:%d: error: invalid operands to bitwise operator\n",
+                position.path, position.line, position.column);
+        exit(1);
+    }
+
+    // Handle implicit type conversions
+    const type_t *common_type = get_common_type(left.type, right.type);
+    if (!types_equal(left.type, common_type)) {
+        left = (expression_result_t) {
+                .type = common_type,
+                .llvm_value = convert_to_type(context, left.llvm_value, left.type, common_type),
+                .llvm_type = llvm_type_for(common_type),
+        };
+    }
+    if (!types_equal(right.type, common_type)) {
+        right = (expression_result_t) {
+                .type = common_type,
+                .llvm_value = convert_to_type(context, right.llvm_value, right.type, common_type),
+                .llvm_type = llvm_type_for(common_type),
+        };
+    }
+
     assert(left.type->kind == TYPE_INTEGER && right.type->kind == TYPE_INTEGER); // TODO: report error
     assert(left.type->integer.size == right.type->integer.size); // TODO: implicit type conversion
     assert(left.type->integer.is_signed == right.type->integer.is_signed); // TODO: implicit type conversion
-    
+
     LLVMValueRef result;
 
     switch (expression->binary.bitwise_operator) {
@@ -259,7 +346,7 @@ expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, 
             result = LLVMBuildShl(context->llvm_builder, left.llvm_value, right.llvm_value, "shltmp");
             break;
         case BINARY_BITWISE_SHIFT_RIGHT:
-            if (left.type->integer.is_signed) {
+            if (common_type->integer.is_signed) {
                 result = LLVMBuildAShr(context->llvm_builder, left.llvm_value, right.llvm_value, "shrtmp");
             } else {
                 result = LLVMBuildLShr(context->llvm_builder, left.llvm_value, right.llvm_value, "shrtmp");
@@ -459,13 +546,28 @@ expression_result_t visit_constant(codegen_context_t *context, const expression_
                     .llvm_type = llvm_type,
             };
         }
-        case TK_FLOATING_CONSTANT:
-            assert(false && "Floating point constants not yet implemented");
+        case TK_FLOATING_CONSTANT: {
+            // TODO: parse floating point suffix
+            double value = strtod(expr->primary.token.value, NULL);
+            // TODO: determine floating point size based on the suffix
+            const type_t *type = &FLOAT;
+            LLVMTypeRef llvm_type = LLVMFloatType();
+            return (expression_result_t) {
+                    .type = type,
+                    .llvm_value = LLVMConstReal(llvm_type, value),
+                    .llvm_type = llvm_type,
+            };
+        }
         default:
             assert(false && "Invalid token kind for constant expression");
     }
 }
 
+/**
+ * Returns the LLVM type corresponding to the given C type.
+ * @param type C type
+ * @return LLVM type corresponding to the given C type
+ */
 LLVMTypeRef llvm_type_for(const type_t *type) {
     switch (type->kind) {
         case TYPE_VOID:
@@ -473,6 +575,8 @@ LLVMTypeRef llvm_type_for(const type_t *type) {
         case TYPE_INTEGER:
             // TODO: architecture dependent integer sizes
             switch (type->integer.size) {
+                case INTEGER_TYPE_BOOL:
+                    return LLVMInt1Type();
                 case INTEGER_TYPE_CHAR:
                     return LLVMInt8Type();
                 case INTEGER_TYPE_SHORT:
@@ -480,8 +584,64 @@ LLVMTypeRef llvm_type_for(const type_t *type) {
                 case INTEGER_TYPE_INT:
                     return LLVMInt32Type();
                 case INTEGER_TYPE_LONG:
-                case INTEGER_TYPE_LONG_LONG:
                     return LLVMInt64Type();
+                case INTEGER_TYPE_LONG_LONG:
+                    return LLVMInt128Type();
             }
+        case TYPE_FLOATING:
+            switch (type->floating) {
+                case FLOAT_TYPE_FLOAT:
+                    return LLVMFloatType();
+                case FLOAT_TYPE_DOUBLE:
+                    return LLVMDoubleType();
+                case FLOAT_TYPE_LONG_DOUBLE:
+                    return LLVMFP128Type();
+            }
+    }
+}
+
+LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, const type_t *from, const type_t *to) {
+    if (types_equal(from, to)) {
+        return value;
+    }
+
+    if (is_floating_type(from) && is_floating_type(to)) {
+        // Both types are floating point types, so we just need to extend or truncate the value.
+        if (FLOAT_TYPE_RANKS[from->floating] < FLOAT_TYPE_RANKS[to->floating]) {
+            return LLVMBuildFPTrunc(context->llvm_builder, value, llvm_type_for(to), "fptrunctmp");
+        } else {
+            return LLVMBuildFPExt(context->llvm_builder, value, llvm_type_for(to), "fpexttmp");
+        }
+    } else if (is_integer_type(from) && is_integer_type(to)) {
+        // Both types are integer types, so we just need to extend (sign or zero, depending on the sign value of 'to')
+        // or truncate the value.
+        if (INTEGER_TYPE_RANKS[from->integer.size] < INTEGER_TYPE_RANKS[to->integer.size]) {
+            return LLVMBuildTrunc(context->llvm_builder, value, llvm_type_for(to), "trunctmp");
+        } else if (INTEGER_TYPE_RANKS[from->integer.size] > INTEGER_TYPE_RANKS[to->integer.size]) {
+            if (to->integer.is_signed) {
+                return LLVMBuildSExt(context->llvm_builder, value, llvm_type_for(to), "sexttmp");
+            } else {
+                return LLVMBuildZExt(context->llvm_builder, value, llvm_type_for(to), "zexttmp");
+            }
+        } else {
+            // The sizes are the same, but the signedness is different.
+            // The representation of equivalent sized unsigned and signed integers is the same, so we don't need to
+            // do anything.
+            return value;
+        }
+    } else if (is_floating_type(from) && is_integer_type(to)) {
+        if (to->integer.is_signed) {
+            return LLVMBuildFPToSI(context->llvm_builder, value, llvm_type_for(to), "fptositmp");
+        } else {
+            return LLVMBuildFPToUI(context->llvm_builder, value, llvm_type_for(to), "fptouitmp");
+        }
+    } else if (is_integer_type(from) && is_floating_type(to)) {
+        if (from->integer.is_signed) {
+            return LLVMBuildSIToFP(context->llvm_builder, value, llvm_type_for(to), "sitofptmp");
+        } else {
+            return LLVMBuildUIToFP(context->llvm_builder, value, llvm_type_for(to), "uitofptmp");
+        }
+    } else {
+        assert(false && "Invalid type conversion");
     }
 }
