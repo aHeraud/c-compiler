@@ -104,9 +104,7 @@ token_t *next_token(parser_t* parser) {
     } else {
         token_t *next = malloc(sizeof(token_t));
         *next = lscan(&parser->lexer);
-        if (next->kind != TK_EOF) {
-            append_token_ptr(&parser->tokens.buffer, &parser->tokens.size, &parser->tokens.capacity, next);
-        }
+        append_token_ptr(&parser->tokens.buffer, &parser->tokens.size, &parser->tokens.capacity, next);
         token = parser->tokens.buffer[parser->tokens.size - 1];
     }
     return token;
@@ -171,8 +169,8 @@ bool require(parser_t* parser, token_kind_t kind, token_t** token_out, const cha
 void recover(parser_t *parser) {
     token_t *token = next_token(parser);
     while (token->kind != TK_EOF) {
+        parser->next_token_index++;
         if (token->kind == TK_SEMICOLON) {
-            parser->next_token_index++;
             break;
         }
         token = next_token(parser);
@@ -320,9 +318,9 @@ bool parse_expression(parser_t *parser, expression_t *node) {
                 .span = spanning(left->span.start, right->span.end),
                 .type = EXPRESSION_BINARY,
                 .binary = {
+                        .type = BINARY_COMMA,
                         .left = left,
                         .right = right,
-                        .binary_operator = BINARY_COMMA,
                         .operator = token,
                 }
         };
@@ -331,77 +329,8 @@ bool parse_expression(parser_t *parser, expression_t *node) {
     return true;
 }
 
-binary_operator_t get_binary_operator(const token_t *token) {
-    switch (token->kind) {
-        case TK_ASSIGN:
-            return BINARY_ASSIGN;
-        case TK_MULTIPLY_ASSIGN:
-            return BINARY_MULTIPLY_ASSIGN;
-        case TK_DIVIDE_ASSIGN:
-            return BINARY_DIVIDE_ASSIGN;
-        case TK_MOD_ASSIGN:
-            return BINARY_MODULO_ASSIGN;
-        case TK_PLUS_ASSIGN:
-            return BINARY_ADD_ASSIGN;
-        case TK_MINUS_ASSIGN:
-            return BINARY_SUBTRACT_ASSIGN;
-        case TK_LSHIFT_ASSIGN:
-            return BINARY_SHIFT_LEFT_ASSIGN;
-        case TK_RSHIFT_ASSIGN:
-            return BINARY_SHIFT_RIGHT_ASSIGN;
-        case TK_BITWISE_AND_ASSIGN:
-            return BINARY_BITWISE_AND_ASSIGN;
-        case TK_BITWISE_OR_ASSIGN:
-            return BINARY_BITWISE_OR_ASSIGN;
-        case TK_BITWISE_XOR_ASSIGN:
-            return BINARY_BITWISE_XOR_ASSIGN;
-        case TK_LOGICAL_OR:
-            return BINARY_LOGICAL_OR;
-        case TK_LOGICAL_AND:
-            return BINARY_LOGICAL_AND;
-        case TK_BITWISE_OR:
-            return BINARY_BITWISE_OR;
-        case TK_BITWISE_XOR:
-            return BINARY_BITWISE_XOR;
-        case TK_AMPERSAND:
-            return BINARY_BITWISE_AND;
-        case TK_EQUALS:
-            return BINARY_EQUAL;
-        case TK_NOT_EQUALS:
-            return BINARY_NOT_EQUAL;
-        case TK_LESS_THAN:
-            return BINARY_LESS_THAN;
-        case TK_LESS_THAN_EQUAL:
-            return BINARY_LESS_THAN_OR_EQUAL;
-        case TK_GREATER_THAN:
-            return BINARY_GREATER_THAN;
-        case TK_GREATER_THAN_EQUAL:
-            return BINARY_GREATER_THAN_OR_EQUAL;
-        case TK_LSHIFT:
-            return BINARY_SHIFT_LEFT;
-        case TK_RSHIFT:
-            return BINARY_SHIFT_RIGHT;
-        case TK_PLUS:
-            return BINARY_ADD;
-        case TK_MINUS:
-            return BINARY_SUBTRACT;
-        case TK_STAR:
-            return BINARY_MULTIPLY;
-        case TK_SLASH:
-            return BINARY_DIVIDE;
-        case TK_PERCENT:
-            return BINARY_MODULO;
-        case TK_COMMA:
-            return BINARY_COMMA;
-        default:
-            // This should never be reached
-            fprintf(stderr, "%s:%d: Invalid binary operator %s", __FILE__, __LINE__, token->value);
-            exit(1);
-    }
-}
-
 /**
- * Parses a primary expression.
+ * Parses an assignment expression.
  *
  * <assignment-expression> ::= <conditional-expression>
  *                           | <unary-expression> <assignment-operator> <assignment-expression>
@@ -435,6 +364,35 @@ bool parse_assignment_expression(parser_t *parser, expression_t *expr) {
             free(right);
             return false;
         }
+        
+        binary_assignment_operator_t assignment_operator;
+        if (token->kind == TK_ASSIGN) {
+            assignment_operator = BINARY_ASSIGN;
+        } else if (token->kind == TK_BITWISE_AND_ASSIGN) {
+            assignment_operator = BINARY_BITWISE_AND_ASSIGN;
+        } else if (token->kind == TK_BITWISE_OR_ASSIGN) {
+            assignment_operator = BINARY_BITWISE_OR_ASSIGN;
+        } else if (token->kind == TK_BITWISE_XOR_ASSIGN) {
+            assignment_operator = BINARY_BITWISE_XOR_ASSIGN;
+        } else if (token->kind == TK_MULTIPLY_ASSIGN) {
+            assignment_operator = BINARY_MULTIPLY_ASSIGN;
+        } else if (token->kind == TK_DIVIDE_ASSIGN) {
+            assignment_operator = BINARY_DIVIDE_ASSIGN;
+        } else if (token->kind == TK_MOD_ASSIGN) {
+            assignment_operator = BINARY_MODULO_ASSIGN;
+        } else if (token->kind == TK_PLUS_ASSIGN) {
+            assignment_operator = BINARY_ADD_ASSIGN;
+        } else if (token->kind == TK_MINUS_ASSIGN) {
+            assignment_operator = BINARY_SUBTRACT_ASSIGN;
+        } else if (token->kind == TK_LSHIFT_ASSIGN) {
+            assignment_operator = BINARY_SHIFT_LEFT_ASSIGN;
+        } else if (token->kind == TK_RSHIFT_ASSIGN) {
+            assignment_operator = BINARY_SHIFT_RIGHT_ASSIGN;
+        } else {
+            // This should never be reached
+            fprintf(stderr, "%s:%d: Invalid assignment operator %s", __FILE__, __LINE__, token->value);
+            exit(1);
+        }
 
         expression_t *left = malloc(sizeof(expression_t));
         *left = *expr;
@@ -442,10 +400,11 @@ bool parse_assignment_expression(parser_t *parser, expression_t *expr) {
                 .span = spanning(left->span.start, right->span.end),
                 .type = EXPRESSION_BINARY,
                 .binary = {
+                        .type = BINARY_ASSIGNMENT,
                         .left = left,
                         .right = right,
                         .operator = token,
-                        .binary_operator = get_binary_operator(token),
+                        .assignment_operator = assignment_operator,
                 }
         };
     }
@@ -541,10 +500,11 @@ bool parse_logical_or_expression(parser_t *parser, expression_t *expr) {
                 .span = spanning(left->span.start, right->span.end),
                 .type = EXPRESSION_BINARY,
                 .binary = {
+                        .type = BINARY_LOGICAL,
                         .left = left,
                         .right = right,
                         .operator = token,
-                        .binary_operator = BINARY_LOGICAL_OR,
+                        .logical_operator = BINARY_LOGICAL_OR,
                 }
         };
     }
@@ -586,10 +546,11 @@ bool parse_logical_and_expression(parser_t *parser, expression_t *expr) {
                 .span = spanning(left->span.start, right->span.end),
                 .type = EXPRESSION_BINARY,
                 .binary = {
+                        .type = BINARY_LOGICAL,
                         .left = left,
                         .right = right,
                         .operator = token,
-                        .binary_operator = BINARY_LOGICAL_AND,
+                        .logical_operator = BINARY_LOGICAL_AND,
                 }
         };
     }
@@ -631,10 +592,11 @@ bool parse_inclusive_or_expression(parser_t *parser, expression_t *expr) {
                 .span = spanning(left->span.start, right->span.end),
                 .type = EXPRESSION_BINARY,
                 .binary = {
+                        .type = BINARY_BITWISE,
                         .left = left,
                         .right = right,
                         .operator = token,
-                        .binary_operator = BINARY_BITWISE_OR,
+                        .bitwise_operator = BINARY_BITWISE_OR,
                 }
         };
     }
@@ -676,10 +638,11 @@ bool parse_exclusive_or_expression(parser_t *parser, expression_t *expr) {
                 .span = spanning(left->span.start, right->span.end),
                 .type = EXPRESSION_BINARY,
                 .binary = {
+                        .type = BINARY_BITWISE,
                         .left = left,
                         .right = right,
                         .operator = token,
-                        .binary_operator = BINARY_BITWISE_XOR,
+                        .bitwise_operator = BINARY_BITWISE_XOR,
                 }
         };
     }
@@ -721,10 +684,11 @@ bool parse_and_expression(parser_t* parser, expression_t* expr) {
                 .span = spanning(left->span.start, right->span.end),
                 .type = EXPRESSION_BINARY,
                 .binary = {
+                        .type = BINARY_BITWISE,
                         .left = left,
                         .right = right,
                         .operator = token,
-                        .binary_operator = BINARY_BITWISE_AND,
+                        .bitwise_operator = BINARY_BITWISE_AND,
                 }
         };
     }
@@ -769,7 +733,9 @@ bool equality_expression_prime(parser_t *parser, expression_t *expr, const token
         return false;
     }
 
-    binary_operator_t binary_operator = get_binary_operator(operator);
+    assert(operator->kind == TK_EQUALS || operator->kind == TK_NOT_EQUALS);
+    binary_comparison_operator_t comparison_operator = operator->kind == TK_EQUALS ?
+            BINARY_COMPARISON_EQUAL : BINARY_COMPARISON_NOT_EQUAL;
 
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
@@ -777,10 +743,11 @@ bool equality_expression_prime(parser_t *parser, expression_t *expr, const token
             .span = spanning(left->span.start, right->span.end),
             .type = EXPRESSION_BINARY,
             .binary = {
+                    .type = BINARY_COMPARISON,
                     .left = left,
                     .right = right,
                     .operator = operator,
-                    .binary_operator = binary_operator,
+                    .comparison_operator = comparison_operator
             }
     };
 
@@ -830,7 +797,18 @@ bool relational_expression_prime(parser_t *parser, expression_t *expr, const tok
         return false;
     }
 
-    binary_operator_t binary_operator = get_binary_operator(operator);
+    assert(operator->kind == TK_LESS_THAN || operator->kind == TK_GREATER_THAN ||
+           operator->kind == TK_LESS_THAN_EQUAL || operator->kind == TK_GREATER_THAN_EQUAL);
+    binary_comparison_operator_t binary_operator;
+    if (operator->kind == TK_LESS_THAN) {
+        binary_operator = BINARY_COMPARISON_LESS_THAN;
+    } else if (operator->kind == TK_LESS_THAN_EQUAL) {
+        binary_operator = BINARY_COMPARISON_LESS_THAN_OR_EQUAL;
+    } else if (operator->kind == TK_GREATER_THAN) {
+        binary_operator = BINARY_COMPARISON_GREATER_THAN;
+    } else {
+        binary_operator = BINARY_COMPARISON_GREATER_THAN_OR_EQUAL;
+    }
 
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
@@ -838,10 +816,11 @@ bool relational_expression_prime(parser_t *parser, expression_t *expr, const tok
             .span = spanning(left->span.start, right->span.end),
             .type = EXPRESSION_BINARY,
             .binary = {
+                    .type = BINARY_COMPARISON,
                     .left = left,
                     .right = right,
                     .operator = operator,
-                    .binary_operator = binary_operator,
+                    .comparison_operator = binary_operator,
             }
     };
 
@@ -894,16 +873,21 @@ bool shift_expression_prime(parser_t *parser, expression_t *expr, const token_t 
         return false;
     }
 
+    assert(operator->kind == TK_LSHIFT || operator->kind == TK_RSHIFT);
+    binary_bitwise_operator_t binary_operator = operator->kind == TK_LSHIFT ?
+            BINARY_BITWISE_SHIFT_LEFT : BINARY_BITWISE_SHIFT_RIGHT;
+
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
     *expr = (expression_t) {
             .span = spanning(left->span.start, right->span.end),
             .type = EXPRESSION_BINARY,
             .binary = {
+                    .type = BINARY_BITWISE,
                     .left = left,
                     .right = right,
                     .operator = operator,
-                    .binary_operator = operator->kind == TK_LSHIFT ? BINARY_SHIFT_LEFT : BINARY_SHIFT_RIGHT,
+                    .bitwise_operator = binary_operator,
             }
     };
 
@@ -949,10 +933,14 @@ bool parse_additive_expression(parser_t* parser, expression_t* expr) {
 
 bool additive_expression_prime(parser_t* parser, expression_t* expr, const token_t *operator) {
     expression_t *right = malloc(sizeof(expression_t));
-    if (!parse_cast_expression(parser, right)) {
+    if (!parse_multiplicative_expression(parser, right)) {
         free(right);
         return false;
     }
+
+    assert(operator->kind == TK_PLUS || operator->kind == TK_MINUS);
+    binary_arithmetic_operator_t binary_operator =
+            operator-> kind == TK_PLUS ? BINARY_ARITHMETIC_ADD : BINARY_ARITHMETIC_SUBTRACT;
 
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
@@ -960,10 +948,11 @@ bool additive_expression_prime(parser_t* parser, expression_t* expr, const token
             .span = spanning(left->span.start, right->span.end),
             .type = EXPRESSION_BINARY,
             .binary = {
+                    .type = BINARY_ARITHMETIC,
                     .left = left,
                     .right = right,
                     .operator = operator,
-                    .binary_operator = operator-> kind == TK_PLUS ? BINARY_ADD : BINARY_SUBTRACT
+                    .arithmetic_operator = binary_operator,
             }
     };
 
@@ -1018,6 +1007,12 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const
         return false;
     }
 
+    assert(operator->kind == TK_STAR || operator->kind == TK_SLASH || operator->kind == TK_PERCENT);
+    binary_arithmetic_operator_t binary_operator =
+            operator-> kind == TK_STAR ? BINARY_ARITHMETIC_MULTIPLY :
+            operator-> kind == TK_SLASH ? BINARY_ARITHMETIC_DIVIDE :
+            BINARY_ARITHMETIC_MODULO;
+
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
     *expr = (expression_t) {
@@ -1027,9 +1022,7 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const
                 .left = left,
                 .right = right,
                 .operator = operator,
-                .binary_operator = operator-> kind == TK_STAR ? BINARY_MULTIPLY :
-                            operator-> kind == TK_SLASH ? BINARY_DIVIDE :
-                            BINARY_MODULO,
+                .arithmetic_operator = binary_operator,
             }
     };
 

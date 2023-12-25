@@ -23,44 +23,69 @@ typedef struct PrimaryExpression {
     };
 } primary_expression_t;
 
-typedef enum BinaryOperator {
-    BINARY_ADD,
-    BINARY_SUBTRACT,
-    BINARY_MULTIPLY,
-    BINARY_DIVIDE,
-    BINARY_MODULO,
+typedef enum BinaryArithmeticOperator {
+    BINARY_ARITHMETIC_ADD,
+    BINARY_ARITHMETIC_SUBTRACT,
+    BINARY_ARITHMETIC_MULTIPLY,
+    BINARY_ARITHMETIC_DIVIDE,
+    BINARY_ARITHMETIC_MODULO,
+} binary_arithmetic_operator_t;
+
+typedef enum BinaryBitwiseOperator {
     BINARY_BITWISE_AND,
     BINARY_BITWISE_OR,
     BINARY_BITWISE_XOR,
+    BINARY_BITWISE_SHIFT_LEFT,
+    BINARY_BITWISE_SHIFT_RIGHT,
+} binary_bitwise_operator_t;
+
+typedef enum BinaryLogicalOperator {
     BINARY_LOGICAL_AND,
     BINARY_LOGICAL_OR,
-    BINARY_SHIFT_LEFT,
-    BINARY_SHIFT_RIGHT,
-    BINARY_EQUAL,
-    BINARY_NOT_EQUAL,
-    BINARY_LESS_THAN,
-    BINARY_LESS_THAN_OR_EQUAL,
-    BINARY_GREATER_THAN,
-    BINARY_GREATER_THAN_OR_EQUAL,
-    BINARY_COMMA,
+} binary_logical_operator_t;
+
+typedef enum BinaryComparisonOperator {
+    BINARY_COMPARISON_EQUAL,
+    BINARY_COMPARISON_NOT_EQUAL,
+    BINARY_COMPARISON_LESS_THAN,
+    BINARY_COMPARISON_LESS_THAN_OR_EQUAL,
+    BINARY_COMPARISON_GREATER_THAN,
+    BINARY_COMPARISON_GREATER_THAN_OR_EQUAL,
+} binary_comparison_operator_t;
+
+typedef enum BinaryAssignmentOperator {
     BINARY_ASSIGN,
-    BINARY_ADD_ASSIGN,
-    BINARY_SUBTRACT_ASSIGN,
-    BINARY_MULTIPLY_ASSIGN,
-    BINARY_DIVIDE_ASSIGN,
-    BINARY_MODULO_ASSIGN,
     BINARY_BITWISE_AND_ASSIGN,
     BINARY_BITWISE_OR_ASSIGN,
     BINARY_BITWISE_XOR_ASSIGN,
     BINARY_SHIFT_LEFT_ASSIGN,
     BINARY_SHIFT_RIGHT_ASSIGN,
-} binary_operator_t;
+    BINARY_ADD_ASSIGN,
+    BINARY_SUBTRACT_ASSIGN,
+    BINARY_MULTIPLY_ASSIGN,
+    BINARY_DIVIDE_ASSIGN,
+    BINARY_MODULO_ASSIGN,
+} binary_assignment_operator_t;
 
 typedef struct BinaryExpression {
+    enum {
+        BINARY_ARITHMETIC,
+        BINARY_ASSIGNMENT,
+        BINARY_COMMA,
+        BINARY_COMPARISON,
+        BINARY_BITWISE,
+        BINARY_LOGICAL,
+    } type;
     expression_t *left;
     expression_t *right;
     const token_t *operator;
-    binary_operator_t binary_operator;
+    union {
+        binary_arithmetic_operator_t arithmetic_operator;
+        binary_bitwise_operator_t bitwise_operator;
+        binary_logical_operator_t logical_operator;
+        binary_comparison_operator_t comparison_operator;
+        binary_assignment_operator_t assignment_operator;
+    };
 } binary_expression_t;
 
 typedef struct UnaryExpression {

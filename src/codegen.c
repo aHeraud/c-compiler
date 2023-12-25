@@ -155,139 +155,201 @@ expression_result_t visit_expression(codegen_context_t *context, const expressio
     }
 }
 
+expression_result_t visit_arithmetic_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_comma_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_logical_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_comparison_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_assignment_binary_expression(codegen_context_t *context, const expression_t *expression);
+
 expression_result_t visit_binary_expression(codegen_context_t *context, const expression_t *expression) {
     assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY);
+    assert(expression->binary.left != NULL && expression->binary.right != NULL);
+
+    switch (expression->binary.type) {
+        case BINARY_ARITHMETIC:
+            return visit_arithmetic_binary_expression(context, expression);
+        case BINARY_ASSIGNMENT:
+            return visit_assignment_binary_expression(context, expression);
+        case BINARY_COMMA:
+            return visit_comma_binary_expression(context, expression);
+        case BINARY_COMPARISON:
+            return visit_comparison_binary_expression(context, expression);
+        case BINARY_BITWISE:
+            return visit_bitwise_binary_expression(context, expression);
+        case BINARY_LOGICAL:
+            return visit_logical_binary_expression(context, expression);
+        default:
+            assert(false && "Invalid binary expression type");
+    }
+}
+
+expression_result_t visit_arithmetic_binary_expression(codegen_context_t *context, const expression_t *expression) {
+    assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY && expression->binary.type == BINARY_ARITHMETIC);
     assert(expression->binary.left != NULL && expression->binary.right != NULL);
 
     expression_result_t left = visit_expression(context, expression->binary.left);
     expression_result_t right = visit_expression(context, expression->binary.right);
 
-    // TODO: handle integer promotions (see: https://stackoverflow.com/questions/46073295/implicit-type-promotion-rules)
-    // TODO: handle usual arithmetic conversions
-    // TODO: handle floating point conversions
+    assert(left.type->kind == TYPE_INTEGER && right.type->kind == TYPE_INTEGER); // TODO: handle other types
+    assert(left.type->integer.size == right.type->integer.size); // TODO: handle implicit type conversion
+    assert(left.type->integer.is_signed == right.type->integer.is_signed);
 
-    if (left.type != right.type) {
-        assert(false && "Implicit type conversion not yet implemented");
-    }
-
-    if (left.type->kind != TYPE_INTEGER) {
-        assert(false && "Only integer types are supported");
-    }
-
-    const type_t *type = left.type; // The type of the operands (after promotions/conversions), and the result type.
-    LLVMTypeRef llvm_type = llvm_type_for(type);
     LLVMValueRef result;
 
-    switch (expression->binary.binary_operator) {
-        case BINARY_ADD:
-            result = LLVMBuildAdd(context->llvm_builder, left.llvm_value, right.llvm_value, "add");
+    switch (expression->binary.arithmetic_operator) {
+        case BINARY_ARITHMETIC_ADD:
+            result = LLVMBuildAdd(context->llvm_builder, left.llvm_value, right.llvm_value, "addtmp");
             break;
-        case BINARY_SUBTRACT:
-            result = LLVMBuildSub(context->llvm_builder, left.llvm_value, right.llvm_value, "sub");
+        case BINARY_ARITHMETIC_SUBTRACT:
+            result = LLVMBuildSub(context->llvm_builder, left.llvm_value, right.llvm_value, "subtmp");
             break;
-        case BINARY_MULTIPLY:
-            result = LLVMBuildMul(context->llvm_builder, left.llvm_value, right.llvm_value, "mul");
+        case BINARY_ARITHMETIC_MULTIPLY:
+            result = LLVMBuildMul(context->llvm_builder, left.llvm_value, right.llvm_value, "multmp");
             break;
-        case BINARY_DIVIDE:
-            if (type->integer.is_signed) {
-                result = LLVMBuildSDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "div");
+        case BINARY_ARITHMETIC_DIVIDE:
+            if (left.type->integer.is_signed) {
+                result = LLVMBuildSDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "divtmp");
             } else {
-                result = LLVMBuildUDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "div");
+                result = LLVMBuildUDiv(context->llvm_builder, left.llvm_value, right.llvm_value, "divtmp");
             }
             break;
-        case BINARY_MODULO:
-            if (type->integer.is_signed) {
-                result = LLVMBuildSRem(context->llvm_builder, left.llvm_value, right.llvm_value, "mod");
+        case BINARY_ARITHMETIC_MODULO:
+            if (left.type->integer.is_signed) {
+                result = LLVMBuildSRem(context->llvm_builder, left.llvm_value, right.llvm_value, "modtmp");
             } else {
-                result = LLVMBuildURem(context->llvm_builder, left.llvm_value, right.llvm_value, "mod");
+                result = LLVMBuildURem(context->llvm_builder, left.llvm_value, right.llvm_value, "modtmp");
             }
             break;
-        case BINARY_BITWISE_AND:
-            result = LLVMBuildBinOp(context->llvm_builder, LLVMAnd, left.llvm_value, right.llvm_value, "bitand");
-            break;
-        case BINARY_BITWISE_OR:
-            result = LLVMBuildBinOp(context->llvm_builder, LLVMOr, left.llvm_value, right.llvm_value, "bitor");
-            break;
-        case BINARY_BITWISE_XOR:
-            result = LLVMBuildXor(context->llvm_builder, left.llvm_value, right.llvm_value, "xor");
-            break;
-        case BINARY_LOGICAL_AND:
-            // TODO: short circuiting
-            // TODO: is this actually the correct way to implement logical and?
-            result = LLVMBuildAnd(context->llvm_builder, left.llvm_value, right.llvm_value, "and");
-            break;
-        case BINARY_LOGICAL_OR:
-            // TODO: short circuiting
-            // TODO: is this actually the correct way to implement logical and?
-            result = LLVMBuildOr(context->llvm_builder, left.llvm_value, right.llvm_value, "or");
-            break;
-        case BINARY_SHIFT_LEFT:
-            result = LLVMBuildShl(context->llvm_builder, left.llvm_value, right.llvm_value, "shl");
-            break;
-        case BINARY_SHIFT_RIGHT:
-            if (type->integer.is_signed) {
-                result = LLVMBuildAShr(context->llvm_builder, left.llvm_value, right.llvm_value, "shr");
-            } else {
-                result = LLVMBuildLShr(context->llvm_builder, left.llvm_value, right.llvm_value, "shr");
-            }
-            break;
-        case BINARY_EQUAL:
-            result = LLVMBuildICmp(context->llvm_builder, LLVMIntEQ, left.llvm_value, right.llvm_value, "eq");
-            break;
-        case BINARY_NOT_EQUAL:
-            result = LLVMBuildICmp(context->llvm_builder, LLVMIntNE, left.llvm_value, right.llvm_value, "ne");
-            break;
-        case BINARY_LESS_THAN:
-            if (type->integer.is_signed) {
-                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSLT, left.llvm_value, right.llvm_value, "lt");
-            } else {
-                result = LLVMBuildICmp(context->llvm_builder, LLVMIntULT, left.llvm_value, right.llvm_value, "lt");
-            }
-            break;
-        case BINARY_LESS_THAN_OR_EQUAL:
-            if (type->integer.is_signed) {
-                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSLE, left.llvm_value, right.llvm_value, "le");
-            } else {
-                result = LLVMBuildICmp(context->llvm_builder, LLVMIntULE, left.llvm_value, right.llvm_value, "le");
-            }
-            break;
-        case BINARY_GREATER_THAN:
-            if (type->integer.is_signed) {
-                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSGT, left.llvm_value, right.llvm_value, "gt");
-            } else {
-                result = LLVMBuildICmp(context->llvm_builder, LLVMIntUGT, left.llvm_value, right.llvm_value, "gt");
-            }
-            break;
-        case BINARY_GREATER_THAN_OR_EQUAL:
-            if (type->integer.is_signed) {
-                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSGE, left.llvm_value, right.llvm_value, "ge");
-            } else {
-                result = LLVMBuildICmp(context->llvm_builder, LLVMIntUGE, left.llvm_value, right.llvm_value, "ge");
-            }
-            break;
-        case BINARY_COMMA:
-            // Evaluates and discards the result of the left expression, then evaluates and returns the right.
-            // There is a sequence point between the left and right expressions.
-            return right;
-        case BINARY_ASSIGN:
-        case BINARY_ADD_ASSIGN:
-        case BINARY_SUBTRACT_ASSIGN:
-        case BINARY_MULTIPLY_ASSIGN:
-        case BINARY_DIVIDE_ASSIGN:
-        case BINARY_MODULO_ASSIGN:
-        case BINARY_BITWISE_AND_ASSIGN:
-        case BINARY_BITWISE_OR_ASSIGN:
-        case BINARY_BITWISE_XOR_ASSIGN:
-        case BINARY_SHIFT_LEFT_ASSIGN:
-        case BINARY_SHIFT_RIGHT_ASSIGN:
-            assert(false && "Assignment operator codegen not yet implemented");
+        default:
+            assert(false && "Invalid arithmetic operator");
     }
 
     return (expression_result_t) {
-            .type = type,
+            .type = left.type,
             .llvm_value = result,
-            .llvm_type = llvm_type,
+            .llvm_type = left.llvm_type,
     };
+}
+
+expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, const expression_t *expression) {
+    assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY && expression->binary.type == BINARY_BITWISE);
+    assert(expression->binary.left != NULL && expression->binary.right != NULL);
+
+    expression_result_t left = visit_expression(context, expression->binary.left);
+    expression_result_t right = visit_expression(context, expression->binary.right);
+
+    assert(left.type->kind == TYPE_INTEGER && right.type->kind == TYPE_INTEGER); // TODO: report error
+    assert(left.type->integer.size == right.type->integer.size); // TODO: implicit type conversion
+    assert(left.type->integer.is_signed == right.type->integer.is_signed); // TODO: implicit type conversion
+    
+    LLVMValueRef result;
+
+    switch (expression->binary.bitwise_operator) {
+        case BINARY_BITWISE_AND:
+            result = LLVMBuildAnd(context->llvm_builder, left.llvm_value, right.llvm_value, "andtmp");
+            break;
+        case BINARY_BITWISE_OR:
+            result = LLVMBuildOr(context->llvm_builder, left.llvm_value, right.llvm_value, "ortmp");
+            break;
+        case BINARY_BITWISE_XOR:
+            result = LLVMBuildXor(context->llvm_builder, left.llvm_value, right.llvm_value, "xortmp");
+            break;
+        case BINARY_BITWISE_SHIFT_LEFT:
+            result = LLVMBuildShl(context->llvm_builder, left.llvm_value, right.llvm_value, "shltmp");
+            break;
+        case BINARY_BITWISE_SHIFT_RIGHT:
+            if (left.type->integer.is_signed) {
+                result = LLVMBuildAShr(context->llvm_builder, left.llvm_value, right.llvm_value, "shrtmp");
+            } else {
+                result = LLVMBuildLShr(context->llvm_builder, left.llvm_value, right.llvm_value, "shrtmp");
+            }
+            break;
+        default:
+            assert(false && "Invalid bitwise operator");
+    }
+
+    return (expression_result_t) {
+            .type = left.type,
+            .llvm_value = result,
+            .llvm_type = left.llvm_type,
+    };
+}
+
+expression_result_t visit_comma_binary_expression(codegen_context_t *context, const expression_t *expression) {
+    assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY && expression->binary.type == BINARY_COMMA);
+    assert(expression->binary.left != NULL && expression->binary.right != NULL);
+
+    visit_expression(context, expression->binary.left); // The left expression is evaluated for side effects
+    return visit_expression(context, expression->binary.right); // The right expression is the result
+}
+
+expression_result_t visit_logical_binary_expression(codegen_context_t *context, const expression_t *expression) {
+    assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY && expression->binary.type == BINARY_LOGICAL);
+    assert(expression->binary.left != NULL && expression->binary.right != NULL);
+
+    assert(false && "Logical operator codegen not yet implemented");
+}
+
+expression_result_t visit_comparison_binary_expression(codegen_context_t *context, const expression_t *expression) {
+    assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY && expression->binary.type == BINARY_COMPARISON);
+    assert(expression->binary.left != NULL && expression->binary.right != NULL);
+
+    expression_result_t left = visit_expression(context, expression->binary.left);
+    expression_result_t right = visit_expression(context, expression->binary.right);
+    assert(left.type->kind == TYPE_INTEGER && right.type->kind == TYPE_INTEGER); // TODO: handle other types
+    assert(left.type->integer.size == right.type->integer.size); // TODO: implicit type conversion
+
+    LLVMValueRef result;
+
+    switch (expression->binary.comparison_operator) {
+        case BINARY_COMPARISON_EQUAL:
+            result = LLVMBuildICmp(context->llvm_builder, LLVMIntEQ, left.llvm_value, right.llvm_value, "cmptmp");
+            break;
+        case BINARY_COMPARISON_NOT_EQUAL:
+            result = LLVMBuildICmp(context->llvm_builder, LLVMIntNE, left.llvm_value, right.llvm_value, "cmptmp");
+            break;
+        case BINARY_COMPARISON_LESS_THAN:
+            if (left.type->integer.is_signed) {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSLT, left.llvm_value, right.llvm_value, "cmptmp");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntULT, left.llvm_value, right.llvm_value, "cmptmp");
+            }
+            break;
+        case BINARY_COMPARISON_LESS_THAN_OR_EQUAL:
+            if (left.type->integer.is_signed) {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSLE, left.llvm_value, right.llvm_value, "cmptmp");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntULE, left.llvm_value, right.llvm_value, "cmptmp");
+            }
+            break;
+        case BINARY_COMPARISON_GREATER_THAN:
+            if (left.type->integer.is_signed) {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSGT, left.llvm_value, right.llvm_value, "cmptmp");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntUGT, left.llvm_value, right.llvm_value, "cmptmp");
+            }
+            break;
+        case BINARY_COMPARISON_GREATER_THAN_OR_EQUAL:
+            if (left.type->integer.is_signed) {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSGE, left.llvm_value, right.llvm_value, "cmptmp");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntUGE, left.llvm_value, right.llvm_value, "cmptmp");
+            }
+            break;
+    }
+
+    return (expression_result_t) {
+            .type = left.type, // TODO: boolean type
+            .llvm_value = result,
+            .llvm_type = LLVMTypeOf(result),
+    };
+}
+
+expression_result_t visit_assignment_binary_expression(codegen_context_t *context, const expression_t *expression) {
+    assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY && expression->binary.type == BINARY_ASSIGNMENT);
+    assert(expression->binary.left != NULL && expression->binary.right != NULL);
+    assert(false && "Assignment operator codegen not yet implemented");
 }
 
 expression_result_t visit_unary_expression(codegen_context_t *context, const expression_t *expression) {
@@ -304,7 +366,7 @@ expression_result_t visit_ternary_expression(codegen_context_t *context, const e
     LLVMBasicBlockRef merge_block = LLVMAppendBasicBlock(context->llvm_current_function, "ternary-merge");
 
     expression_result_t condition = visit_expression(context, expression->ternary.condition);
-    LLVMValueRef boolean_condition = LLVMBuildICmp(context->llvm_builder, LLVMIntNE, condition.llvm_value, LLVMConstInt(condition.llvm_type, 0, false), "cmp");
+    LLVMValueRef boolean_condition = LLVMBuildICmp(context->llvm_builder, LLVMIntNE, condition.llvm_value, LLVMConstInt(condition.llvm_type, 0, false), "cmptmp");
     LLVMBuildCondBr(context->llvm_builder, boolean_condition, true_block, false_block);
 
     LLVMPositionBuilderAtEnd(context->llvm_builder, true_block);

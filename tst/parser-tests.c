@@ -213,13 +213,14 @@ void test_parse_postfix_expression_array_subscript() {
             .span = dummy_span(),
             .type = EXPRESSION_ARRAY_SUBSCRIPT,
             .array_subscript = (array_subscript_expression_t) {
-                    .array = make_identifier("arr"),
-                    .index = binary((binary_expression_t) {
-                            .binary_operator = BINARY_ADD,
-                            .operator = token(TK_PLUS, "+"),
-                            .left = integer_constant("1"),
-                            .right = integer_constant("1"),
-                    }),
+                .array = make_identifier("arr"),
+                .index = binary((binary_expression_t) {
+                    .type = BINARY_ARITHMETIC,
+                    .left = integer_constant("1"),
+                    .right = integer_constant("1"),
+                    .operator = token(TK_PLUS, "+"),
+                    .arithmetic_operator = BINARY_ARITHMETIC_ADD,
+                }),
             },
     };
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
@@ -262,17 +263,20 @@ void test_parse_multiplicative_expression() {
     expression_t *expected = binary((binary_expression_t) {
             .left = binary((binary_expression_t) {
                     .left = binary((binary_expression_t) {
-                            .binary_operator = BINARY_DIVIDE,
+                            .type = BINARY_ARITHMETIC,
+                            .arithmetic_operator = BINARY_ARITHMETIC_DIVIDE,
                             .left = integer_constant("1"),
                             .right = integer_constant("2"),
                             .operator = token(TK_SLASH, "/"),
                     }),
                     .right = integer_constant("3"),
-                    .binary_operator = BINARY_MULTIPLY,
+                    .type = BINARY_ARITHMETIC,
+                    .arithmetic_operator = BINARY_ARITHMETIC_MULTIPLY,
                     .operator = token(TK_STAR, "*"),
             }),
             .right = integer_constant("4"),
-            .binary_operator = BINARY_MODULO,
+            .type = BINARY_ARITHMETIC,
+            .arithmetic_operator = BINARY_ARITHMETIC_MODULO,
             .operator = token(TK_PERCENT, "%"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -289,14 +293,41 @@ void test_parse_additive_expression() {
             .left = binary((binary_expression_t) {
                     .left = integer_constant("1"),
                     .right = integer_constant("2"),
-                    .binary_operator = BINARY_ADD,
+                    .type = BINARY_ARITHMETIC,
+                    .arithmetic_operator = BINARY_ARITHMETIC_ADD,
                     .operator = token(TK_PLUS, "+"),
             }),
             .right = integer_constant("3"),
-            .binary_operator = BINARY_SUBTRACT,
+            .type = BINARY_ARITHMETIC,
+            .arithmetic_operator = BINARY_ARITHMETIC_SUBTRACT,
             .operator = token(TK_MINUS, "-"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
+}
+
+void test_parse_additive_expression_2() {
+    lexer_global_context_t context = create_context();
+    char *input = "1 + 2 * 3;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+
+    CU_ASSERT_TRUE_FATAL(parse_additive_expression(&parser, &expr))
+
+    expression_t *expected = binary((binary_expression_t) {
+        .left = integer_constant("1"),
+        .right = binary((binary_expression_t) {
+            .left = integer_constant("2"),
+            .right = integer_constant("3"),
+            .type = BINARY_ARITHMETIC,
+            .arithmetic_operator = BINARY_ARITHMETIC_MULTIPLY,
+            .operator = token(TK_STAR, "*"),
+        }),
+        .operator = token(TK_PLUS, "+"),
+        .type = BINARY_ARITHMETIC,
+        .arithmetic_operator = BINARY_ARITHMETIC_ADD,
+    });
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
 }
 
 void test_parse_shift_expression() {
@@ -310,11 +341,13 @@ void test_parse_shift_expression() {
             .left = binary((binary_expression_t) {
                     .left = integer_constant("1"),
                     .right = integer_constant("2"),
-                    .binary_operator = BINARY_SHIFT_LEFT,
+                    .type = BINARY_BITWISE,
+                    .bitwise_operator = BINARY_BITWISE_SHIFT_LEFT,
                     .operator = token(TK_LSHIFT, "<<"),
             }),
             .right = integer_constant("3"),
-            .binary_operator = BINARY_SHIFT_RIGHT,
+            .type = BINARY_BITWISE,
+            .bitwise_operator = BINARY_BITWISE_SHIFT_RIGHT,
             .operator = token(TK_RSHIFT, ">>"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -333,19 +366,23 @@ void test_parse_relational_expression() {
                             .left = binary((binary_expression_t) {
                                     .left = integer_constant("1"),
                                     .right = integer_constant("2"),
-                                    .binary_operator = BINARY_LESS_THAN,
+                                    .type = BINARY_COMPARISON,
+                                    .comparison_operator = BINARY_COMPARISON_LESS_THAN,
                                     .operator = token(TK_LESS_THAN, "<"),
                             }),
                             .right = integer_constant("3"),
-                            .binary_operator = BINARY_GREATER_THAN,
+                            .type = BINARY_COMPARISON,
+                            .comparison_operator = BINARY_COMPARISON_GREATER_THAN,
                             .operator = token(TK_GREATER_THAN, ">"),
                     }),
                     .right = integer_constant("4"),
-                    .binary_operator = BINARY_LESS_THAN_OR_EQUAL,
+                    .type = BINARY_COMPARISON,
+                    .comparison_operator = BINARY_COMPARISON_LESS_THAN_OR_EQUAL,
                     .operator = token(TK_LESS_THAN_EQUAL, "<="),
             }),
             .right = integer_constant("5"),
-            .binary_operator = BINARY_GREATER_THAN_OR_EQUAL,
+            .type = BINARY_COMPARISON,
+            .comparison_operator = BINARY_COMPARISON_GREATER_THAN_OR_EQUAL,
             .operator = token(TK_GREATER_THAN_EQUAL, ">="),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -362,11 +399,13 @@ void test_parse_equality_expression() {
             .left = binary((binary_expression_t) {
                     .left = integer_constant("1"),
                     .right = integer_constant("2"),
-                    .binary_operator = BINARY_EQUAL,
+                    .type = BINARY_COMPARISON,
+                    .comparison_operator = BINARY_COMPARISON_EQUAL,
                     .operator = token(TK_EQUALS, "=="),
             }),
             .right = integer_constant("3"),
-            .binary_operator = BINARY_NOT_EQUAL,
+            .type = BINARY_COMPARISON,
+            .comparison_operator = BINARY_COMPARISON_NOT_EQUAL,
             .operator = token(TK_NOT_EQUALS, "!="),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -382,7 +421,8 @@ void test_parse_and_expression() {
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
-            .binary_operator = BINARY_BITWISE_AND,
+            .type = BINARY_BITWISE,
+            .bitwise_operator = BINARY_BITWISE_AND,
             .operator = token(TK_AMPERSAND, "&"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -398,7 +438,8 @@ void test_parse_xor_expression() {
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
-            .binary_operator = BINARY_BITWISE_XOR,
+            .type = BINARY_BITWISE,
+            .bitwise_operator = BINARY_BITWISE_XOR,
             .operator = token(TK_BITWISE_XOR, "^"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -414,7 +455,8 @@ void test_parse_inclusive_or_expression() {
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
-            .binary_operator = BINARY_BITWISE_OR,
+            .type = BINARY_BITWISE,
+            .bitwise_operator = BINARY_BITWISE_OR,
             .operator = token(TK_BITWISE_OR, "|"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -430,7 +472,8 @@ void test_parse_logical_and_expression() {
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
-            .binary_operator = BINARY_LOGICAL_AND,
+            .type = BINARY_LOGICAL,
+            .logical_operator = BINARY_LOGICAL_AND,
             .operator = token(TK_LOGICAL_AND, "&&"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -447,7 +490,8 @@ void test_parse_logical_or_expression() {
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
-            .binary_operator = BINARY_LOGICAL_OR,
+            .type = BINARY_LOGICAL,
+            .logical_operator = BINARY_LOGICAL_OR,
             .operator = token(TK_LOGICAL_OR, "||"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -484,7 +528,8 @@ void test_parse_assignment_expression() {
     expression_t *expected = binary((binary_expression_t) {
             .left = make_identifier("val"),
             .right = integer_constant("2"),
-            .binary_operator = BINARY_ASSIGN,
+            .type = BINARY_ASSIGNMENT,
+            .assignment_operator = BINARY_ASSIGN,
             .operator = token(TK_ASSIGN, "="),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
@@ -625,6 +670,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "postfix expression - member access", test_parse_postfix_expression_member_access) ||
         NULL == CU_add_test(pSuite, "multiplicative expression", test_parse_multiplicative_expression) ||
         NULL == CU_add_test(pSuite, "additive expression", test_parse_additive_expression) ||
+        NULL == CU_add_test(pSuite, "additive expression 2", test_parse_additive_expression_2) ||
         NULL == CU_add_test(pSuite, "shift expression", test_parse_shift_expression) ||
         NULL == CU_add_test(pSuite, "relational expression", test_parse_relational_expression) ||
         NULL == CU_add_test(pSuite, "equality expression", test_parse_equality_expression) ||

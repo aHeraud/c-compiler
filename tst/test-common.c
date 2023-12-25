@@ -81,9 +81,39 @@ bool expression_eq(const expression_t *left, const expression_t *right) {
                     assert(false);
             }
         case EXPRESSION_BINARY:
-            if (left->binary.binary_operator != right->binary.binary_operator) {
+            if (left->binary.type != right->binary.type) {
                 return false;
             }
+
+            switch (left->binary.type) {
+                case BINARY_ARITHMETIC:
+                    if (left->binary.arithmetic_operator != right->binary.arithmetic_operator) {
+                        return false;
+                    }
+                    break;
+                case BINARY_BITWISE:
+                    if (left->binary.bitwise_operator != right->binary.bitwise_operator) {
+                        return false;
+                    }
+                    break;
+                case BINARY_LOGICAL:
+                    if (left->binary.logical_operator != right->binary.logical_operator) {
+                        return false;
+                    }
+                    break;
+                case BINARY_COMPARISON:
+                    if (left->binary.comparison_operator != right->binary.comparison_operator) {
+                        return false;
+                    }
+                    break;
+                case BINARY_ASSIGNMENT:
+                    if (left->binary.assignment_operator != right->binary.assignment_operator) {
+                        return false;
+                    }
+                    break;
+                case BINARY_COMMA: {}
+            }
+
             if (left->binary.operator->kind != right->binary.operator->kind) {
                 return false;
             }
