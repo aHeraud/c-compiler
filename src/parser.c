@@ -1,5 +1,6 @@
 // Recursive descent parser for the C language, based on the reference c99 grammar: see docs/c99.bnf
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +9,51 @@
 
 #include "parser.h"
 #include "lexer.h"
+
+bool any_non_null(size_t count, ...) {
+    va_list args;
+    va_start(args, count);
+    for (size_t i = 0; i < count; i++) {
+        if (va_arg(args, void *) != NULL) {
+            va_end(args);
+            return true;
+        }
+    }
+    va_end(args);
+    return false;
+}
+
+void* first_non_null(size_t count, ...) {
+    va_list args;
+    va_start(args, count);
+    for (size_t i = 0; i < count; i++) {
+        void *arg = va_arg(args, void *);
+        if (arg != NULL) {
+            va_end(args);
+            return arg;
+        }
+    }
+    va_end(args);
+    return NULL;
+}
+
+bool any_token_kind_equals(token_kind_t kind, size_t count, ...) {
+    va_list args;
+    va_start(args, count);
+    for (size_t i = 0; i < count; i++) {
+        token_kind_t arg = va_arg(args, token_kind_t);
+        if (arg == kind) {
+            va_end(args);
+            return true;
+        }
+    }
+    va_end(args);
+    return false;
+}
+
+#define FIRST_NON_NULL(...) first_non_null(sizeof((void*[]){__VA_ARGS__}) / sizeof(void*), __VA_ARGS__)
+#define ANY_NON_NULL(...) any_non_null(sizeof((void*[]){__VA_ARGS__}) / sizeof(void*), __VA_ARGS__)
+#define TOKEN_KIND_ONE_OF(value, ...) any_token_kind_equals(value, sizeof((token_kind_t[]){__VA_ARGS__}) / sizeof(token_kind_t), __VA_ARGS__)
 
 void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
     source_position_t position = error->token->position;
@@ -31,6 +77,20 @@ void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
         case PARSE_ERROR_UNEXPECTED_END_OF_INPUT:
             fprintf(stream, "Unexpected end of input\n");
             fprintf(stream, "Expected token: %s\n", token_kind_display_names[error->unexpected_end_of_input.expected]);
+            break;
+        case PARSE_ERROR_ILLEGAL_USE_OF_RESTRICT:
+            fprintf(stream, "Illegal use of restrict (requires pointer or reference)\n");
+            break;
+        case PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS:
+            if (error->previous_token != NULL) {
+                fprintf(stream, "Cannot combine %s with previous specifier %s\n",
+                        error->token->value, error->previous_token->value);
+            } else {
+                fprintf(stream, "Illegal declaration specifiers\n");
+            }
+            break;
+        case PARSE_ERROR_TYPE_SPECIFIER_MISSING:
+            fprintf(stream, "Type specifier missing\n");
             break;
     }
 }
@@ -177,6 +237,449 @@ void recover(parser_t *parser) {
     }
 }
 
+// Declarations
+
+/**
+ * Parses a declaration.
+ *
+ * <declaration> ::= <declaration-specifiers> <init-declarator-list>? ';'
+ *
+ * <init-declarator-list> ::= <init-declarator> | <init-declarator-list> ',' <init-declarator>
+ *
+ * @param parser Parser instance
+ * @param declarations Vector to append the parsed declarations to
+ * @return
+ */
+bool parse_declaration(parser_t *parser, ptr_vector_t *declarations) {
+    type_t type;
+    parse_declaration_specifiers(parser, &type); // always succeeds
+
+    if (accept(parser, TK_SEMICOLON, NULL)) {
+        // This is a declaration without an identifier, e.g. "int;", or "typedef float;".
+        // This is legal, but useless.
+        // TODO: warning for empty declaration
+        return true;
+    }
+
+    // If we didn't find a semicolon, then we need to attempt to parse an <init-declarator-list>.
+    do {
+        declaration_t *decl = malloc(sizeof(declaration_t));
+        if (!parse_init_declarator(parser, type, decl)) {
+            free(decl);
+            return false;
+        }
+        append_ptr(&declarations->buffer, &declarations->size, &declarations->capacity, decl);
+    } while (accept(parser, TK_COMMA, NULL));
+
+    return require(parser, TK_SEMICOLON, NULL, "declaration", NULL);
+}
+
+parse_error_t illegal_declaration_specifiers(token_t *token, token_t *prev) {
+    return (parse_error_t) {
+            .token = token,
+            .previous_token = prev,
+            .production_name = "declaration-specifiers",
+            .previous_production_name = NULL,
+            .type = PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS,
+    };
+}
+
+/**
+ * Parses declaration specifiers, and returns the type that they represent.
+ *
+ * <declaration-specifiers> ::= <storage-class-specifier> <declaration-specifiers>
+ *                           | <type-specifier> <declaration-specifiers>
+ *                           | <type-qualifier> <declaration-specifiers>
+ *                           | <function-specifier> <declaration-specifiers>
+ *
+ * <storage-class-specifier> ::= 'typedef' | 'extern' | 'static' | 'auto' | 'register'
+ *
+ * <type-specifier> ::= 'void' | 'char' | 'short' | 'int' | 'long' | 'float' | 'double' | 'signed' | 'unsigned' | '_Bool' | '_Complex'
+ *                    | <struct-or-union-specifier>
+ *                    | <enum-specifier>
+ *                    | <typedef-name>
+ *
+ * <type-qualifier> ::= 'const' | 'restrict' | 'volatile'
+ *
+ * <function-specifier> ::= 'inline'
+ *
+ * TODO: The parsing of structs, unions, and enums is not yet implemented.
+ * TODO: Inlining is not yet implemented, and the keyword will be silently ignored.
+ *
+ * Only one storage-class-specifier may be present in a declaration specifiers list.
+ *
+ * Valid combinations of type specifiers:
+ * - void
+ * - char
+ * - signed char
+ * - unsigned char
+ * - short, signed short, short int, signed short int
+ * - unsigned short, unsigned short int
+ * - int, signed, signed int
+ * - unsigned, unsigned int
+ * - long, signed long, long int, signed long int
+ * - unsigned long, unsigned long int
+ * - long long, signed long long, long long int, signed long long int
+ * - unsigned long long, unsigned long long int
+ * - float
+ * - double
+ * - long double
+ * - _Bool
+ * - float _Complex
+ * - double _Complex
+ * - long double _Complex
+ * - struct-or-union-specifier
+ * - enum-specifier
+ * - typedef-name
+ *
+ * @param parser Parser instance
+ * @param type Out parameter for the type that the declaration specifiers represent
+ * @return true
+ */
+bool parse_declaration_specifiers(parser_t *parser, type_t *type) {
+    const token_t *storage_class =NULL;
+    bool is_const = false;
+    bool is_volatile = false;
+    bool is_inline = false;
+    token_t *void_ = NULL;
+    token_t *bool_ = NULL;
+    token_t *char_ = NULL;
+    token_t *short_ = NULL;
+    token_t *int_ = NULL;
+    token_t *long_ = NULL;
+    token_t *long_long = NULL;
+    token_t *float_ = NULL;
+    token_t *double_ = NULL;
+    token_t *signed_ = NULL;
+    token_t *unsigned_ = NULL;
+    token_t *complex_ = NULL;
+    token_t *struct_ = NULL;
+    token_t *union_ = NULL;
+    token_t *enum_ = NULL;
+
+    while (true) {
+        token_t *token;
+        if (accept(parser, TK_TYPEDEF, &token) ||
+            accept(parser, TK_EXTERN, &token) ||
+            accept(parser, TK_STATIC, &token) ||
+            accept(parser, TK_AUTO, &token) ||
+            accept(parser, TK_REGISTER, &token)) {
+            // storage-class-specifier
+            if (storage_class != NULL) {
+                // TODO: warn about duplicate specifiers
+                if (token->kind != storage_class->kind) {
+                    append_parse_error(&parser->errors, (parse_error_t) {
+                            .token = token,
+                            .previous_token = storage_class,
+                            .production_name = "storage-class-specifier",
+                            .previous_production_name = "storage-class-specifier",
+                            .type = PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS,
+                    });
+                }
+            } else {
+                storage_class = token;
+            }
+        } else if (accept(parser, TK_INLINE, &token)) {
+            // TODO: inline
+        } else if (accept(parser, TK_CONST, &token)) {
+            is_const = true;
+        } else if (accept(parser, TK_RESTRICT, &token)) {
+            // It is illegal to use restrict in this context.
+            append_parse_error(&parser->errors, (parse_error_t) {
+                    .token = token,
+                    .previous_token = NULL,
+                    .production_name = "declaration-specifiers",
+                    .previous_production_name = NULL,
+                    .type = PARSE_ERROR_ILLEGAL_USE_OF_RESTRICT,
+            });
+        } else if (accept(parser, TK_VOLATILE, &token)) {
+            is_volatile = true;
+        } else if (accept(parser, TK_VOID, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
+                                                           double_, signed_, unsigned_, complex_, struct_, union_, enum_);
+            if (void_ != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, void_));
+            } else {
+                void_ = token;
+            }
+        } else if (accept(parser, TK_CHAR, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
+                                                           double_, complex_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                char_ = token;
+            }
+        } else if (accept(parser, TK_SHORT, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, char_, short_, long_, long_long, float_, double_,
+                                                           bool_, complex_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                short_ = token;
+            }
+        } else if (accept(parser, TK_INT, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, int_, float_, double_, complex_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                int_ = token;
+            }
+        } else if (accept(parser, TK_LONG, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, long_long, float_, double_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else if (long_ != NULL) {
+                if (complex_ != NULL) {
+                    append_parse_error(&parser->errors, illegal_declaration_specifiers(token, complex_));
+                } else {
+                    long_long = token;
+                }
+            } else {
+                long_ = token;
+            }
+        } else if (accept(parser, TK_FLOAT, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
+                                                           signed_, unsigned_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                float_ = token;
+            }
+        } else if (accept(parser, TK_DOUBLE, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_long, float_,
+                                                           double_, signed_, unsigned_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                double_ = token;
+            }
+        } else if (accept(parser, TK_SIGNED, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                signed_ = token;
+            }
+        } else if (accept(parser, TK_UNSIGNED, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                unsigned_ = token;
+            }
+        } else if (accept(parser, TK_BOOL, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
+                                                           double_, signed_, unsigned_, complex_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                bool_ = token;
+            }
+        } else if (accept(parser, TK_COMPLEX, &token)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_long, signed_, unsigned_, struct_, union_, enum_);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                complex_ = token;
+            }
+        } else if (accept(parser, TK_STRUCT, &token)) {
+            assert(false && "Parsing of struct/union/enum not yet implemented");
+        } else if (accept(parser, TK_UNION, &token)) {
+            assert(false && "Parsing of struct/union/enum not yet implemented");
+        } else if (accept(parser, TK_ENUM, &token)) {
+            assert(false && "Parsing of struct/union/enum not yet implemented");
+        } else {
+            break;
+        }
+    }
+
+    if (complex_ != NULL && (float_ == NULL && double_ == NULL)) {
+        append_parse_error(&parser->errors, illegal_declaration_specifiers(complex_, NULL));
+        complex_ = NULL;
+    }
+
+    // Build the type out of the specifiers
+
+    *type = (type_t) {
+        .kind = TYPE_VOID,
+        .is_const = is_const,
+        .is_volatile = is_volatile,
+        .storage_class = STORAGE_CLASS_AUTO,
+    };
+
+    if (storage_class != NULL) {
+        if (storage_class->kind == TK_EXTERN) {
+            type->storage_class = STORAGE_CLASS_EXTERN;
+        } else if (storage_class->kind == TK_REGISTER) {
+            type->storage_class = STORAGE_CLASS_REGISTER;
+        } else if (storage_class->kind == TK_STATIC) {
+            type->storage_class = STORAGE_CLASS_STATIC;
+        } else if (storage_class->kind == TK_TYPEDEF) {
+            type->storage_class = STORAGE_CLASS_TYPEDEF;
+        }
+    }
+
+    if (ANY_NON_NULL(bool_, char_, short_, int_, long_long, signed_, unsigned_)) {
+        type->kind = TYPE_INTEGER;
+        type->integer.is_signed = unsigned_ == NULL;
+        if (bool_ != NULL) {
+            type->integer.size = INTEGER_TYPE_BOOL;
+        } else if (char_ != NULL) {
+            type->integer.size = INTEGER_TYPE_CHAR;
+        } else if (short_ != NULL) {
+            type->integer.size = INTEGER_TYPE_SHORT;
+        } else if (long_long != NULL) {
+            type->integer.size = INTEGER_TYPE_LONG_LONG;
+        } else if (long_ != NULL) {
+            type->integer.size = INTEGER_TYPE_LONG;
+        } else {
+            type->integer.size = INTEGER_TYPE_INT;
+        }
+    } else if (float_ != NULL || double_ != NULL) {
+        type->kind = TYPE_FLOATING;
+        if (double_ != NULL) {
+            if (long_ != NULL) {
+                type->floating = FLOAT_TYPE_LONG_DOUBLE;
+            } else {
+                type->floating = FLOAT_TYPE_DOUBLE;
+            }
+        } else {
+            type->floating = FLOAT_TYPE_FLOAT;
+        }
+    } else if (long_ != NULL) {
+        type->kind = TYPE_INTEGER;
+        type->integer.is_signed = true;
+        type->integer.size = INTEGER_TYPE_LONG;
+    } else if (void_ != NULL) {
+        type->kind = TYPE_VOID;
+    } else {
+        // Implicit int. This is an error, but we can recover from it.
+        append_parse_error(&parser->errors, (parse_error_t) {
+                .token = next_token(parser),
+                .previous_token = NULL,
+                .production_name = "declaration-specifiers",
+                .previous_production_name = NULL,
+                .type = PARSE_ERROR_TYPE_SPECIFIER_MISSING,
+        });
+        type->kind = TYPE_INTEGER;
+        type->integer.size = INTEGER_TYPE_INT;
+        type->integer.is_signed = true;
+    }
+
+    return true;
+}
+
+bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *decl) {
+    if (!parse_declarator(parser, base_type, decl)) {
+        return false;
+    }
+
+    token_t *token;
+    if (accept(parser, TK_ASSIGN, &token)) {
+        expression_t *expr = malloc(sizeof(expression_t));
+        if (!parse_assignment_expression(parser, expr)) {
+            free(expr);
+            return false;
+        }
+        decl->initializer = expr;
+    }
+
+    return true;
+}
+
+/**
+ * Parses a declarator.
+ *
+ * <declarator> ::= <pointer>? <direct-declarator>
+ *
+ * @param parser Parser instance
+ * @param base_type Type derived from the declaration specifiers.
+ * @return true if the declarator was parsed successfully, false otherwise
+ */
+bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *decl) {
+    type_t *type = NULL;
+    if (accept(parser, TK_STAR, NULL)) {
+        const type_t *base = malloc(sizeof(type_t));
+        parse_pointer(parser, base, &type);
+    } else {
+        type = malloc(sizeof(type_t));
+        *type = base_type;
+    }
+
+    if (!parse_direct_declarator(parser, type, decl)) {
+        free(type);
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Parses a pointer.
+ *
+ * <pointer> ::= '*' <type-qualifier-list>? <pointer>?
+ *
+ * @param parser
+ * @param base_type
+ * @return
+ */
+bool parse_pointer(parser_t *parser, const type_t *base_type, type_t **pointer_type) {
+    assert(parser != NULL && base_type != NULL && pointer_type != NULL);
+
+    bool is_const = false;
+    bool is_volatile = false;
+    bool is_restrict = false;
+
+    // Parse type-qualifiers
+    while (true) {
+        token_t *token;
+        if (accept(parser, TK_CONST, &token)) {
+            is_const = true;
+        } else if (accept(parser, TK_RESTRICT, &token)) {
+            is_restrict = true;
+        } else if (accept(parser, TK_VOLATILE, &token)) {
+            is_volatile = true;
+        } else {
+            break;
+        }
+    }
+
+    *pointer_type = malloc(sizeof(type_t));
+    **pointer_type = (type_t) {
+            .kind = TYPE_POINTER,
+            .pointer = {
+                    .base = base_type,
+                    .is_const = is_const,
+                    .is_volatile = is_volatile,
+                    .is_restrict = is_restrict,
+            },
+    };
+
+    if (accept(parser, TK_STAR, NULL)) {
+        parse_pointer(parser, *pointer_type, pointer_type);
+    }
+
+    return true;
+}
+
+// Parses a direct declarator.
+// Currently only parses identifiers.
+// TODO: Implement the rest of the grammar.
+bool parse_direct_declarator(parser_t *parser, const type_t *type, declaration_t *decl) {
+    token_t *token;
+    if (!require(parser, TK_IDENTIFIER, &token, "direct-declarator", NULL)) {
+        return false;
+    }
+
+    *decl = (declaration_t) {
+        .type = type,
+        .identifier = token,
+        .initializer = NULL,
+    };
+    return true;
+}
+
 // Statements
 
 bool parse_statement(parser_t *parser, statement_t *stmt) {
@@ -200,36 +703,63 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
 }
 
 bool parse_compound_statement(parser_t *parser, statement_t *stmt, token_t* open_brace) {
-    ptr_vector_t statements = {.buffer = NULL, .size = 0, .capacity = 0};
+    ptr_vector_t block_items = {.buffer = NULL, .size = 0, .capacity = 0};
 
     token_t *last_token;
     while (!accept(parser, TK_RBRACE, &last_token) && !accept(parser, TK_EOF, &last_token)) {
-        statement_t *statement = malloc(sizeof(statement_t));
-        if (!parse_statement(parser, statement)) {
+        // Peek at the next token.
+        const token_t *next = next_token(parser);
+        if (TOKEN_KIND_ONE_OF(next->kind,  TK_TYPEDEF, TK_EXTERN, TK_STATIC, TK_AUTO, TK_REGISTER,
+                              TK_CONST, TK_RESTRICT, TK_VOLATILE, TK_INLINE, TK_VOID, TK_CHAR, TK_SHORT, TK_INT,
+                              TK_LONG, TK_FLOAT, TK_DOUBLE, TK_SIGNED, TK_UNSIGNED, TK_BOOL, TK_COMPLEX, TK_STRUCT,
+                              TK_UNION, TK_ENUM)) {
+            // This is a declaration
+            ptr_vector_t declarations = {.buffer = NULL, .size = 0, .capacity = 0};
+            if (!parse_declaration(parser, &declarations)) {
+                // We can recover from a malformed declaration by skipping tokens until we consume the next semicolon.
+                recover(parser);
+                continue;
+            }
+            for (int i = 0; i < declarations.size; i += 1) {
+                block_item_t  *block_item = malloc(sizeof(block_item_t));
+                *block_item = (block_item_t) {
+                        .type = BLOCK_ITEM_DECLARATION,
+                        .declaration =  declarations.buffer[i],
+                };
+                append_ptr((void ***) &block_items.buffer, &block_items.size, &block_items.capacity, block_item);
+            }
+        } else {
             // We can recover from parse errors following a parse error in a statement by skipping tokens until
             // we find a semicolon.
             // An error has already been appended to the parser's error vector at this point.
-            free(statement);
-            recover(parser);
-            continue;
+            statement_t *statement = malloc(sizeof(statement_t));
+            if (!parse_statement(parser, statement)) {
+                free(statement);
+                recover(parser);
+                continue;
+            }
+            block_item_t *block_item = malloc(sizeof(block_item_t));
+            *block_item = (block_item_t) {
+                    .type = BLOCK_ITEM_STATEMENT,
+                    .statement = statement,
+            };
+            append_ptr((void ***) &block_items.buffer, &block_items.size, &block_items.capacity, block_item);
         }
-        append_ptr((void ***) &statements.buffer, &statements.size, &statements.capacity, statement);
     }
-    shrink_ptr_vector((void ***) &statements.buffer, &statements.size, &statements.capacity);
+    shrink_ptr_vector((void ***) &block_items.buffer, &block_items.size, &block_items.capacity);
 
     if (last_token->kind == TK_RBRACE) {
         *stmt = (statement_t) {
                 .type = STATEMENT_COMPOUND,
                 .compound = {
                         .open_brace = open_brace,
-                        .statements = statements,
+                        .block_items = block_items,
                 },
                 .terminator = last_token,
         };
         return true;
     } else {
         // TODO: free allocated statements?
-        free(statements.buffer);
         append_parse_error(&parser->errors, (parse_error_t) {
                 .token = last_token,
                 .previous_token = parser->next_token_index > 0 ? parser->tokens.buffer[parser->next_token_index - 1] : NULL,

@@ -15,6 +15,7 @@ char* format_token_kind_array(const token_kind_t* array, size_t size);
 
 bool expression_eq(const expression_t *left, const expression_t *right);
 bool statement_eq(const statement_t *left, const statement_t *right);
+bool declaration_eq(const declaration_t *left, const declaration_t *right);
 
 #define TEST_ASSERT_ARRAYS_EQUAL(expected, expected_size, actual, actual_size, format) \
     do { \
@@ -55,4 +56,3 @@ bool statement_eq(const statement_t *left, const statement_t *right);
     } while (0);
 
 #endif //C_COMPILER_TEST_COMMON_H
-

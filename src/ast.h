@@ -231,7 +231,7 @@ typedef struct Statement {
     union {
         struct {
             token_t *open_brace;
-            ptr_vector_t statements;
+            ptr_vector_t block_items;
         } compound;
         expression_t *expression;
         struct {
@@ -248,5 +248,22 @@ typedef struct FunctionDefinition {
     token_t *identifier;
     statement_t *body;
 } function_definition_t;
+
+typedef struct Declaration {
+    type_t *type;
+    token_t *identifier;
+    expression_t *initializer;
+} declaration_t;
+
+typedef struct BlockItem {
+    enum {
+        BLOCK_ITEM_STATEMENT,
+        BLOCK_ITEM_DECLARATION,
+    } type;
+    union {
+        statement_t *statement;
+        declaration_t *declaration;
+    };
+} block_item_t;
 
 #endif //C_COMPILER_AST_H

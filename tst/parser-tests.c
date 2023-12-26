@@ -2,6 +2,7 @@
 #include "CUnit/Basic.h"
 #include "tests.h"
 #include "parser.h"
+#include "types.h"
 #include "test-common.h"
 
 static lexer_global_context_t create_context() {
@@ -91,6 +92,38 @@ statement_t *expression_statement(expression_t *expression) {
             .terminator = token(TK_SEMICOLON, ";"),
     };
     return stmt;
+}
+
+block_item_t *block_item_s(statement_t *statement) {
+    block_item_t *item = malloc(sizeof(block_item_t));
+    *item = (block_item_t) {
+            .type = BLOCK_ITEM_STATEMENT,
+            .statement = statement,
+    };
+    return item;
+}
+
+block_item_t *block_item_d(declaration_t *declaration) {
+    block_item_t *item = malloc(sizeof(block_item_t));
+    *item = (block_item_t) {
+            .type = BLOCK_ITEM_DECLARATION,
+            .declaration = declaration,
+    };
+    return item;
+}
+
+const type_t *pointer_to(const type_t *type) {
+    type_t *pointer = malloc(sizeof(type_t));
+    *pointer = (type_t) {
+        .kind = TYPE_POINTER,
+        .pointer = {
+            .base = type,
+            .is_const = false,
+            .is_volatile = false,
+            .is_restrict = false,
+        },
+    };
+    return pointer;
 }
 
 void test_parse_primary_expression_ident() {
@@ -535,6 +568,120 @@ void test_parse_assignment_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
+void test_parse_int_declaration_specifiers() {
+    lexer_global_context_t context = create_context();
+    char *input = "int";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    type_t type;
+    CU_ASSERT_TRUE_FATAL(parse_declaration_specifiers(&parser, &type))
+    CU_ASSERT_TRUE_FATAL(types_equal(&type, &INT))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+}
+
+void test_parse_invalid_declaration_specifiers() {
+    lexer_global_context_t context = create_context();
+    char *input = "signed float";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    type_t type;
+    CU_ASSERT_TRUE_FATAL(parse_declaration_specifiers(&parser, &type))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 1)
+    CU_ASSERT_TRUE_FATAL(types_equal(&type, &INT))
+}
+
+void test_parse_empty_declaration() {
+    lexer_global_context_t context = create_context();
+    char *input = "int;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = {
+            .size = 0,
+            .capacity = 0,
+            .buffer = NULL,
+    };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 0)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+}
+
+void test_parse_simple_declaration() {
+    lexer_global_context_t context = create_context();
+    char *input = "int a;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = {
+            .size = 0,
+            .capacity = 0,
+            .buffer = NULL,
+    };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    declaration_t expected = (declaration_t) {
+        .type = &INT,
+        .identifier = token(TK_IDENTIFIER, "a"),
+        .initializer = NULL,
+    };
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+}
+
+void test_parse_pointer_declaration() {
+    lexer_global_context_t context = create_context();
+    char *input = "void *a;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    declaration_t expected = (declaration_t) {
+            .type = pointer_to(&VOID),
+            .identifier = token(TK_IDENTIFIER, "a"),
+            .initializer = NULL,
+    };
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+}
+
+void test_parse_compound_declaration() {
+    lexer_global_context_t context = create_context();
+    char *input = "int a, b = 0, c = d + 1;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 3)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    declaration_t expected_a = (declaration_t) {
+            .type = &INT,
+            .identifier = token(TK_IDENTIFIER, "a"),
+            .initializer = NULL,
+    };
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected_a))
+
+    declaration_t expected_b = (declaration_t) {
+            .type = &INT,
+            .identifier = token(TK_IDENTIFIER, "b"),
+            .initializer = integer_constant("0"),
+    };
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[1], &expected_b))
+
+    declaration_t expected_c = (declaration_t) {
+            .type = &INT,
+            .identifier = token(TK_IDENTIFIER, "c"),
+            .initializer = binary((binary_expression_t) {
+                    .type = BINARY_ARITHMETIC,
+                    .arithmetic_operator = BINARY_ARITHMETIC_ADD,
+                    .left = make_identifier("d"),
+                    .right = integer_constant("1"),
+                    .operator = token(TK_PLUS, "+"),
+            }),
+    };
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[2], &expected_c))
+}
+
 void test_parse_empty_statement() {
     lexer_global_context_t context = create_context();
     char *input = ";";
@@ -576,6 +723,7 @@ void test_parse_compound_statement() {
     statement_t node;
 
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+
     statement_t *expected = malloc(sizeof(statement_t));
     statement_t *statements[3] = {
             expression_statement(integer_constant("1")),
@@ -596,13 +744,19 @@ void test_parse_compound_statement() {
                     },
             })),
     };
+    block_item_t *block_items[3] = {
+            block_item_s(statements[0]),
+            block_item_s(statements[1]),
+            block_item_s(statements[2]),
+    };
+
     *expected = (statement_t) {
         .type = STATEMENT_COMPOUND,
         .compound = {
-            .statements = {
+            .block_items = {
                 .size = 3,
                 .capacity = 3,
-                .buffer = (void**) statements,
+                .buffer = (void**) block_items,
             },
         },
         .terminator = token(TK_RBRACE, "}"),
@@ -620,16 +774,16 @@ void test_parse_compound_statement_with_error() {
 
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
     statement_t *expected = malloc(sizeof(statement_t));
-    statement_t *statements[1] = {
-            expression_statement(integer_constant("1")),
+    block_item_t *block_items[1] = {
+            block_item_s(expression_statement(integer_constant("1"))),
     };
     *expected = (statement_t) {
             .type = STATEMENT_COMPOUND,
             .compound = {
-                    .statements = {
+                    .block_items = {
                             .size = 1,
                             .capacity = 1,
-                            .buffer = (void**) statements,
+                            .buffer = (void**) block_items,
                     },
             },
             .terminator = token(TK_RBRACE, "}"),
@@ -681,6 +835,12 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "logical or expression", test_parse_logical_or_expression) ||
         NULL == CU_add_test(pSuite, "conditional expression", test_parse_conditional_expression) ||
         NULL == CU_add_test(pSuite, "assignment expression", test_parse_assignment_expression) ||
+        NULL == CU_add_test(pSuite, "int declaration specifiers", test_parse_int_declaration_specifiers) ||
+        NULL == CU_add_test(pSuite, "invalid declaration specifiers", test_parse_invalid_declaration_specifiers) ||
+        NULL == CU_add_test(pSuite, "empty declaration", test_parse_empty_declaration) ||
+        NULL == CU_add_test(pSuite, "simple declaration", test_parse_simple_declaration) ||
+        NULL == CU_add_test(pSuite, "pointer declaration", test_parse_pointer_declaration) ||
+        NULL == CU_add_test(pSuite, "compound declaration", test_parse_compound_declaration) ||
         NULL == CU_add_test(pSuite, "empty statement", test_parse_empty_statement) ||
         NULL == CU_add_test(pSuite, "expression statement", test_parse_expression_statement) ||
         NULL == CU_add_test(pSuite, "compound statement", test_parse_compound_statement) ||

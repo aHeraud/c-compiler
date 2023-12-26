@@ -2,6 +2,7 @@
 #include <malloc.h>
 #include "lexer.h"
 #include "parser.h"
+#include "types.h"
 #include "util/vectors.h"
 #include "test-common.h"
 
@@ -170,12 +171,25 @@ bool statement_eq(const statement_t *left, const statement_t *right) {
         case STATEMENT_EXPRESSION:
             return expression_eq(left->expression, right->expression);
         case STATEMENT_COMPOUND:
-            if (left->compound.statements.size != right->compound.statements.size) {
+            if (left->compound.block_items.size != right->compound.block_items.size) {
                 return false;
             }
-            for (size_t i = 0; i < left->compound.statements.size; i++) {
-                if (!statement_eq(left->compound.statements.buffer[i], right->compound.statements.buffer[i])) {
+            for (size_t i = 0; i < left->compound.block_items.size; i++) {
+                block_item_t *left_item = left->compound.block_items.buffer[i];
+                block_item_t *right_item = right->compound.block_items.buffer[i];
+
+                if (left_item->type != right_item->type) {
                     return false;
+                }
+
+                if (left_item->type == BLOCK_ITEM_STATEMENT) {
+                    if (!statement_eq(left_item->statement, right_item->statement)) {
+                        return false;
+                    }
+                } else {
+                    if (!declaration_eq(left_item->declaration, right_item->declaration)) {
+                        return false;
+                    }
                 }
             }
             return true;
@@ -185,5 +199,25 @@ bool statement_eq(const statement_t *left, const statement_t *right) {
                 return false;
             }
             return expression_eq(left->return_.expression, right->return_.expression);
+    }
+}
+
+bool declaration_eq(const declaration_t *left, const declaration_t *right) {
+    if (left == NULL || right == NULL) {
+        return left == right;
+    }
+
+    if (!types_equal(left->type, right->type)) {
+        return false;
+    }
+
+    if (strcmp(left->identifier->value, right->identifier->value) != 0) {
+        return false;
+    }
+
+    if (left->initializer == NULL || right->initializer == NULL) {
+        return left->initializer == right->initializer;
+    } else {
+        return expression_eq(left->initializer, right->initializer);
     }
 }

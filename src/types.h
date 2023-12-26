@@ -8,6 +8,7 @@ typedef enum TypeKind {
     TYPE_VOID,
     TYPE_INTEGER,
     TYPE_FLOATING,
+    TYPE_POINTER,
 } type_kind_t;
 
 
@@ -43,17 +44,35 @@ static const int FLOAT_TYPE_RANKS[] = {
         [FLOAT_TYPE_LONG_DOUBLE] = 2,
 };
 
+typedef enum StorageClass {
+    STORAGE_CLASS_AUTO,
+    STORAGE_CLASS_EXTERN,
+    STORAGE_CLASS_TYPEDEF,
+    STORAGE_CLASS_REGISTER,
+    STORAGE_CLASS_STATIC,
+} storage_class_t;
+
 /**
  * Represents a C type.
  */
+typedef struct Type type_t;
 typedef struct Type {
     type_kind_t kind;
+    storage_class_t storage_class;
+    bool is_const;
+    bool is_volatile;
     union {
         struct {
             bool is_signed;
             integer_type_t size;
         } integer;
         float_type_t floating;
+        struct {
+            const type_t *base;
+            bool is_const;
+            bool is_volatile;
+            bool is_restrict;
+        } pointer;
     };
 } type_t;
 
@@ -63,6 +82,7 @@ bool is_floating_type(const type_t *type);
 bool is_long_double_type(const type_t *type);
 bool is_double_type(const type_t *type);
 bool is_arithmetic_type(const type_t *type);
+bool is_scalar_type(const type_t *type);
 
 /**
  * Compare two C types for equality.

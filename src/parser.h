@@ -7,12 +7,17 @@
 
 typedef struct ParseError {
     const token_t *token;
+    // Generally, the token previously consumer by the parser.
+    // In the case of PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS, this is the previous conflicting declaration specifier.
     const token_t *previous_token;
     const char* production_name;
     const char* previous_production_name;
     enum ParseErrorType {
         PARSE_ERROR_EXPECTED_TOKEN,
         PARSE_ERROR_UNEXPECTED_END_OF_INPUT,
+        PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS,
+        PARSE_ERROR_TYPE_SPECIFIER_MISSING,
+        PARSE_ERROR_ILLEGAL_USE_OF_RESTRICT,
     } type;
     union {
         struct {
@@ -68,10 +73,10 @@ bool parse_conditional_expression(parser_t *parser, expression_t *expr);
 bool parse_assignment_expression(parser_t *parser, expression_t *expr);
 bool parse_expression(parser_t *parser, expression_t *expr);
 
-//bool declaration(parser_t* parser, ast_node_t* node);
-//bool declaration_specifiers(parser_t* parser, ast_node_t* node);
+bool parse_declaration(parser_t *parser, ptr_vector_t *declarations);
+bool parse_declaration_specifiers(parser_t *parser, type_t *type);
 //bool init_declarator_list(parser_t* parser, ast_node_t* node);
-//bool init_declarator(parser_t* parser, ast_node_t* node);
+bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *decl);
 //bool storage_class_specifier(parser_t* parser, ast_node_t* node);
 //bool type_specifier(parser_t* parser, ast_node_t* node);
 //bool struct_or_union_specifier(parser_t* parser, ast_node_t* node);
@@ -86,9 +91,9 @@ bool parse_expression(parser_t *parser, expression_t *expr);
 //bool enumerator(parser_t* parser, ast_node_t* node);
 //bool type_qualifier(parser_t* parser, ast_node_t* node);
 //bool function_specifier(parser_t* parser, ast_node_t* node);
-//bool declarator(parser_t* parser, ast_node_t* node);
-//bool direct_declarator(parser_t* parser, ast_node_t* node);
-//bool pointer(parser_t* parser, ast_node_t* node);
+bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *decl);
+bool parse_direct_declarator(parser_t *parser, const type_t *type, declaration_t *decl);
+bool parse_pointer(parser_t *parser, const type_t *base_type, type_t **pointer_type);
 //bool type_qualifier_list(parser_t* parser, ast_node_t* node);
 //bool parameter_type_list(parser_t* parser, ast_node_t* node);
 //bool parameter_list(parser_t* parser, ast_node_t* node);

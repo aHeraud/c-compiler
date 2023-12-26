@@ -94,10 +94,14 @@ void visit_function_definition(codegen_context_t *context, const function_defini
     // TODO: declare parameters
 
     assert(function->body != NULL && function->body->type == STATEMENT_COMPOUND);
-    ptr_vector_t *statements = &function->body->compound.statements;
-    for (size_t i = 0; i < statements->size; i++) {
-        const statement_t *statement = statements->buffer[i];
-        visit_statement(context, statement);
+    ptr_vector_t *block_items = &function->body->compound.block_items;
+    for (size_t i = 0; i < block_items->size; i++) {
+        const block_item_t *item = block_items->buffer[i];
+        if (item->type == BLOCK_ITEM_DECLARATION) {
+            assert(false && "Declaration codegen not yet implemented");
+        } else {
+            visit_statement(context, item->statement);
+        }
     }
 
     // Implicit return statement
@@ -120,9 +124,14 @@ void visit_statement(codegen_context_t *context, const statement_t *statement) {
             break;
         case STATEMENT_COMPOUND:
             enter_scope(context);
-            for (size_t i = 0; i < statement->compound.statements.size; i++) {
-                const statement_t *stmt = statement->compound.statements.buffer[i];
-                visit_statement(context, stmt);
+
+            for (size_t i = 0; i < statement->compound.block_items.size; i++) {
+                const block_item_t *item = statement->compound.block_items.buffer[i];
+                if (item->type == BLOCK_ITEM_DECLARATION) {
+                    assert(false && "Declaration codegen not yet implemented");
+                } else {
+                    visit_statement(context, item->statement);
+                }
             }
             leave_scope(context);
             break;
