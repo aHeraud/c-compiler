@@ -12,6 +12,7 @@
 #include "util/hashtable.h"
 
 LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, const type_t *from, const type_t *to);
+LLVMValueRef get_rvalue(codegen_context_t *context, expression_result_t expr);
 
 codegen_context_t *codegen_init(const char* module_name) {
     codegen_context_t *context = malloc(sizeof(codegen_context_t));
@@ -62,6 +63,8 @@ void enter_function(codegen_context_t *context, const function_definition_t *fun
     assert(context != NULL && function != NULL);
     context->current_function = function;
 
+    // TODO: parameters
+
     LLVMTypeRef  *param_types = malloc(0);
     LLVMTypeRef return_type = llvm_type_for(&function->return_type);
     LLVMTypeRef function_type = LLVMFunctionType(return_type, param_types, 0, false);
@@ -70,6 +73,8 @@ void enter_function(codegen_context_t *context, const function_definition_t *fun
     context->llvm_current_function = function_value;
     context->llvm_current_block = LLVMAppendBasicBlock(function_value, "entry");
     context->llvm_builder = LLVMCreateBuilder();
+    context->llvm_entry_block = context->llvm_current_block;
+    context->llvm_last_alloca = NULL;
     LLVMPositionBuilderAtEnd(context->llvm_builder, context->llvm_current_block);
 }
 
@@ -79,11 +84,26 @@ void leave_function(codegen_context_t *context) {
     context->llvm_builder = NULL;
     context->llvm_current_block = NULL;
     context->current_function = NULL;
+    context->llvm_entry_block = NULL;
+    context->llvm_last_alloca = NULL;
 }
 
 symbol_t *lookup_symbol(const codegen_context_t *context, const char *name) {
-    // TODO: symbol lookup
+    const scope_t *scope = context->current_scope;
+    while (scope != NULL) {
+        symbol_t *symbol = NULL;
+        if (hash_table_lookup(&scope->symbols, name, (void**) &symbol)) {
+            return symbol;
+        }
+        scope = scope->parent;
+    }
     return NULL;
+}
+
+void declare_symbol(codegen_context_t *context, symbol_t *symbol) {
+    assert(context != NULL && symbol != NULL);
+    bool inserted = hash_table_insert(&context->current_scope->symbols, symbol->identifier->value, (void*) symbol);
+    assert(inserted);
 }
 
 void visit_function_definition(codegen_context_t *context, const function_definition_t *function) {
@@ -98,7 +118,7 @@ void visit_function_definition(codegen_context_t *context, const function_defini
     for (size_t i = 0; i < block_items->size; i++) {
         const block_item_t *item = block_items->buffer[i];
         if (item->type == BLOCK_ITEM_DECLARATION) {
-            assert(false && "Declaration codegen not yet implemented");
+            visit_declaration(context, item->declaration);
         } else {
             visit_statement(context, item->statement);
         }
@@ -108,12 +128,112 @@ void visit_function_definition(codegen_context_t *context, const function_defini
     // TODO: add validation for return type, and add implicit return statement if necessary for non-void functions
     LLVMValueRef last_ins = LLVMGetLastInstruction(context->llvm_current_block);
     LLVMOpcode last_op = LLVMGetInstructionOpcode(last_ins);
+    // TODO: this only returns from the last basic block, not from all terminating basic blocks
     if (last_op != LLVMRet) {
         LLVMBuildRetVoid(context->llvm_builder);
     }
 
     leave_scope(context);
     leave_function(context);
+}
+
+void visit_declaration(codegen_context_t *context, const declaration_t *declaration) {
+    assert(context != NULL && declaration != NULL);
+
+    symbol_t *symbol = NULL;
+    if (hash_table_lookup(&context->current_scope->symbols, declaration->identifier->value, (void**)&symbol)) {
+        source_position_t position = declaration->identifier->position;
+        source_position_t prev_position = symbol->identifier->position;
+        fprintf(stderr, "%s:%d:%d: error: redeclaration of '%s'\n",
+                position.path, position.line, position.column, declaration->identifier->value);
+        fprintf(stderr, "%s:%d:%d: note: previous declaration of '%s' was here\n",
+                prev_position.path, prev_position.line, prev_position.column, declaration->identifier->value);
+        exit(1);
+    }
+
+    symbol = malloc(sizeof(symbol_t));
+    if (lookup_symbol(context, declaration->identifier->value) != NULL) {
+        // This shadows a symbol in an enclosing scope.
+        // TODO: generate a unique name
+    }
+
+    LLVMTypeRef llvm_type = llvm_type_for(declaration->type);
+    LLVMValueRef var;
+
+    LLVMValueRef value = NULL;
+
+    if (declaration->initializer != NULL) {
+        expression_result_t initializer = visit_expression(context, declaration->initializer);
+        if (initializer.is_lvalue) {
+            initializer.llvm_value = get_rvalue(context, initializer);
+        }
+
+        // TODO: Implement the rules from 6.7.9 Initialization/6.5.16.1 Simple assignment in the C standard:
+        //       https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
+        if (types_equal(declaration->type, initializer.type)) {
+            // Valid initializer, no type conversion required.
+            value = initializer.llvm_value;
+        } else if (is_arithmetic_type(declaration->type) && is_arithmetic_type(initializer.type)) {
+            // Arithmetic type conversion
+            value = convert_to_type(context, initializer.llvm_value, initializer.type, declaration->type);
+        } else if (is_pointer_type(declaration->type) && is_pointer_type(initializer.type)) {
+            // Pointer type conversion
+            // TODO: validate that the pointer types are compatible (warning)
+            // Is this a no-op in LLVM? Do we need to modify the pointer type?
+            value = initializer.llvm_value;
+        } else {
+            // TODO: struct, union, array, enum initializers
+            // The type of the initializer does not match the type of the variable.
+            source_position_t position = declaration->identifier->position;
+            fprintf(stderr, "%s:%d:%d: error: invalid initializer type\n",
+                    position.path, position.line, position.column);
+            exit(1);
+        }
+    }
+
+    if (context->current_function != NULL) {
+        // This is a local (stack allocated) variable.
+        // TODO: unique name when shadowing global variable or variable in enclosing scope
+
+        // The alloca instructions need to be at the beginning of the first basic block of the function (the 'entry' block).
+        // We need to temporarily move the builder to the entry block to insert the alloca instruction.
+        if (context->llvm_last_alloca == NULL) {
+            // Position the builder at the beginning of the entry block.
+            LLVMValueRef first = LLVMGetFirstInstruction(context->llvm_entry_block);
+            if (first != NULL) {
+                LLVMPositionBuilderBefore(context->llvm_builder, first);
+            } else {
+                LLVMPositionBuilderAtEnd(context->llvm_builder, context->llvm_entry_block);
+            }
+        } else {
+            // Position the builder after the last alloca instruction.
+            LLVMPositionBuilder(context->llvm_builder, context->llvm_entry_block, context->llvm_last_alloca);
+        }
+        var = LLVMBuildAlloca(context->llvm_builder, llvm_type, declaration->identifier->value);
+        // Reset the builder to the end of the current block.
+        LLVMPositionBuilderAtEnd(context->llvm_builder, context->llvm_current_block);
+
+        if (value != NULL) {
+            LLVMBuildStore(context->llvm_builder, value, var);
+        }
+    } else {
+        // This is a global variable.
+        // TODO: support uninitialized static global variables (that are initialized in another translation unit)
+        // TODO: initialize global variables with no initializer?
+        // TODO: global initializers must be constant expressions
+        var = LLVMAddGlobal(context->llvm_module, llvm_type, declaration->identifier->value);
+        if (value != NULL) {
+            LLVMSetInitializer(var, value);
+        }
+    }
+
+    *symbol = (symbol_t) {
+        .kind = SYMBOL_LOCAL_VARIABLE,
+        .identifier = declaration->identifier,
+        .llvm_type = llvm_type,
+        .llvm_value = var,
+    };
+    declare_symbol(context, symbol);
 }
 
 void visit_statement(codegen_context_t *context, const statement_t *statement) {
@@ -142,6 +262,9 @@ void visit_statement(codegen_context_t *context, const statement_t *statement) {
             const expression_t *expr = statement->return_.expression;
             if (expr != NULL) {
                 expression_result_t value = visit_expression(context, expr);
+                if (value.is_lvalue) {
+                    value.llvm_value = get_rvalue(context, value);
+                }
                 // TODO: validate return type, convert if necessary
                 LLVMBuildRet(context->llvm_builder, value.llvm_value);
             } else {
@@ -211,6 +334,15 @@ expression_result_t visit_arithmetic_binary_expression(codegen_context_t *contex
     expression_result_t left = visit_expression(context, expression->binary.left);
     expression_result_t right = visit_expression(context, expression->binary.right);
 
+    if (left.is_lvalue) {
+        left.llvm_value = get_rvalue(context, left);
+        left.is_lvalue = false;
+    }
+    if (right.is_lvalue) {
+        right.llvm_value = get_rvalue(context, right);
+        right.is_lvalue = false;
+    }
+
     // Validate the types of the left and right operands.
     if (expression->binary.arithmetic_operator == BINARY_ARITHMETIC_MODULO) {
         // The arguments to the modulo operator must be integers.
@@ -240,6 +372,7 @@ expression_result_t visit_arithmetic_binary_expression(codegen_context_t *contex
                 .type = common_type,
                 .llvm_value = convert_to_type(context, left.llvm_value, left.type, common_type),
                 .llvm_type = llvm_type_for(common_type),
+                .is_lvalue = false,
         };
     }
     if (!types_equal(right.type, common_type)) {
@@ -247,6 +380,7 @@ expression_result_t visit_arithmetic_binary_expression(codegen_context_t *contex
                 .type = common_type,
                 .llvm_value = convert_to_type(context, right.llvm_value, right.type, common_type),
                 .llvm_type = llvm_type_for(common_type),
+                .is_lvalue = false,
         };
     }
 
@@ -300,6 +434,7 @@ expression_result_t visit_arithmetic_binary_expression(codegen_context_t *contex
             .type = left.type,
             .llvm_value = result,
             .llvm_type = left.llvm_type,
+            .is_lvalue = false,
     };
 }
 
@@ -309,6 +444,15 @@ expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, 
 
     expression_result_t left = visit_expression(context, expression->binary.left);
     expression_result_t right = visit_expression(context, expression->binary.right);
+
+    if (left.is_lvalue) {
+        left.llvm_value = get_rvalue(context, left);
+        left.is_lvalue = false;
+    }
+    if (right.is_lvalue) {
+        right.llvm_value = get_rvalue(context, right);
+        right.is_lvalue = false;
+    }
 
     // Validate operand types: for bitwise operators, the operands must be integers.
     if (left.type->kind != TYPE_INTEGER || right.type->kind != TYPE_INTEGER) {
@@ -369,6 +513,7 @@ expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, 
             .type = left.type,
             .llvm_value = result,
             .llvm_type = left.llvm_type,
+            .is_lvalue = false,
     };
 }
 
@@ -393,6 +538,16 @@ expression_result_t visit_comparison_binary_expression(codegen_context_t *contex
 
     expression_result_t left = visit_expression(context, expression->binary.left);
     expression_result_t right = visit_expression(context, expression->binary.right);
+
+    if (left.is_lvalue) {
+        left.llvm_value = get_rvalue(context, left);
+        left.is_lvalue = false;
+    }
+    if (right.is_lvalue) {
+        right.llvm_value = get_rvalue(context, right);
+        right.is_lvalue = false;
+    }
+
     assert(left.type->kind == TYPE_INTEGER && right.type->kind == TYPE_INTEGER); // TODO: handle other types
     assert(left.type->integer.size == right.type->integer.size); // TODO: implicit type conversion
 
@@ -439,6 +594,7 @@ expression_result_t visit_comparison_binary_expression(codegen_context_t *contex
             .type = left.type, // TODO: boolean type
             .llvm_value = result,
             .llvm_type = LLVMTypeOf(result),
+            .is_lvalue = false,
     };
 }
 
@@ -462,6 +618,12 @@ expression_result_t visit_ternary_expression(codegen_context_t *context, const e
     LLVMBasicBlockRef merge_block = LLVMAppendBasicBlock(context->llvm_current_function, "ternary-merge");
 
     expression_result_t condition = visit_expression(context, expression->ternary.condition);
+    if (condition.is_lvalue) {
+        condition.llvm_value = get_rvalue(context, condition);
+        condition.is_lvalue = false;
+    }
+
+    // TODO: validate that the condition is a scalar type (integer, float, pointer), and convert if necessary
     LLVMValueRef boolean_condition = LLVMBuildICmp(context->llvm_builder, LLVMIntNE, condition.llvm_value, LLVMConstInt(condition.llvm_type, 0, false), "cmptmp");
     LLVMBuildCondBr(context->llvm_builder, boolean_condition, true_block, false_block);
 
@@ -491,6 +653,7 @@ expression_result_t visit_ternary_expression(codegen_context_t *context, const e
             .type = type,
             .llvm_value = phi,
             .llvm_type = llvm_type,
+            .is_lvalue = false,
     };
 }
 
@@ -506,9 +669,12 @@ expression_result_t visit_primary_expression(codegen_context_t *context, const e
                 exit(1);
             }
 
-            // TODO: return symbol reference
-            assert(false && "Symbol references not yet implemented");
-            break;
+            return (expression_result_t) {
+                .type = symbol->type,
+                .llvm_value = symbol->llvm_value,
+                .llvm_type = symbol->llvm_type,
+                .is_lvalue = symbol->kind == SYMBOL_LOCAL_VARIABLE || symbol->kind == SYMBOL_GLOBAL_VARIABLE,
+            };
         }
         case PE_CONSTANT: {
             return visit_constant(context, expr);
@@ -537,6 +703,7 @@ expression_result_t visit_constant(codegen_context_t *context, const expression_
                     .type = &INT,
                     .llvm_value = LLVMConstInt(llvm_type, value, false),
                     .llvm_type = llvm_type,
+                    .is_lvalue = false,
             };
         }
         case TK_INTEGER_CONSTANT: {
@@ -553,6 +720,7 @@ expression_result_t visit_constant(codegen_context_t *context, const expression_
                     .type = type,
                     .llvm_value = LLVMConstInt(llvm_type, value, false),
                     .llvm_type = llvm_type,
+                    .is_lvalue = false,
             };
         }
         case TK_FLOATING_CONSTANT: {
@@ -565,6 +733,7 @@ expression_result_t visit_constant(codegen_context_t *context, const expression_
                     .type = type,
                     .llvm_value = LLVMConstReal(llvm_type, value),
                     .llvm_type = llvm_type,
+                    .is_lvalue = false,
             };
         }
         default:
@@ -606,6 +775,8 @@ LLVMTypeRef llvm_type_for(const type_t *type) {
                 case FLOAT_TYPE_LONG_DOUBLE:
                     return LLVMFP128Type();
             }
+        case TYPE_POINTER:
+            return LLVMPointerType(llvm_type_for(type->pointer.base), 0);
     }
 }
 
@@ -652,5 +823,14 @@ LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, con
         }
     } else {
         assert(false && "Invalid type conversion");
+    }
+}
+
+LLVMValueRef get_rvalue(codegen_context_t *context, expression_result_t expr) {
+    // TODO: what if the expression is a pointer?
+    if (expr.is_lvalue) {
+        return LLVMBuildLoad2(context->llvm_builder, expr.llvm_type, expr.llvm_value, "loadtmp");
+    } else {
+        return expr.llvm_value;
     }
 }

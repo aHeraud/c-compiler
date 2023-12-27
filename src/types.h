@@ -83,6 +83,7 @@ bool is_long_double_type(const type_t *type);
 bool is_double_type(const type_t *type);
 bool is_arithmetic_type(const type_t *type);
 bool is_scalar_type(const type_t *type);
+bool is_pointer_type(const type_t *type);
 
 /**
  * Compare two C types for equality.

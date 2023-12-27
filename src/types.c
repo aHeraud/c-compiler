@@ -35,8 +35,12 @@ bool is_arithmetic_type(const type_t *type) {
     return is_integer_type(type) || is_floating_type(type);
 }
 
+bool is_pointer_type(const type_t *type) {
+    return type->kind == TYPE_POINTER;
+}
+
 bool is_scalar_type(const type_t *type) {
-    return is_arithmetic_type(type) || type->kind == TYPE_POINTER;
+    return is_arithmetic_type(type) || is_pointer_type(type);
 }
 
 bool types_equal(const type_t *a, const type_t *b) {
