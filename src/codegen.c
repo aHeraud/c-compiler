@@ -130,7 +130,15 @@ void visit_function_definition(codegen_context_t *context, const function_defini
     LLVMOpcode last_op = LLVMGetInstructionOpcode(last_ins);
     // TODO: this only returns from the last basic block, not from all terminating basic blocks
     if (last_op != LLVMRet) {
-        LLVMBuildRetVoid(context->llvm_builder);
+        if (function->return_type.kind == TYPE_VOID) {
+            LLVMBuildRetVoid(context->llvm_builder);
+        } else {
+            // TODO: return value for struct/union types
+            // Will return 0 for integer types, 0.0 for floating point types, and null for pointer types.
+            LLVMValueRef val = LLVMConstInt(llvm_type_for(&INT), 0, false);
+            val = convert_to_type(context, val, &INT, &function->return_type);
+            LLVMBuildRet(context->llvm_builder, val);
+        }
     }
 
     leave_scope(context);

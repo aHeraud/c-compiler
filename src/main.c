@@ -5,7 +5,6 @@
 #include "util/vectors.h"
 #include "lexer.h"
 #include "parser.h"
-#include "util/ast-printer.h"
 #include "codegen.h"
 
 // TODO: Set based on current platform
@@ -15,12 +14,6 @@ char* DEFAULT_SYSTEM_INCLUDE_DIRECTORIES[2] = {
 };
 
 struct Options {
-    /**
-     * --ast
-     * Print the AST to stdout.
-    */
-    bool print_ast;
-
     /**
      * -I<dir>, --include-directory <dir>, --include-directory=<dir>
      * Add <dir> to the user include search path.
@@ -33,21 +26,24 @@ struct Options {
      */
      string_vector_t additional_system_include_directories;
 
-    string_vector_t input_files;
+     /**
+      * Write output to file (default: <input>.ll)
+      */
+     const char* output_file;
+
+     string_vector_t input_files;
 };
 
 int main(int argc, char** argv) {
     struct Options options = {
-            .print_ast = false,
             .additional_include_directories = {NULL, 0, 0},
             .additional_system_include_directories = {NULL, 0, 0},
+            .output_file = NULL,
             .input_files = {NULL, 0, 0},
     };
 
     for (int argi = 1; argi < argc; argi++) {
-        if (strcmp(argv[argi], "--ast") == 0) {
-            options.print_ast = true;
-        } else if (strncmp(argv[argi], "-I", 2) == 0) {
+        if (strncmp(argv[argi], "-I", 2) == 0) {
             size_t len = strlen(argv[argi]);
             if (len > 2) {
                 append_ptr((void ***) &options.additional_include_directories.buffer,
@@ -109,16 +105,25 @@ int main(int argc, char** argv) {
                 fprintf(stderr, "Missing argument for --system-include-directory\n");
                 return 1;
             }
+        } else if (strncmp(argv[argi], "-o", 2) == 0) {
+            if (argv[argi][2] == '=') {
+                options.output_file = argv[argi] + 3;
+            } else if (argi + 1 < argc) {
+                options.output_file = argv[++argi];
+            } else {
+                fprintf(stderr, "Missing argument for -o\n");
+                return 1;
+            }
         } else if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
             printf("Usage: %s [options] <input files>\n", argv[0]);
             printf("Options:\n");
-            printf("  --ast           Print the generated AST\n");
             printf("  -I<dir>, --include-directory=<dir>\n");
             printf("                  Add directory to the include search path. These will be\n");
             printf("                  searched in the order they are given before the system\n");
             printf("                  include directories.\n");
             printf("  -isystem<dir>, --system-include-directory=<dir>\n");
             printf("                  Add directory to the system include search path.\n");
+            printf("  -o <file>       Write output to <file>\n");
             return 0;
         } else {
             append_ptr((void***) &options.input_files.buffer,
@@ -130,6 +135,11 @@ int main(int argc, char** argv) {
 
     if (options.input_files.size == 0) {
         fprintf(stderr, "No input files\n");
+        return 1;
+    }
+
+    if (options.output_file != NULL && options.input_files.size > 1) {
+        fprintf(stderr, "Cannot specify output file (-o) when generating multiple output files\n");
         return 1;
     }
 
@@ -184,17 +194,19 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        if (options.print_ast) {
-            //format_statement(stdout, translation_unit); // fix me
-        }
-
-        size_t file_name_len = strlen(input_file_name);
-        char* output_file_name = malloc(file_name_len + 3 + 1);
-        strcpy(output_file_name, input_file_name);
-        if (file_name_len > 2 && strcmp(input_file_name + file_name_len - 2, ".c") == 0) {
-            strcpy(output_file_name + file_name_len - 2, ".ll");
+        const char *output_file_name;
+        if (options.output_file == NULL) {
+            size_t file_name_len = strlen(input_file_name);
+            char *tmp = malloc(file_name_len + 3 + 1);
+            strcpy(tmp, input_file_name);
+            if (file_name_len > 2 && strcmp(input_file_name + file_name_len - 2, ".c") == 0) {
+                strcpy(tmp + file_name_len - 2, ".ll");
+            } else {
+                strcpy(tmp + file_name_len, ".ll");
+            }
+            output_file_name = tmp;
         } else {
-            strcpy(output_file_name + file_name_len, ".ll");
+            output_file_name = options.output_file;
         }
 
         codegen_context_t *codegen_ctx = codegen_init(input_file_name);

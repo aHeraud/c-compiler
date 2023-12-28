@@ -21,8 +21,8 @@ void test_simple_program() {
     char* input = "/*multi line\ncomment*/\nint main() {\n    return 0; // comment\n}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     token_t token;
-    CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_COMMENT);
-    CU_ASSERT_STRING_EQUAL_FATAL(token.value, "/*multi line\ncomment*/");
+    //CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_COMMENT);
+    //CU_ASSERT_STRING_EQUAL_FATAL(token.value, "/*multi line\ncomment*/");
     //CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_NEWLINE);
     CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_INT);
     CU_ASSERT_STRING_EQUAL_FATAL(token.value, "int");
@@ -36,8 +36,8 @@ void test_simple_program() {
     CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_INTEGER_CONSTANT);
     CU_ASSERT_STRING_EQUAL_FATAL(token.value, "0");
     CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_SEMICOLON);
-    CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_COMMENT);
-    CU_ASSERT_STRING_EQUAL_FATAL(token.value, "// comment");
+    //CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_COMMENT);
+    //CU_ASSERT_STRING_EQUAL_FATAL(token.value, "// comment");
     //CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_NEWLINE);
     CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_RBRACE);
     CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_EOF);

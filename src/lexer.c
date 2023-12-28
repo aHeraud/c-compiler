@@ -200,7 +200,9 @@ token_t lscan(struct Lexer* lexer) {
         case '/':
             if (c1 == '/' || c1 == '*') {
                 // comment
-                comment(lexer, &token);
+                token_t comment_token;
+                comment(lexer, &comment_token); // TODO: can we just discard this?
+                return lscan(lexer); // scan next token
             } else {
                 ladvance(lexer);
                 token.kind = TK_SLASH;
