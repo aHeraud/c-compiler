@@ -682,6 +682,157 @@ void test_parse_compound_declaration() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[2], &expected_c))
 }
 
+void test_parse_function_declaration_no_parameters() {
+    lexer_global_context_t context = create_context();
+    char *input = "int foo();";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    parameter_type_list_t parameters = (parameter_type_list_t) {
+        .variadic = false,
+        .parameters = NULL,
+        .length = 0,
+    };
+
+    type_t type = {
+            .kind = TYPE_FUNCTION,
+            .function = {
+                    .return_type = &INT,
+                    .parameter_list = &parameters,
+            },
+    };
+
+    declaration_t expected = (declaration_t) {
+            .type = &type,
+            .identifier = token(TK_IDENTIFIER, "foo"),
+            .initializer = NULL,
+    };
+
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+}
+
+void test_parse_function_declaration_returning_pointer() {
+    lexer_global_context_t context = create_context();
+    char *input = "int *foo();";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    parameter_type_list_t parameters = (parameter_type_list_t) {
+            .variadic = false,
+            .parameters = NULL,
+            .length = 0,
+    };
+
+    type_t type = {
+            .kind = TYPE_FUNCTION,
+            .function = {
+                    .return_type = pointer_to(&INT),
+                    .parameter_list = &parameters,
+            },
+    };
+
+    declaration_t expected = (declaration_t) {
+            .type = &type,
+            .identifier = token(TK_IDENTIFIER, "foo"),
+            .initializer = NULL,
+    };
+
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+}
+
+void test_parse_function_prototype_void() {
+    lexer_global_context_t context = create_context();
+    char *input = "float foo(void);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    parameter_declaration_t parameters[] = {
+            (parameter_declaration_t) {
+                    .type = &VOID,
+                    .identifier = NULL,
+            },
+    };
+
+    parameter_type_list_t parameter_list = (parameter_type_list_t) {
+            .variadic = false,
+            .parameters = parameters,
+            .length = 1,
+    };
+
+    type_t type = {
+            .kind = TYPE_FUNCTION,
+            .function = {
+                    .return_type = &VOID,
+                    .parameter_list = &parameter_list,
+            },
+    };
+
+    declaration_t expected = (declaration_t) {
+            .type = &type,
+            .identifier = token(TK_IDENTIFIER, "foo"),
+            .initializer = NULL,
+    };
+
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+}
+
+void test_parse_function_prototype() {
+    lexer_global_context_t context = create_context();
+    char *input = "double pow(float a, short b);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    parameter_declaration_t parameters[] = {
+            (parameter_declaration_t) {
+                    .type = &FLOAT,
+                    .identifier = token(TK_IDENTIFIER, "a"),
+            },
+            (parameter_declaration_t) {
+                    .type = &SHORT,
+                    .identifier = token(TK_IDENTIFIER, "b"),
+            },
+    };
+
+    parameter_type_list_t parameter_list = (parameter_type_list_t) {
+            .variadic = false,
+            .parameters = parameters,
+            .length = sizeof(parameters) / sizeof(parameter_declaration_t),
+    };
+
+    type_t type = {
+            .kind = TYPE_FUNCTION,
+            .function = {
+                    .return_type = &DOUBLE,
+                    .parameter_list = &parameter_list,
+            },
+    };
+
+    declaration_t expected = (declaration_t) {
+            .type = &type,
+            .identifier = token(TK_IDENTIFIER, "pow"),
+            .initializer = NULL,
+    };
+
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+
+}
+
 void test_parse_empty_statement() {
     lexer_global_context_t context = create_context();
     char *input = ";";
@@ -841,6 +992,10 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "simple declaration", test_parse_simple_declaration) ||
         NULL == CU_add_test(pSuite, "pointer declaration", test_parse_pointer_declaration) ||
         NULL == CU_add_test(pSuite, "compound declaration", test_parse_compound_declaration) ||
+        NULL == CU_add_test(pSuite, "function declaration (no parameters)", test_parse_function_declaration_no_parameters) ||
+        NULL == CU_add_test(pSuite, "function declaration (returning pointer)", test_parse_function_declaration_returning_pointer) ||
+        NULL == CU_add_test(pSuite, "function prototype (void)", test_parse_function_prototype_void) ||
+        NULL == CU_add_test(pSuite, "function prototype", test_parse_function_prototype) ||
         NULL == CU_add_test(pSuite, "empty statement", test_parse_empty_statement) ||
         NULL == CU_add_test(pSuite, "expression statement", test_parse_expression_statement) ||
         NULL == CU_add_test(pSuite, "compound statement", test_parse_compound_statement) ||

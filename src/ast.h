@@ -156,14 +156,6 @@ typedef enum StorageClassSpecifier {
     STORAGE_CLASS_SPECIFIER_REGISTER,
 } storage_class_specifier_t;
 
-static const char* storage_class_specifier_names[] = {
-        [STORAGE_CLASS_SPECIFIER_TYPEDEF] = "typedef",
-        [STORAGE_CLASS_SPECIFIER_EXTERN] = "extern",
-        [STORAGE_CLASS_SPECIFIER_STATIC] = "static",
-        [STORAGE_CLASS_SPECIFIER_AUTO] = "auto",
-        [STORAGE_CLASS_SPECIFIER_REGISTER] = "register",
-};
-
 // TODO: struct, union, enum, typedef
 typedef enum TypeSpecifier {
     TYPE_SPECIFIER_VOID,
@@ -183,43 +175,15 @@ typedef enum TypeSpecifier {
     TYPE_SPECIFIER_TYPEDEF_NAME,
 } type_specifier_t;
 
-static const char* type_specifier_names[] = {
-        [TYPE_SPECIFIER_VOID] = "void",
-        [TYPE_SPECIFIER_CHAR] = "char",
-        [TYPE_SPECIFIER_SHORT] = "short",
-        [TYPE_SPECIFIER_INT] = "int",
-        [TYPE_SPECIFIER_LONG] = "long",
-        [TYPE_SPECIFIER_FLOAT] = "float",
-        [TYPE_SPECIFIER_DOUBLE] = "double",
-        [TYPE_SPECIFIER_SIGNED] = "signed",
-        [TYPE_SPECIFIER_UNSIGNED] = "unsigned",
-        [TYPE_SPECIFIER_BOOL] = "bool",
-        [TYPE_SPECIFIER_COMPLEX] = "complex",
-        [TYPE_SPECIFIER_STRUCT] = "struct",
-        [TYPE_SPECIFIER_UNION] = "union",
-        [TYPE_SPECIFIER_ENUM] = "enum",
-        [TYPE_SPECIFIER_TYPEDEF_NAME] = "typedef",
-};
-
 typedef enum TypeQualifier {
     TYPE_QUALIFIER_CONST,
     TYPE_QUALIFIER_RESTRICT,
     TYPE_QUALIFIER_VOLATILE,
 } type_qualifier_t;
 
-static const char* type_qualifier_names[] = {
-        [TYPE_QUALIFIER_CONST] = "const",
-        [TYPE_QUALIFIER_RESTRICT] = "restrict",
-        [TYPE_QUALIFIER_VOLATILE] = "volatile",
-};
-
 typedef enum FunctionSpecifier {
     FUNCTION_SPECIFIER_INLINE,
 } function_specifier_t;
-
-static const char* function_specifier_names[] = {
-        [FUNCTION_SPECIFIER_INLINE] = "inline",
-};
 
 typedef struct Statement {
     enum {

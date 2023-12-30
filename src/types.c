@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <string.h>
 #include "types.h"
 
 
@@ -43,9 +44,15 @@ bool is_scalar_type(const type_t *type) {
     return is_arithmetic_type(type) || is_pointer_type(type);
 }
 
+bool parameter_declaration_eq(const parameter_declaration_t *left, const parameter_declaration_t *right);
+
 bool types_equal(const type_t *a, const type_t *b) {
     if (a == b) {
         return true;
+    }
+
+    if (a == NULL || b == NULL) {
+        return false;
     }
 
     if (a->kind != b->kind) {
@@ -61,7 +68,37 @@ bool types_equal(const type_t *a, const type_t *b) {
             return a->floating == b->floating;
         case TYPE_POINTER:
             return types_equal(a->pointer.base, b->pointer.base);
+        case TYPE_FUNCTION:
+            if (!types_equal(a->function.return_type, b->function.return_type)) {
+                return false;
+            }
+            if (a->function.parameter_list->length != b->function.parameter_list->length) {
+                return false;
+            }
+            for (size_t i = 0; i < a->function.parameter_list->length; i++) {
+                if (parameter_declaration_eq(&a->function.parameter_list->parameters[i],
+                                             &b->function.parameter_list->parameters[i])) {
+                    return false;
+                }
+            }
+            return true;
     }
+}
+
+bool parameter_declaration_eq(const parameter_declaration_t *left, const parameter_declaration_t *right) {
+    if (left == NULL || right == NULL) {
+        return left == right;
+    }
+
+    if (!types_equal(left->type, right->type)) {
+        return false;
+    }
+
+    if (left->identifier == NULL || right->identifier == NULL) {
+        return left->identifier == right->identifier;
+    }
+
+    return strcmp(left->identifier->value, right->identifier->value) == 0;
 }
 
 const type_t *get_common_type(const type_t *a, const type_t *b) {

@@ -600,7 +600,8 @@ bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *de
 bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *decl) {
     type_t *type = NULL;
     if (accept(parser, TK_STAR, NULL)) {
-        const type_t *base = malloc(sizeof(type_t));
+        type_t *base = malloc(sizeof(type_t));
+        *base = base_type;
         parse_pointer(parser, base, &type);
     } else {
         type = malloc(sizeof(type_t));
@@ -664,7 +665,7 @@ bool parse_pointer(parser_t *parser, const type_t *base_type, type_t **pointer_t
 }
 
 // Parses a direct declarator.
-// Currently only parses identifiers.
+// Currently only parses identifiers and (some) function declarations.
 // TODO: Implement the rest of the grammar.
 bool parse_direct_declarator(parser_t *parser, const type_t *type, declaration_t *decl) {
     token_t *token;
@@ -672,11 +673,116 @@ bool parse_direct_declarator(parser_t *parser, const type_t *type, declaration_t
         return false;
     }
 
+    if (accept(parser, TK_LPAREN, NULL)) {
+        // This is a function declaration.
+        // TODO: accept deprecated K&R style function declaration with identifier list?
+        //       E.g. int foo(a,b,c) int a; int b; int c; { ... }
+        parameter_type_list_t *parameters = malloc(sizeof(parameter_type_list_t));
+        if (!parse_parameter_type_list(parser, parameters)) {
+            free(parameters);
+            return false;
+        }
+        type_t *function_type = malloc(sizeof(type_t));
+        *function_type = (type_t) {
+                .kind = TYPE_FUNCTION,
+                .function = {
+                        .return_type = type,
+                        .parameter_list = parameters,
+                },
+        };
+        *decl = (declaration_t) {
+                .type = function_type,
+                .identifier = token,
+                .initializer = NULL,
+        };
+        return true;
+    }
+
     *decl = (declaration_t) {
         .type = type,
         .identifier = token,
         .initializer = NULL,
     };
+    return true;
+}
+
+/**
+ * Parses a parameter type list.
+ *
+ * <parameter-type-list> ::= <parameter-list>
+ *                         | <parameter-list> ',' '...'
+ *
+ * <parameter-list> ::= <parameter-declaration>
+ *                    | <parameter-list> ',' <parameter-declaration>
+ *
+ * <parameter-declaration> ::= <declaration-specifiers> <declarator>
+ *                           | <declaration-specifiers> <abstract-declarator>?
+ */
+bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *parameters) {
+    // At this point we've already parsed the opening parenthesis.
+    // We need to parse the parameter list (which may be empty) and then the closing parenthesis.
+    ptr_vector_t vec = {.buffer = NULL, .size = 0, .capacity = 0};
+    *parameters = (parameter_type_list_t) {
+            .parameters = NULL,
+            .length = 0,
+            .variadic = false,
+    };
+
+    if (accept(parser, TK_RPAREN, NULL)) {
+        // This is an empty parameter list.
+        return true;
+    }
+
+    do {
+        if (accept(parser, TK_ELLIPSIS, NULL)) {
+            // This is a variadic function declaration.
+            parameters->variadic = true;
+            break;
+        } else if (next_token(parser)->kind == TK_EOF) {
+            // This is the end of the parameter list.
+            break;
+        }
+
+        type_t *type = malloc(sizeof(type_t));
+        if (!parse_declaration_specifiers(parser, type)) {
+            free(type);
+            return false;
+        }
+
+        declaration_t decl;
+        parameter_declaration_t *param = malloc(sizeof(parameter_declaration_t));
+        *param = (parameter_declaration_t) {
+                .type = type,
+                .identifier = NULL,
+        };
+
+        // TODO: parse abstract declarators
+        if (next_token(parser)->kind == TK_COMMA) {
+            // This is a parameter declaration without an identifier.
+            append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
+        } else if (next_token(parser)->kind == TK_RPAREN) {
+            // This is a parameter declaration with an identifier, and it's the last parameter.
+            append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
+            break;
+        }
+
+        if (!parse_declarator(parser, *type, &decl)) {
+            // TODO: error recovery?
+            free(type);
+            return false;
+        }
+
+        append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
+    } while (accept(parser, TK_COMMA, NULL));
+
+    if (!require(parser, TK_RPAREN, NULL, "parameter-type-list", NULL)) {
+        return false;
+    }
+
+    shrink_ptr_vector((void ***) &vec.buffer, &vec.size, &vec.capacity);
+    parameters->parameters = (parameter_declaration_t*) vec.buffer;
+    parameters->length = vec.size;
+
     return true;
 }
 

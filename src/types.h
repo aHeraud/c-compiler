@@ -3,12 +3,16 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "lexer.h"
+
+typedef struct Type type_t;
 
 typedef enum TypeKind {
     TYPE_VOID,
     TYPE_INTEGER,
     TYPE_FLOATING,
     TYPE_POINTER,
+    TYPE_FUNCTION,
 } type_kind_t;
 
 
@@ -52,10 +56,20 @@ typedef enum StorageClass {
     STORAGE_CLASS_STATIC,
 } storage_class_t;
 
+typedef struct ParameterDeclaration {
+    const type_t *type;
+    const token_t *identifier;
+} parameter_declaration_t;
+
+typedef struct ParameterTypeList {
+    bool variadic;
+    parameter_declaration_t *parameters;
+    size_t length;
+} parameter_type_list_t;
+
 /**
  * Represents a C type.
  */
-typedef struct Type type_t;
 typedef struct Type {
     type_kind_t kind;
     storage_class_t storage_class;
@@ -73,6 +87,10 @@ typedef struct Type {
             bool is_volatile;
             bool is_restrict;
         } pointer;
+        struct {
+            const type_t *return_type;
+            const parameter_type_list_t *parameter_list;
+        } function;
     };
 } type_t;
 
