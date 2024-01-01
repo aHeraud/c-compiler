@@ -52,7 +52,7 @@ typedef struct Parser {
 } parser_t;
 
 parser_t pinit(lexer_t lexer);
-bool parse(parser_t* parser, function_definition_t *node);
+bool parse(parser_t* parser, translation_unit_t *translation_unit);
 
 // Expressions
 bool parse_primary_expression(parser_t *parser, expression_t *expr);
@@ -110,7 +110,7 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
 
 bool parse_statement(parser_t *parser, statement_t *statement);
 //bool labeled_statement(parser_t* parser, ast_node_t* node);
-bool parse_compound_statement(parser_t* parser, statement_t *statement, token_t *open);
+bool parse_compound_statement(parser_t* parser, statement_t *statement, const token_t *open);
 //bool block_item_list(parser_t* parser, ast_node_t* node);
 //bool block_item(parser_t* parser, ast_node_t* node);
 bool parse_expression_statement(parser_t *parser, statement_t *statement);
@@ -119,9 +119,8 @@ bool parse_expression_statement(parser_t *parser, statement_t *statement);
 //bool jump_statement(parser_t* parser, ast_node_t* node);
 bool parse_return_statement(parser_t* parser, statement_t *statement, token_t *keyword);
 
-//bool translation_unit(parser_t* parser, ast_node_t* node);
-//bool external_declaration(parser_t* parser, ast_node_t* node);
-bool parse_function_definition(parser_t* parser, function_definition_t *fn);
+bool parse_external_declaration(parser_t *parser, external_declaration_t *external_declaration);
+bool parse_function_definition(parser_t *parser, declaration_t *declarator, const token_t* body_start, function_definition_t *fn);
 //bool declaration_list(parser_t* parser, ast_node_t* node);
 
 #endif //C_COMPILER_PARSER_H

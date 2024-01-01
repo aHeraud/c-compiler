@@ -76,8 +76,8 @@ bool types_equal(const type_t *a, const type_t *b) {
                 return false;
             }
             for (size_t i = 0; i < a->function.parameter_list->length; i++) {
-                if (parameter_declaration_eq(&a->function.parameter_list->parameters[i],
-                                             &b->function.parameter_list->parameters[i])) {
+                if (!parameter_declaration_eq(a->function.parameter_list->parameters[i],
+                                             b->function.parameter_list->parameters[i])) {
                     return false;
                 }
             }

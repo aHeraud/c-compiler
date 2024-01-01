@@ -63,7 +63,7 @@ typedef struct ParameterDeclaration {
 
 typedef struct ParameterTypeList {
     bool variadic;
-    parameter_declaration_t *parameters;
+    parameter_declaration_t **parameters;
     size_t length;
 } parameter_type_list_t;
 

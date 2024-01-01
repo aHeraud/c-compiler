@@ -106,6 +106,10 @@ void declare_symbol(codegen_context_t *context, symbol_t *symbol) {
     assert(inserted);
 }
 
+void visit_translation_unit(codegen_context_t *context, const translation_unit_t *translation_unit) {
+    assert(false); // TODO
+}
+
 void visit_function_definition(codegen_context_t *context, const function_definition_t *function) {
     assert(context != NULL && function != NULL);
     enter_function(context, function);
@@ -130,7 +134,7 @@ void visit_function_definition(codegen_context_t *context, const function_defini
     LLVMOpcode last_op = LLVMGetInstructionOpcode(last_ins);
     // TODO: this only returns from the last basic block, not from all terminating basic blocks
     if (last_op != LLVMRet) {
-        if (function->return_type.kind == TYPE_VOID) {
+        if (function->return_type->kind == TYPE_VOID) {
             LLVMBuildRetVoid(context->llvm_builder);
         } else {
             // TODO: return value for struct/union types

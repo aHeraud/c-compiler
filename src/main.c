@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
         );
         parser_t parser = pinit(lexer);
 
-        function_definition_t *translation_unit = malloc(sizeof(function_definition_t));
+        translation_unit_t *translation_unit = malloc(sizeof(translation_unit_t));
         if (!parse(&parser, translation_unit)) {
             fprintf(stderr, "Failed to parse file: %s\n",input_file_name);
             for (size_t e = 0; e < parser.errors.size; e++) {

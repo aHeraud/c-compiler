@@ -139,12 +139,6 @@ parser_t pinit(lexer_t lexer) {
 
 void recover(parser_t *parser);
 
-bool parse(parser_t* parser, function_definition_t *node) {
-    bool success = parse_function_definition(parser, node);
-    // for now we just ignore any unparsed tokens
-    return success && parser->errors.size == 0;
-}
-
 parse_checkpoint_t checkpoint(const parser_t* parser) {
     return (parse_checkpoint_t) {
         .token_index = parser->next_token_index,
@@ -237,6 +231,23 @@ void recover(parser_t *parser) {
     }
 }
 
+bool parse(parser_t* parser, translation_unit_t *translation_unit) {
+    ptr_vector_t external_declarations = {.buffer = NULL, .size = 0, .capacity = 0};
+
+    while (next_token(parser)->kind != TK_EOF) {
+        external_declaration_t *external_declaration = malloc(sizeof(external_declaration_t));
+        if (!parse_external_declaration(parser, external_declaration)) {
+            free(external_declaration);
+            // discard tokens until we get to the next semicolon
+            recover(parser);
+        } else {
+            append_ptr(&external_declarations.buffer, &external_declarations.size, &external_declarations.capacity, external_declaration);
+        }
+    }
+
+    return parser->errors.size == 0;
+}
+
 // Declarations
 
 /**
@@ -246,15 +257,24 @@ void recover(parser_t *parser) {
  *
  * <init-declarator-list> ::= <init-declarator> | <init-declarator-list> ',' <init-declarator>
  *
+ * If this is called while parsing an external declaration, we have already parsed the declaration specifiers and the
+ * first declarator of the init-declarator-list, so we pass them in as parameters.
+ *
  * @param parser Parser instance
+ * @param first_declarator First declarator of the init-declarator-list which has already been parsed,
+ *                         or NULL if this is not an external declaration.
  * @param declarations Vector to append the parsed declarations to
- * @return
+ * @return true if the declaration was parsed successfully, false otherwise
  */
-bool parse_declaration(parser_t *parser, ptr_vector_t *declarations) {
+bool _parse_declaration(parser_t *parser, declaration_t *first_declarator, ptr_vector_t *declarations) {
     type_t type;
-    parse_declaration_specifiers(parser, &type); // always succeeds
+    if (first_declarator == NULL) {
+        parse_declaration_specifiers(parser, &type); // always succeeds
+    } else {
+        type = *first_declarator->type;
+    }
 
-    if (accept(parser, TK_SEMICOLON, NULL)) {
+    if (first_declarator == NULL && accept(parser, TK_SEMICOLON, NULL)) {
         // This is a declaration without an identifier, e.g. "int;", or "typedef float;".
         // This is legal, but useless.
         // TODO: warning for empty declaration
@@ -262,6 +282,26 @@ bool parse_declaration(parser_t *parser, ptr_vector_t *declarations) {
     }
 
     // If we didn't find a semicolon, then we need to attempt to parse an <init-declarator-list>.
+    if (first_declarator != NULL) {
+        // We've already parsed a declarator.
+        // Check if we still need to parse an initializer, then parse the rest of the init-declarator-list.
+        if (accept(parser, TK_ASSIGN, NULL)) {
+            expression_t *expr = malloc(sizeof(expression_t));
+            if (!parse_assignment_expression(parser, expr)) {
+                // TODO: error recovery
+                free(expr);
+                return false;
+            }
+            first_declarator->initializer = expr;
+        }
+        append_ptr(&declarations->buffer, &declarations->size, &declarations->capacity, first_declarator);
+
+        if (!accept(parser, TK_COMMA, NULL)) {
+            return require(parser, TK_SEMICOLON, NULL, "declaration", NULL);
+        }
+    }
+
+    // Parse the init-declarator-list (or the remaining part of it).
     do {
         declaration_t *decl = malloc(sizeof(declaration_t));
         if (!parse_init_declarator(parser, type, decl)) {
@@ -272,6 +312,10 @@ bool parse_declaration(parser_t *parser, ptr_vector_t *declarations) {
     } while (accept(parser, TK_COMMA, NULL));
 
     return require(parser, TK_SEMICOLON, NULL, "declaration", NULL);
+}
+
+bool parse_declaration(parser_t *parser, ptr_vector_t *declarations) {
+    return _parse_declaration(parser, NULL, declarations);
 }
 
 parse_error_t illegal_declaration_specifiers(token_t *token, token_t *prev) {
@@ -749,7 +793,6 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
             return false;
         }
 
-        declaration_t decl;
         parameter_declaration_t *param = malloc(sizeof(parameter_declaration_t));
         *param = (parameter_declaration_t) {
                 .type = type,
@@ -766,10 +809,18 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
             break;
         }
 
+        declaration_t decl;
         if (!parse_declarator(parser, *type, &decl)) {
             // TODO: error recovery?
             free(type);
             return false;
+        }
+
+        param->type = decl.type;
+        param->identifier = decl.identifier;
+        if (decl.initializer != NULL) {
+            // Initializers aren't allowed here
+            // TODO: report an error and continue parsing
         }
 
         append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
@@ -780,7 +831,7 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
     }
 
     shrink_ptr_vector((void ***) &vec.buffer, &vec.size, &vec.capacity);
-    parameters->parameters = (parameter_declaration_t*) vec.buffer;
+    parameters->parameters = (parameter_declaration_t**) vec.buffer;
     parameters->length = vec.size;
 
     return true;
@@ -808,7 +859,7 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
     }
 }
 
-bool parse_compound_statement(parser_t *parser, statement_t *stmt, token_t* open_brace) {
+bool parse_compound_statement(parser_t *parser, statement_t *stmt, const token_t* open_brace) {
     ptr_vector_t block_items = {.buffer = NULL, .size = 0, .capacity = 0};
 
     token_t *last_token;
@@ -856,12 +907,12 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt, token_t* open
 
     if (last_token->kind == TK_RBRACE) {
         *stmt = (statement_t) {
-                .type = STATEMENT_COMPOUND,
-                .compound = {
-                        .open_brace = open_brace,
-                        .block_items = block_items,
-                },
-                .terminator = last_token,
+            .type = STATEMENT_COMPOUND,
+            .compound = {
+                .open_brace = open_brace,
+                .block_items = block_items,
+            },
+            .terminator = last_token,
         };
         return true;
     } else {
@@ -1975,53 +2026,59 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
 
 // External definitions
 
-// temporary function to parse a function definition, will be replaced by a more general external definition parser later
-bool parse_function_definition(parser_t *parser, function_definition_t *fn) {
-    type_t return_type;
-    if (accept(parser, TK_INT, NULL)) {
-        return_type = (type_t) {
-            .kind = TYPE_INTEGER,
-            .integer = {
-                .is_signed = true,
-                .size = INTEGER_TYPE_INT
-            },
-        };
-    } else if (accept(parser, TK_VOID, NULL)) {
-        return_type = (type_t) {
-            .kind = TYPE_VOID,
+/**
+ * Parses an external declaration (declaration or a function definition).
+ *
+ * <external-declaration> ::= <function-definition>
+ *                          | <declaration>
+ *
+ * @param parser
+ * @param external_declaration
+ * @return
+ */
+bool parse_external_declaration(parser_t *parser, external_declaration_t *external_declaration) {
+    type_t type;
+    if (!parse_declaration_specifiers(parser, &type)) {
+        return false;
+    }
+
+    declaration_t *decl = malloc(sizeof(declaration_t));
+    if (!parse_declarator(parser, type, decl)) {
+        return false;
+    }
+
+    token_t *body_start = NULL;
+    if (decl->type->kind == TYPE_FUNCTION && accept(parser, TK_LBRACE, &body_start)) {
+        // This is a function definition
+        function_definition_t *fn = malloc(sizeof(function_definition_t));
+        if (!parse_function_definition(parser, decl, body_start, fn)) {
+            free(fn);
+            return false;
+        }
+        *external_declaration = (external_declaration_t) {
+            .type = EXTERNAL_DECLARATION_FUNCTION_DEFINITION,
+            .function_definition = fn,
         };
     } else {
-        append_parse_error(&parser->errors, (parse_error_t) {
-            .token = next_token(parser),
-            .previous_token = parser->next_token_index > 0 ? parser->tokens.buffer[parser->next_token_index - 1] : NULL,
-            .production_name = "function-definition",
-            .previous_production_name = NULL,
-            .type = PARSE_ERROR_EXPECTED_TOKEN,
-            .expected_token = {
-                .expected_count = 2,
-                .expected = {TK_INT, TK_VOID},
+        // This is a declaration
+        ptr_vector_t declarations = {.size = 0, .capacity = 0, .buffer = NULL};
+        if (!_parse_declaration(parser, decl, &declarations)) {
+            return false;
+        }
+
+        *external_declaration = (external_declaration_t) {
+            .type = EXTERNAL_DECLARATION_DECLARATION,
+            .declaration = {
+                .declarations = (declaration_t**) declarations.buffer,
+                .length = declarations.size,
             },
-        });
+        };
     }
 
-    token_t *identifier;
-    if (!require(parser, TK_IDENTIFIER, &identifier, "function-definition", "declaration-specifiers")) {
-        return false;
-    }
+    return true;
+}
 
-    if (!require(parser, TK_LPAREN, NULL, "function-definition", "declarator")) {
-        return false;
-    }
-
-    if (!require(parser, TK_RPAREN, NULL, "function-definition", "declarator")) {
-        return false;
-    }
-
-    token_t *body_start;
-    if (!require(parser, TK_LBRACE, &body_start, "function-definition", "compound-statement")) {
-        return false;
-    }
-
+bool parse_function_definition(parser_t *parser, declaration_t *declarator, const token_t *body_start, function_definition_t *fn) {
     statement_t *body = malloc(sizeof(statement_t));
     if (!parse_compound_statement(parser, body, body_start)) {
         free(body);
@@ -2029,8 +2086,9 @@ bool parse_function_definition(parser_t *parser, function_definition_t *fn) {
     }
 
     *fn = (function_definition_t) {
-        .identifier = identifier,
-        .return_type = return_type,
+        .identifier = declarator->identifier,
+        .return_type = declarator->type->function.return_type,
+        .parameter_list = declarator->type->function.parameter_list,
         .body = body,
     };
 

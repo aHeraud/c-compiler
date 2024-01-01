@@ -208,8 +208,9 @@ typedef struct Statement {
 
 // Very primitive definition for now, add support for parameters, etc. later
 typedef struct FunctionDefinition {
-    type_t return_type;
-    token_t *identifier;
+    const type_t *return_type;
+    const token_t *identifier;
+    parameter_type_list_t *parameter_list;
     statement_t *body;
 } function_definition_t;
 
@@ -229,5 +230,24 @@ typedef struct BlockItem {
         declaration_t *declaration;
     };
 } block_item_t;
+
+typedef struct ExternalDeclaration {
+    enum {
+        EXTERNAL_DECLARATION_FUNCTION_DEFINITION,
+        EXTERNAL_DECLARATION_DECLARATION,
+    } type;
+    union {
+        function_definition_t *function_definition;
+        struct {
+            declaration_t **declarations;
+            size_t length;
+        } declaration;
+    };
+} external_declaration_t;
+
+typedef struct TranslationUnit {
+    external_declaration_t **external_declarations;
+    size_t length;
+} translation_unit_t;
 
 #endif //C_COMPILER_AST_H

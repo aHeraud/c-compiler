@@ -66,6 +66,7 @@ typedef struct ExpressionResult {
     bool is_lvalue;
 } expression_result_t;
 
+void visit_translation_unit(codegen_context_t *context, const translation_unit_t *translation_unit);
 void visit_function_definition(codegen_context_t *context, const function_definition_t *function);
 void visit_declaration(codegen_context_t *context, const declaration_t *declaration);
 void visit_statement(codegen_context_t *context, const statement_t *statement);

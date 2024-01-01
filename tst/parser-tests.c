@@ -84,6 +84,19 @@ token_t *token(token_kind_t kind, const char* value) {
     return token;
 }
 
+statement_t *return_statement(expression_t *expression) {
+    statement_t *stmt = malloc(sizeof(statement_t));
+    *stmt = (statement_t) {
+            .type = STATEMENT_RETURN,
+            .return_ = {
+                    .keyword = token(TK_RETURN, "return"),
+                    .expression = expression,
+            },
+            .terminator = token(TK_SEMICOLON, ";"),
+    };
+    return stmt;
+}
+
 statement_t *expression_statement(expression_t *expression) {
     statement_t *stmt = malloc(sizeof(statement_t));
     *stmt = (statement_t) {
@@ -758,12 +771,12 @@ void test_parse_function_prototype_void() {
     CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
-    parameter_declaration_t parameters[] = {
-            (parameter_declaration_t) {
-                    .type = &VOID,
-                    .identifier = NULL,
-            },
+    parameter_declaration_t **parameters = malloc(sizeof(void*));
+    parameter_declaration_t void_param = {
+            .type = &VOID,
+            .identifier = NULL,
     };
+    parameters[0] = &void_param;
 
     parameter_type_list_t parameter_list = (parameter_type_list_t) {
             .variadic = false,
@@ -774,7 +787,7 @@ void test_parse_function_prototype_void() {
     type_t type = {
             .kind = TYPE_FUNCTION,
             .function = {
-                    .return_type = &VOID,
+                    .return_type = &FLOAT,
                     .parameter_list = &parameter_list,
             },
     };
@@ -798,21 +811,22 @@ void test_parse_function_prototype() {
     CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
-    parameter_declaration_t parameters[] = {
-            (parameter_declaration_t) {
-                    .type = &FLOAT,
-                    .identifier = token(TK_IDENTIFIER, "a"),
-            },
-            (parameter_declaration_t) {
-                    .type = &SHORT,
-                    .identifier = token(TK_IDENTIFIER, "b"),
-            },
+    parameter_declaration_t **parameters = malloc(sizeof(void*) * 2);
+    parameters[0] = malloc(sizeof(parameter_declaration_t));
+    *parameters[0] = (parameter_declaration_t) {
+        .type = &FLOAT,
+        .identifier = token(TK_IDENTIFIER, "a"),
+    };
+    parameters[1] = malloc(sizeof(parameter_declaration_t));
+    *parameters[1] = (parameter_declaration_t) {
+        .type = &SHORT,
+        .identifier = token(TK_IDENTIFIER, "b"),
     };
 
     parameter_type_list_t parameter_list = (parameter_type_list_t) {
             .variadic = false,
             .parameters = parameters,
-            .length = sizeof(parameters) / sizeof(parameter_declaration_t),
+            .length = 2,
     };
 
     type_t type = {
@@ -830,7 +844,6 @@ void test_parse_function_prototype() {
     };
 
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
-
 }
 
 void test_parse_empty_statement() {
@@ -963,6 +976,77 @@ void test_parse_return_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
+void parse_external_declaration_declaration() {
+    lexer_global_context_t context = create_context();
+    char *input = "int a = 4;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    external_declaration_t node;
+    CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &node))
+    declaration_t expected = (declaration_t ) {
+        .type = &INT,
+        .identifier = token(TK_IDENTIFIER, "a"),
+        .initializer = integer_constant("4"),
+    };
+
+    CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_DECLARATION)
+    CU_ASSERT_EQUAL_FATAL(node.declaration.length, 1)
+    CU_ASSERT_TRUE_FATAL(declaration_eq(node.declaration.declarations[0], &expected))
+}
+
+void parse_external_declaration_function_definition() {
+    lexer_global_context_t context = create_context();
+    char *input = "float square(float val) { return val * val; }";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    external_declaration_t node;
+    CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &node))
+    CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_FUNCTION_DEFINITION)
+
+    CU_ASSERT_TRUE_FATAL(types_equal(node.function_definition->return_type, &FLOAT))
+    CU_ASSERT_TRUE_FATAL(strcmp(node.function_definition->identifier->value, "square") == 0)
+
+    // validate the argument list
+    CU_ASSERT_EQUAL_FATAL(node.function_definition->parameter_list->length, 1)
+    CU_ASSERT_TRUE_FATAL(types_equal(node.function_definition->parameter_list->parameters[0]->type, &FLOAT))
+    CU_ASSERT_TRUE_FATAL(strcmp(node.function_definition->parameter_list->parameters[0]->identifier->value, "val") == 0)
+
+    // validate the body is parsed correctly
+    statement_t *ret = {
+        return_statement(binary((binary_expression_t) {
+            .type = BINARY_ARITHMETIC,
+            .arithmetic_operator = BINARY_ARITHMETIC_MULTIPLY,
+            .left = make_identifier("val"),
+            .right = make_identifier("val"),
+            .operator = token(TK_STAR, "*"),
+        })),
+    };
+    block_item_t *block_item = block_item_s(ret);
+    statement_t body = {
+        .type = STATEMENT_COMPOUND,
+        .terminator = token(TK_RBRACE, "}"),
+        .compound = {
+            .block_items = {
+                .size = 1,
+                .capacity = 1,
+                .buffer = (void**) &block_item,
+            },
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(node.function_definition->body, &body))
+}
+
+void test_parse_program() {
+    lexer_global_context_t context = create_context();
+    char* input = "float square(float);\nfloat square(float val) {\n\treturn val * val;\n}\nint main() {\n\treturn square(2.0);\n}";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    translation_unit_t program;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
+}
+
 int parser_tests_init_suite() {
     CU_pSuite pSuite = CU_add_suite("parser", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "primary expression - identifier", test_parse_primary_expression_ident) ||
@@ -1000,7 +1084,10 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "expression statement", test_parse_expression_statement) ||
         NULL == CU_add_test(pSuite, "compound statement", test_parse_compound_statement) ||
         NULL == CU_add_test(pSuite, "compound statement with parse error", test_parse_compound_statement_with_error) ||
-        NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement)
+        NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement) ||
+        NULL == CU_add_test(pSuite, "external declaration - declaration", parse_external_declaration_declaration) ||
+        NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||
+        NULL == CU_add_test(pSuite, "program", test_parse_program)
     ) {
         CU_cleanup_registry();
         return CU_get_error();
