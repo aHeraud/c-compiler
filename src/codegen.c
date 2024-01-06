@@ -13,6 +13,7 @@
 
 LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, const type_t *from, const type_t *to);
 LLVMValueRef get_rvalue(codegen_context_t *context, expression_result_t expr);
+LLVMTypeRef get_function_type(const type_t *function);
 
 codegen_context_t *codegen_init(const char* module_name) {
     codegen_context_t *context = malloc(sizeof(codegen_context_t));
@@ -63,13 +64,31 @@ void enter_function(codegen_context_t *context, const function_definition_t *fun
     assert(context != NULL && function != NULL);
     context->current_function = function;
 
-    // TODO: parameters
+    // If this function was previously declared, we need to retrieve the LLVM function value.
+    // Otherwise, we declare it.
+    LLVMValueRef function_value = LLVMGetNamedFunction(context->llvm_module, function->identifier->value);
+    if (function_value == NULL) {
+        // Parameters
+        bool has_varargs = function->parameter_list->variadic;
+        size_t param_count = function->parameter_list->length;
+        LLVMTypeRef *param_types = malloc(sizeof(LLVMTypeRef) * param_count);
+        for (int i = 0; i < param_count; i += 1) {
+            param_types[i] = llvm_type_for(function->parameter_list->parameters[i]->type);
+        }
 
-    LLVMTypeRef  *param_types = malloc(0);
-    LLVMTypeRef return_type = llvm_type_for(&function->return_type);
-    LLVMTypeRef function_type = LLVMFunctionType(return_type, param_types, 0, false);
-    LLVMValueRef function_value = LLVMAddFunction(context->llvm_module, function->identifier->value, function_type);
-    LLVMSetLinkage(function_value, LLVMExternalLinkage); // TODO: determine linkage for functions
+        LLVMTypeRef return_type = llvm_type_for(function->return_type);
+        LLVMTypeRef function_type = LLVMFunctionType(return_type, param_types, param_count, has_varargs);
+        function_value = LLVMAddFunction(context->llvm_module, function->identifier->value, function_type);
+
+        // For now everything has internal linkage other than main.
+        // TODO: determine linkage for functions
+        if (strcmp(function->identifier->value, "main") == 0) {
+            LLVMSetLinkage(function_value, LLVMExternalLinkage);
+        } else {
+            LLVMSetLinkage(function_value, LLVMInternalLinkage);
+        }
+    }
+
     context->llvm_current_function = function_value;
     context->llvm_current_block = LLVMAppendBasicBlock(function_value, "entry");
     context->llvm_builder = LLVMCreateBuilder();
@@ -107,15 +126,52 @@ void declare_symbol(codegen_context_t *context, symbol_t *symbol) {
 }
 
 void visit_translation_unit(codegen_context_t *context, const translation_unit_t *translation_unit) {
-    assert(false); // TODO
+    assert(context != NULL && translation_unit != NULL);
+    // A translation unit is composed of a sequence of external declarations.
+    for (int i = 0; i < translation_unit->length; i += 1) {
+        external_declaration_t *item = translation_unit->external_declarations[i];
+        // Each external declaration is either a function definition or a declaration.
+        switch (item->type) {
+            case EXTERNAL_DECLARATION_DECLARATION:
+                // A single declaration may declare multiple variables.
+                for (int j = 0; j < item->declaration.length; j += 1) {
+                    visit_declaration(context, item->declaration.declarations[j]);
+                }
+                break;
+            case EXTERNAL_DECLARATION_FUNCTION_DEFINITION:
+                visit_function_definition(context, item->function_definition);
+                break;
+        }
+    }
 }
 
 void visit_function_definition(codegen_context_t *context, const function_definition_t *function) {
     assert(context != NULL && function != NULL);
+
+    // TODO: Before calling enter_function, verify that the function was not previously declared with a different
+    //       signature. If it was, emit an error.
+    //       Alternatively, that logic can be moved to enter_function.
     enter_function(context, function);
     enter_scope(context);
 
-    // TODO: declare parameters
+    // Declare the function parameters as local variables.
+    for (int i = 0; i < function->parameter_list->length; i += 1) {
+        parameter_declaration_t *param = function->parameter_list->parameters[i];
+        LLVMValueRef param_value = LLVMGetParam(context->llvm_current_function, i);
+        // TODO: handle identifiers that shadow other identifiers in enclosing scopes
+        LLVMValueRef param_alloca = LLVMBuildAlloca(context->llvm_builder, llvm_type_for(param->type), param->identifier->value);
+        LLVMBuildStore(context->llvm_builder, param_value, param_alloca);
+        symbol_t *symbol = malloc(sizeof(symbol_t));
+        *symbol = (symbol_t) {
+            .kind = SYMBOL_LOCAL_VARIABLE,
+            .type = param->type,
+            .identifier = param->identifier,
+            .unique_name = param->identifier->value,
+            .llvm_type = llvm_type_for(param->type),
+            .llvm_value = param_alloca,
+        };
+        declare_symbol(context, symbol);
+    }
 
     assert(function->body != NULL && function->body->type == STATEMENT_COMPOUND);
     ptr_vector_t *block_items = &function->body->compound.block_items;
@@ -140,7 +196,7 @@ void visit_function_definition(codegen_context_t *context, const function_defini
             // TODO: return value for struct/union types
             // Will return 0 for integer types, 0.0 for floating point types, and null for pointer types.
             LLVMValueRef val = LLVMConstInt(llvm_type_for(&INT), 0, false);
-            val = convert_to_type(context, val, &INT, &function->return_type);
+            val = convert_to_type(context, val, &INT, function->return_type);
             LLVMBuildRet(context->llvm_builder, val);
         }
     }
@@ -171,8 +227,23 @@ void visit_declaration(codegen_context_t *context, const declaration_t *declarat
 
     LLVMTypeRef llvm_type = llvm_type_for(declaration->type);
     LLVMValueRef var;
-
     LLVMValueRef value = NULL;
+
+    if (declaration->type->kind == TYPE_FUNCTION) {
+        LLVMTypeRef function_type = get_function_type(declaration->type);
+        LLVMValueRef function_value = LLVMAddFunction(context->llvm_module, declaration->identifier->value, function_type);
+        symbol = malloc(sizeof(symbol_t));
+        *symbol = (symbol_t) {
+            .kind = SYMBOL_FUNCTION,
+            .type = declaration->type,
+            .identifier = declaration->identifier,
+            .unique_name = declaration->identifier->value,
+            .llvm_type = function_type,
+            .llvm_value = function_value,
+        };
+        declare_symbol(context, symbol);
+        return;
+    }
 
     if (declaration->initializer != NULL) {
         expression_result_t initializer = visit_expression(context, declaration->initializer);
@@ -242,6 +313,7 @@ void visit_declaration(codegen_context_t *context, const declaration_t *declarat
     *symbol = (symbol_t) {
         .kind = SYMBOL_LOCAL_VARIABLE,
         .identifier = declaration->identifier,
+        .type = declaration->type,
         .llvm_type = llvm_type,
         .llvm_value = var,
     };
@@ -287,6 +359,14 @@ void visit_statement(codegen_context_t *context, const statement_t *statement) {
     }
 }
 
+expression_result_t visit_arithmetic_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_comma_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_logical_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_comparison_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_assignment_binary_expression(codegen_context_t *context, const expression_t *expression);
+expression_result_t visit_call_expression(codegen_context_t *context, const expression_t *expression);
+
 expression_result_t visit_expression(codegen_context_t *context, const expression_t *expression) {
     assert(context != NULL && expression != NULL);
     switch (expression->type) {
@@ -299,8 +379,7 @@ expression_result_t visit_expression(codegen_context_t *context, const expressio
         case EXPRESSION_TERNARY:
             return visit_ternary_expression(context, expression);
         case EXPRESSION_CALL:
-            assert(false && "Function call codegen not yet implemented");
-            break;
+            return visit_call_expression(context, expression);
         case EXPRESSION_ARRAY_SUBSCRIPT:
             assert(false && "Array subscript codegen not yet implemented");
             break;
@@ -309,13 +388,6 @@ expression_result_t visit_expression(codegen_context_t *context, const expressio
             break;
     }
 }
-
-expression_result_t visit_arithmetic_binary_expression(codegen_context_t *context, const expression_t *expression);
-expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, const expression_t *expression);
-expression_result_t visit_comma_binary_expression(codegen_context_t *context, const expression_t *expression);
-expression_result_t visit_logical_binary_expression(codegen_context_t *context, const expression_t *expression);
-expression_result_t visit_comparison_binary_expression(codegen_context_t *context, const expression_t *expression);
-expression_result_t visit_assignment_binary_expression(codegen_context_t *context, const expression_t *expression);
 
 expression_result_t visit_binary_expression(codegen_context_t *context, const expression_t *expression) {
     assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY);
@@ -642,12 +714,20 @@ expression_result_t visit_ternary_expression(codegen_context_t *context, const e
     LLVMPositionBuilderAtEnd(context->llvm_builder, true_block);
     context->llvm_current_block = true_block;
     expression_result_t true_expression = visit_expression(context, expression->ternary.true_expression);
+    if (true_expression.is_lvalue) {
+        true_expression.llvm_value = get_rvalue(context, true_expression);
+        true_expression.is_lvalue = false;
+    }
     LLVMBuildBr(context->llvm_builder, merge_block);
     LLVMBasicBlockRef true_block_end = context->llvm_current_block;
 
     LLVMPositionBuilderAtEnd(context->llvm_builder, false_block);
     context->llvm_current_block = false_block;
     expression_result_t false_expression = visit_expression(context, expression->ternary.false_expression);
+    if (false_expression.is_lvalue) {
+        false_expression.llvm_value = get_rvalue(context, false_expression);
+        false_expression.is_lvalue = false;
+    }
     LLVMBuildBr(context->llvm_builder, merge_block);
     LLVMBasicBlockRef false_block_end = context->llvm_current_block;
 
@@ -753,6 +833,102 @@ expression_result_t visit_constant(codegen_context_t *context, const expression_
     }
 }
 
+expression_result_t visit_call_expression(codegen_context_t *context, const expression_t *expression) {
+    assert(context != NULL && expression != NULL && expression->type == EXPRESSION_CALL);
+
+    expression_result_t function = visit_expression(context, expression->call.callee);
+    if (function.is_lvalue) {
+        function.llvm_value = get_rvalue(context, function);
+        function.is_lvalue = false;
+    }
+
+    // The callee must be one of:
+    // - a function
+    // - a function pointer
+    if (function.type->kind != TYPE_FUNCTION && (function.type->kind != TYPE_POINTER && function.type->pointer.base->kind != TYPE_FUNCTION)) {
+        source_position_t position = expression->call.callee->primary.token.position;
+        fprintf(stderr, "%s:%d:%d: error: called object is not a function or function pointer\n",
+                position.path, position.line, position.column);
+        exit(1);
+    }
+
+    LLVMValueRef callee = function.llvm_value;
+    if (function.type->kind == TYPE_POINTER) {
+        // The function is a function pointer, so we need to load the function pointer.
+        callee = LLVMBuildLoad2(context->llvm_builder, function.llvm_type, function.llvm_value, "loadtmp");
+    }
+
+    // Get function type
+    LLVMTypeRef fn_type = get_function_type(function.type);
+
+    // Validate the parameters of the function match the provided arguments.
+    // TODO: improve error message
+    // TODO: codegen for variadic functions
+    // TODO: codegen for functions with no parameters
+    const parameter_type_list_t *parameters = function.type->function.parameter_list;
+    if (parameters->variadic) {
+        if (parameters->length > expression->call.arguments.size) {
+            source_position_t position = expression->call.callee->primary.token.position;
+            fprintf(stderr, "%s:%d:%d: error: too few arguments to function call\n",
+                    position.path, position.line, position.column);
+            exit(1);
+        }
+    } else {
+        if (parameters->length != expression->call.arguments.size) {
+            source_position_t position = expression->call.callee->primary.token.position;
+            fprintf(stderr, "%s:%d:%d: error: incorrect number of arguments to function call\n",
+                    position.path, position.line, position.column);
+            exit(1);
+        }
+    }
+
+    // Set up the arguments
+    size_t num_args = expression->call.arguments.size;
+    LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * expression->call.arguments.size);
+    for (int i = 0; i < num_args; i += 1) {
+        const parameter_declaration_t *parameter = parameters->parameters[i];
+        const expression_t *argument = expression->call.arguments.buffer[i];
+        expression_result_t resolved_argument = visit_expression(context, argument);
+        if (resolved_argument.is_lvalue) {
+            resolved_argument.llvm_value = get_rvalue(context, resolved_argument);
+            resolved_argument.is_lvalue = false;
+        }
+
+        // Validate the type of the argument matches the type of the parameter (after implicit type conversion).
+        if (is_arithmetic_type(parameter->type) && is_arithmetic_type(resolved_argument.type)) {
+            // The argument and parameter are both arithmetic types, so we perform integer promotions and implicit
+            // conversions as necessary.
+            const type_t *common_type = get_common_type(parameter->type, resolved_argument.type);
+            if (!types_equal(resolved_argument.type, common_type)) {
+                resolved_argument = (expression_result_t) {
+                        .type = common_type,
+                        .llvm_value = convert_to_type(context, resolved_argument.llvm_value, resolved_argument.type, common_type),
+                        .llvm_type = llvm_type_for(common_type),
+                        .is_lvalue = false,
+                };
+            }
+        } else if (is_pointer_type(parameter->type) && is_pointer_type(resolved_argument.type)) {
+            // The argument and parameter are both pointer types, so no real conversion is necessary.
+            // TODO: validate that the pointer types are compatible (warning)?
+        } else {
+            // TODO: struct, union, array, enum arguments
+            fprintf(stderr, "%s:%d: struct, union, array, and enum arguments not implemented\n",
+                    __FILE__, __LINE__);
+            exit(1);
+        }
+
+        args[i] = resolved_argument.llvm_value;
+    }
+
+    LLVMValueRef result = LLVMBuildCall2(context->llvm_builder, fn_type, callee, args, num_args, "calltmp");
+    return (expression_result_t) {
+        .type = function.type->function.return_type,
+        .llvm_value = result,
+        .llvm_type = llvm_type_for(function.type->function.return_type),
+        .is_lvalue = false,
+    };
+}
+
 /**
  * Returns the LLVM type corresponding to the given C type.
  * @param type C type
@@ -789,6 +965,8 @@ LLVMTypeRef llvm_type_for(const type_t *type) {
             }
         case TYPE_POINTER:
             return LLVMPointerType(llvm_type_for(type->pointer.base), 0);
+        case TYPE_FUNCTION:
+            return get_function_type(type);
     }
 }
 
@@ -839,10 +1017,27 @@ LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, con
 }
 
 LLVMValueRef get_rvalue(codegen_context_t *context, expression_result_t expr) {
+    assert(context != NULL && expr.llvm_value != NULL);
+
     // TODO: what if the expression is a pointer?
     if (expr.is_lvalue) {
         return LLVMBuildLoad2(context->llvm_builder, expr.llvm_type, expr.llvm_value, "loadtmp");
     } else {
         return expr.llvm_value;
     }
+}
+
+LLVMTypeRef get_function_type(const type_t *function) {
+    assert(function != NULL && function->kind == TYPE_FUNCTION);
+
+    // Parameters
+    bool has_varargs = function->function.parameter_list->variadic;
+    size_t param_count = function->function.parameter_list->length;
+    LLVMTypeRef *param_types = malloc(sizeof(LLVMTypeRef) * param_count);
+    for (int i = 0; i < param_count; i += 1) {
+        param_types[i] = llvm_type_for(function->function.parameter_list->parameters[i]->type);
+    }
+
+    LLVMTypeRef return_type = llvm_type_for(function->function.return_type);
+    return LLVMFunctionType(return_type, param_types, param_count, has_varargs);
 }

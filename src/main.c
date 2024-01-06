@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
         }
 
         codegen_context_t *codegen_ctx = codegen_init(input_file_name);
-        visit_function_definition(codegen_ctx, translation_unit);
+        visit_translation_unit(codegen_ctx, translation_unit);
         codegen_finalize(codegen_ctx, output_file_name);
     }
 }

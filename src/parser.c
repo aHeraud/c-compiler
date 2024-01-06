@@ -245,6 +245,11 @@ bool parse(parser_t* parser, translation_unit_t *translation_unit) {
         }
     }
 
+    *translation_unit = (translation_unit_t) {
+        .external_declarations = (external_declaration_t**) external_declarations.buffer,
+        .length = external_declarations.size,
+    };
+
     return parser->errors.size == 0;
 }
 
