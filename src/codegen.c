@@ -920,7 +920,7 @@ expression_result_t visit_call_expression(codegen_context_t *context, const expr
         args[i] = resolved_argument.llvm_value;
     }
 
-    LLVMValueRef result = LLVMBuildCall2(context->llvm_builder, fn_type, callee, args, num_args, "calltmp");
+    LLVMValueRef result = LLVMBuildCall2(context->llvm_builder, fn_type, callee, args, num_args, "");
     return (expression_result_t) {
         .type = function.type->function.return_type,
         .llvm_value = result,

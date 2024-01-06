@@ -1,6 +1,8 @@
 # Validation
 
-harness.py will run all the tests in the validation directory and sub-directories. Test are identified as files starting in 'test' and ending in '.c'.
+Each subdirectory in the validation directory contains a single validation test. To be detected, the directory name must start with at least 3 numbers (e.g. `001`). The test harness will build and run each test and report the results.
+The harness will return a non-zero exit code if any test fails.
 
 ## Test Structure
-Tests should have a main function that returns 0 on success and non-zero on failure. The harness will run the test and check the return value. If the return value is non-zero, the harness will print the test name and exit with a non-zero value.
+
+Each test contains a main function. A zero exit code from the main function indicates success, and a non-zero exit code indicates failure, unless an expected exit code is specified in a file named `exit.expected` in the test directory.

@@ -3,97 +3,90 @@ import subprocess
 import sys
 import unittest
 
-
-def build_test_program(compiler_bin: str, test_file: str, output_path: str) -> str:
-    ir_file_path = output_path + "/program.ll"
-    build_result = subprocess.run([compiler_bin, test_file, "-o", ir_file_path])
-    if build_result.returncode != 0:
-        raise Exception("Failed to build test program " + test_file)
-
-    # Currently this just emits LLVM IR, so we need to assemble and link the output into a binary we can run.
-    object_file_path = output_path + "/program.o"
-    assemble_result = subprocess.run(["llc", ir_file_path, "-filetype=obj", "-o", object_file_path])
-    if assemble_result.returncode != 0:
-        raise Exception("Failed to assemble test program " + test_file)
-
-    output_file_path = output_path + "/program"
-    link_result = subprocess.run(["clang", object_file_path, "-o", output_file_path])
-    if link_result.returncode != 0:
-        raise Exception("Failed to link test program " + test_file)
-
-    return output_file_path
-
-
-class SanityTest(unittest.TestCase):
-    def setUp(self):
-        mktemp_result = subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE)
-        if mktemp_result.returncode != 0:
-            raise Exception("Failed to create temporary directory")
-        self.tempdir = mktemp_result.stdout.decode("utf-8").strip()
-
-    def tearDown(self):
-        subprocess.run(["rm", "-rf", self.tempdir])
-
-    def testSuccess(self):
-        binary = build_test_program(compiler_path, sys.path[0] + "/sanity/should-succeed.c", self.tempdir)
-        result = subprocess.run([binary])
-        self.assertEqual(result.returncode, 0, "Program exited with non-zero exit code " + str(result.returncode))
-
-    def testFailure(self):
-        binary = build_test_program(compiler_path, sys.path[0] + "/sanity/should-fail.c", self.tempdir)
-        result = subprocess.run([binary])
-        self.assertEqual(result.returncode, 1, "Program exited unexpected exit code " + str(result.returncode))
-
-    def runTest(self):
-        self.testSuccess()
-        self.tearDown()
-        self.setUp()
-        self.testFailure()
+compiler_path = os.path.abspath(sys.path[0] + "/../bin/cc")
 
 
 class ValidationTestCase(unittest.TestCase):
-    def __init__(self, test_file: str):
+    def __init__(self, test_dir: str):
         super().__init__()
-        self.test_file = test_file
+        self.test_dir = test_dir
 
     def id(self):
-        return self.test_file
+        return self.test_dir
 
     def setUp(self):
+        # Create a temporary build directory for the test
         mktemp_result = subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE)
         if mktemp_result.returncode != 0:
             raise Exception("Failed to create temporary directory")
         self.tempdir = mktemp_result.stdout.decode("utf-8").strip()
 
     def tearDown(self):
+        # Delete the temporary build directory
         subprocess.run(["rm", "-rf", self.tempdir])
 
     def runTest(self):
-        binary = build_test_program(compiler_path, self.test_file, self.tempdir)
+        binary = self.build()
         result = subprocess.run([binary])
-        self.assertEqual(result.returncode, 0, "Program exited with non-zero exit code " + str(result.returncode))
+        expected_exit_code = self.expected_exit_code()
+        self.assertEqual(result.returncode, expected_exit_code, "Program exited with unexpected exit code " + str(result.returncode))
+
+    # Builds the test program, and returns the path to the resulting binary.
+    def build(self):
+        test_file = self.test_dir + "/main.c"
+        ir_file_path = self.tempdir + "/program.ll"
+        build_result = subprocess.run([compiler_path, test_file, "-o", ir_file_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if build_result.returncode != 0:
+            raise Exception("Failed to build test program " + test_file + "\n" + build_result.stdout.decode("utf-8"))
+
+        # Currently this just emits LLVM IR, so we need to assemble and link the output into a binary we can run.
+        object_file_path = self.tempdir + "/program.o"
+        assemble_result = subprocess.run(["llc", ir_file_path, "-filetype=obj", "-o", object_file_path])
+        if assemble_result.returncode != 0:
+            raise Exception("Failed to assemble test program " + test_file)
+
+        output_file_path = self.tempdir + "/program"
+        link_result = subprocess.run(["clang", object_file_path, "-o", output_file_path])
+        if link_result.returncode != 0:
+            raise Exception("Failed to link test program " + test_file)
+
+        return output_file_path
+
+    # Gets the expected exit code of the test program.
+    def expected_exit_code(self):
+        expected_exit_code_file = self.test_dir + "/exit.expected"
+        if not os.path.exists(expected_exit_code_file):
+            return 0
+        with open(expected_exit_code_file, "r") as f:
+            return int(f.read())
 
 
-compiler_path = sys.path[0] + "/../bin/cc"
-
-if __name__ == '__main__':
+def discover_tests():
+    # This will find all the subdirectories of the validation test root directory that start with 3 numbers (e.g. 001).
     script_directory = sys.path[0]
-    # Discover tests
-    # This will find all files in the test directory that start with "test" and end with ".c"
-    test_files = []
+    test_directories = []
     for root, dirs, files in os.walk(script_directory):
-        for file in files:
-            if file.endswith(".c") and file.startswith("test"):
-                test_files.append(os.path.join(root, file))
+        for test_dir in dirs:
+            if test_dir[0:3].isnumeric():
+                test_directories.append(os.path.join(root, test_dir))
+    test_directories.sort()
 
     # Build test suite
     suite = unittest.TestSuite()
-    suite.addTest(SanityTest())
-    for test_file in test_files:
-        suite.addTest(ValidationTestCase(test_file))
+    for test_dir in test_directories:
+        suite.addTest(ValidationTestCase(str(test_dir)))
+
+    return suite
+
+
+if __name__ == '__main__':
+    print(os.environ.values())
+
+    # Discover tests
+    test_suite = discover_tests()
 
     # Run tests
     runner = unittest.TextTestRunner()
-    result = runner.run(suite)
-    if not result.wasSuccessful():
+    tests_result = runner.run(test_suite)
+    if not tests_result.wasSuccessful():
         sys.exit(1)
