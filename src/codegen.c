@@ -14,6 +14,7 @@
 LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, const type_t *from, const type_t *to);
 LLVMValueRef get_rvalue(codegen_context_t *context, expression_result_t expr);
 LLVMTypeRef get_function_type(const type_t *function);
+LLVMValueRef as_boolean(codegen_context_t *context, expression_result_t value);
 
 codegen_context_t *codegen_init(const char* module_name) {
     codegen_context_t *context = malloc(sizeof(codegen_context_t));
@@ -320,6 +321,8 @@ void visit_declaration(codegen_context_t *context, const declaration_t *declarat
     declare_symbol(context, symbol);
 }
 
+void visit_if_statement(codegen_context_t *context, const statement_t *statement);
+
 void visit_statement(codegen_context_t *context, const statement_t *statement) {
     assert(context != NULL && statement != NULL);
 
@@ -342,6 +345,9 @@ void visit_statement(codegen_context_t *context, const statement_t *statement) {
         case STATEMENT_EXPRESSION:
             visit_expression(context, statement->expression);
             break;
+        case STATEMENT_IF:
+            visit_if_statement(context, statement);
+            break;
         case STATEMENT_RETURN: {
             const expression_t *expr = statement->return_.expression;
             if (expr != NULL) {
@@ -357,6 +363,39 @@ void visit_statement(codegen_context_t *context, const statement_t *statement) {
             break;
         }
     }
+}
+
+void visit_if_statement(codegen_context_t *context, const statement_t *statement) {
+    assert(context != NULL && statement != NULL && statement->type == STATEMENT_IF);
+    assert(statement->if_.condition != NULL && statement->if_.true_branch != NULL);
+
+    expression_result_t condition = visit_expression(context, statement->if_.condition);
+    if (condition.is_lvalue) {
+        condition.llvm_value = get_rvalue(context, condition);
+    }
+
+    LLVMBasicBlockRef true_block = LLVMAppendBasicBlock(context->llvm_current_function, "btrue");
+    LLVMBasicBlockRef false_block = LLVMAppendBasicBlock(context->llvm_current_function, "bfalse");
+    LLVMBasicBlockRef merge_block = LLVMAppendBasicBlock(context->llvm_current_function, "merge");
+
+    // Convert the condition to a boolean value, and jump to the true block if it is true, or the false block if it is false.
+    LLVMValueRef boolean_condition = convert_to_type(context, condition.llvm_value, condition.type, &BOOL);
+    LLVMBuildCondBr(context->llvm_builder, boolean_condition, true_block, false_block);
+
+    LLVMPositionBuilderAtEnd(context->llvm_builder, true_block);
+    context->llvm_current_block = true_block;
+    visit_statement(context, statement->if_.true_branch);
+    LLVMBuildBr(context->llvm_builder, merge_block);
+
+    LLVMPositionBuilderAtEnd(context->llvm_builder, false_block);
+    context->llvm_current_block = false_block;
+    if (statement->if_.false_branch != NULL) {
+        visit_statement(context, statement->if_.false_branch);
+    }
+    LLVMBuildBr(context->llvm_builder, merge_block);
+
+    context->llvm_current_block = merge_block;
+    LLVMPositionBuilderAtEnd(context->llvm_builder, merge_block);
 }
 
 expression_result_t visit_arithmetic_binary_expression(codegen_context_t *context, const expression_t *expression);
@@ -453,18 +492,20 @@ expression_result_t visit_arithmetic_binary_expression(codegen_context_t *contex
     const type_t *common_type = get_common_type(left.type, right.type);
     if (!types_equal(left.type, common_type)) {
         left = (expression_result_t) {
-                .type = common_type,
-                .llvm_value = convert_to_type(context, left.llvm_value, left.type, common_type),
-                .llvm_type = llvm_type_for(common_type),
-                .is_lvalue = false,
+            .expression = expression,
+            .type = common_type,
+            .llvm_value = convert_to_type(context, left.llvm_value, left.type, common_type),
+            .llvm_type = llvm_type_for(common_type),
+            .is_lvalue = false,
         };
     }
     if (!types_equal(right.type, common_type)) {
         right = (expression_result_t) {
-                .type = common_type,
-                .llvm_value = convert_to_type(context, right.llvm_value, right.type, common_type),
-                .llvm_type = llvm_type_for(common_type),
-                .is_lvalue = false,
+            .expression = expression,
+            .type = common_type,
+            .llvm_value = convert_to_type(context, right.llvm_value, right.type, common_type),
+            .llvm_type = llvm_type_for(common_type),
+            .is_lvalue = false,
         };
     }
 
@@ -515,10 +556,11 @@ expression_result_t visit_arithmetic_binary_expression(codegen_context_t *contex
     }
 
     return (expression_result_t) {
-            .type = left.type,
-            .llvm_value = result,
-            .llvm_type = left.llvm_type,
-            .is_lvalue = false,
+        .expression = expression,
+        .type = left.type,
+        .llvm_value = result,
+        .llvm_type = left.llvm_type,
+        .is_lvalue = false,
     };
 }
 
@@ -550,16 +592,18 @@ expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, 
     const type_t *common_type = get_common_type(left.type, right.type);
     if (!types_equal(left.type, common_type)) {
         left = (expression_result_t) {
-                .type = common_type,
-                .llvm_value = convert_to_type(context, left.llvm_value, left.type, common_type),
-                .llvm_type = llvm_type_for(common_type),
+            .expression = left.expression,
+            .type = common_type,
+            .llvm_value = convert_to_type(context, left.llvm_value, left.type, common_type),
+            .llvm_type = llvm_type_for(common_type),
         };
     }
     if (!types_equal(right.type, common_type)) {
         right = (expression_result_t) {
-                .type = common_type,
-                .llvm_value = convert_to_type(context, right.llvm_value, right.type, common_type),
-                .llvm_type = llvm_type_for(common_type),
+            .expression = right.expression,
+            .type = common_type,
+            .llvm_value = convert_to_type(context, right.llvm_value, right.type, common_type),
+            .llvm_type = llvm_type_for(common_type),
         };
     }
 
@@ -594,10 +638,11 @@ expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, 
     }
 
     return (expression_result_t) {
-            .type = left.type,
-            .llvm_value = result,
-            .llvm_type = left.llvm_type,
-            .is_lvalue = false,
+        .expression = expression,
+        .type = left.type,
+        .llvm_value = result,
+        .llvm_type = left.llvm_type,
+        .is_lvalue = false,
     };
 }
 
@@ -675,17 +720,39 @@ expression_result_t visit_comparison_binary_expression(codegen_context_t *contex
     }
 
     return (expression_result_t) {
-            .type = left.type, // TODO: boolean type
-            .llvm_value = result,
-            .llvm_type = LLVMTypeOf(result),
-            .is_lvalue = false,
+        .expression = expression,
+        .type = left.type, // TODO: boolean type
+        .llvm_value = result,
+        .llvm_type = LLVMTypeOf(result),
+        .is_lvalue = false,
     };
 }
 
 expression_result_t visit_assignment_binary_expression(codegen_context_t *context, const expression_t *expression) {
     assert(context != NULL && expression != NULL && expression->type == EXPRESSION_BINARY && expression->binary.type == BINARY_ASSIGNMENT);
     assert(expression->binary.left != NULL && expression->binary.right != NULL);
-    assert(false && "Assignment operator codegen not yet implemented");
+    assert(expression->binary.assignment_operator == BINARY_ASSIGN && "Assignment operator codegen not yet implemented");
+
+    expression_result_t left = visit_expression(context, expression->binary.left);
+    if (!left.is_lvalue) {
+        source_position_t position = expression->binary.operator->position;
+        fprintf(stderr, "%s:%d:%d: error: lvalue required as left operand of assignment\n",
+                position.path, position.line, position.column);
+        exit(1);
+    }
+    expression_result_t right = visit_expression(context, expression->binary.right);
+
+    // TODO: validate that the types are compatible, and handle implicit type conversion
+
+    LLVMValueRef assignment = LLVMBuildStore(context->llvm_builder, right.llvm_value, left.llvm_value);
+
+    return (expression_result_t) {
+        .expression = expression,
+        .llvm_value = assignment,
+        .type = left.type,
+        .llvm_type = left.llvm_type,
+        .is_lvalue = false,
+    };
 }
 
 expression_result_t visit_unary_expression(codegen_context_t *context, const expression_t *expression) {
@@ -742,10 +809,11 @@ expression_result_t visit_ternary_expression(codegen_context_t *context, const e
     LLVMAddIncoming(phi, &false_expression.llvm_value, &false_block_end, 1);
 
     return (expression_result_t) {
-            .type = type,
-            .llvm_value = phi,
-            .llvm_type = llvm_type,
-            .is_lvalue = false,
+        .expression = expression,
+        .type = type,
+        .llvm_value = phi,
+        .llvm_type = llvm_type,
+        .is_lvalue = false,
     };
 }
 
@@ -762,6 +830,7 @@ expression_result_t visit_primary_expression(codegen_context_t *context, const e
             }
 
             return (expression_result_t) {
+                .expression = expr,
                 .type = symbol->type,
                 .llvm_value = symbol->llvm_value,
                 .llvm_type = symbol->llvm_type,
@@ -792,10 +861,11 @@ expression_result_t visit_constant(codegen_context_t *context, const expression_
             assert(strlen(expr->primary.token.value) == 3 && "Invalid char literal");
             char value = expr->primary.token.value[1];
             return (expression_result_t) {
-                    .type = &INT,
-                    .llvm_value = LLVMConstInt(llvm_type, value, false),
-                    .llvm_type = llvm_type,
-                    .is_lvalue = false,
+                .expression = expr,
+                .type = &INT,
+                .llvm_value = LLVMConstInt(llvm_type, value, false),
+                .llvm_type = llvm_type,
+                .is_lvalue = false,
             };
         }
         case TK_INTEGER_CONSTANT: {
@@ -922,6 +992,7 @@ expression_result_t visit_call_expression(codegen_context_t *context, const expr
 
     LLVMValueRef result = LLVMBuildCall2(context->llvm_builder, fn_type, callee, args, num_args, "");
     return (expression_result_t) {
+        .expression = expression,
         .type = function.type->function.return_type,
         .llvm_value = result,
         .llvm_type = llvm_type_for(function.type->function.return_type),
@@ -1040,4 +1111,31 @@ LLVMTypeRef get_function_type(const type_t *function) {
 
     LLVMTypeRef return_type = llvm_type_for(function->function.return_type);
     return LLVMFunctionType(return_type, param_types, param_count, has_varargs);
+}
+
+LLVMValueRef as_boolean(codegen_context_t *context, expression_result_t value) {
+    assert(context != NULL);
+
+    if (!is_scalar_type(value.type)) {
+        const expression_t *expr = value.expression;
+        fprintf(stderr, "%s:%d:%d: error: expected scalar type\n", expr->span.start.path, expr->span.start.line, expr->span.start.column);
+        exit(1);
+    }
+
+    if (value.is_lvalue) {
+        value.llvm_value = get_rvalue(context, value);
+        value.is_lvalue = false;
+    }
+
+    LLVMValueRef condition;
+
+    if (is_integer_type(value.type) || is_pointer_type(value.type)) {
+        condition = LLVMBuildICmp(context->llvm_builder, LLVMIntNE, value.llvm_value, LLVMConstInt(value.llvm_type, 0, false), "");
+    } else if (is_floating_type(value.type)) {
+        condition = LLVMBuildFCmp(context->llvm_builder, LLVMRealONE, value.llvm_value, LLVMConstReal(value.llvm_type, 0.0), "");
+    } else {
+        assert(false && "Invalid type for boolean conversion");
+    }
+
+    return condition;
 }

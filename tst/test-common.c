@@ -193,6 +193,22 @@ bool statement_eq(const statement_t *left, const statement_t *right) {
                 }
             }
             return true;
+        case STATEMENT_IF:
+            assert(left->if_.keyword != NULL && right->if_.keyword != NULL);
+            if (left->if_.keyword->kind != right->if_.keyword->kind) {
+                return false;
+            }
+            if (!expression_eq(left->if_.condition, right->if_.condition)) {
+                return false;
+            }
+            if (!statement_eq(left->if_.true_branch, right->if_.true_branch)) {
+                return false;
+            }
+            if (left->if_.false_branch == NULL || right->if_.false_branch == NULL) {
+                return left->if_.false_branch == right->if_.false_branch;
+            } else {
+                return statement_eq(left->if_.false_branch, right->if_.false_branch);
+            }
         case STATEMENT_RETURN:
             assert(left->return_.keyword != NULL && right->return_.keyword != NULL);
             if (left->return_.keyword->kind != right->return_.keyword->kind) {

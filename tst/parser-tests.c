@@ -107,6 +107,20 @@ statement_t *expression_statement(expression_t *expression) {
     return stmt;
 }
 
+statement_t *if_statement(expression_t *condition, statement_t *true_branch, statement_t *false_branch) {
+    statement_t *stmt = malloc(sizeof(statement_t));
+    *stmt = (statement_t) {
+        .type = STATEMENT_IF,
+        .if_ = {
+            .keyword = token(TK_IF, "if"),
+            .condition = condition,
+            .true_branch = true_branch,
+            .false_branch = false_branch,
+        },
+    };
+    return stmt;
+}
+
 block_item_t *block_item_s(statement_t *statement) {
     block_item_t *item = malloc(sizeof(block_item_t));
     *item = (block_item_t) {
@@ -956,6 +970,69 @@ void test_parse_compound_statement_with_error() {
     CU_ASSERT_TRUE_FATAL(parser.errors.size == 1)
 }
 
+void test_parse_if_statement() {
+    lexer_global_context_t context = create_context();
+    char *input = "if (1) 2;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    statement_t *expected = malloc(sizeof(statement_t));
+    *expected = (statement_t) {
+        .type = STATEMENT_IF,
+        .if_ = {
+            .keyword = token(TK_IF, "if"),
+            .condition = integer_constant("1"),
+            .true_branch = expression_statement(integer_constant("2")),
+            .false_branch = NULL,
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
+}
+
+void test_parse_if_else_statement() {
+    lexer_global_context_t context = create_context();
+    char *input = "if (1) 2; else 3;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    statement_t *expected = malloc(sizeof(statement_t));
+    *expected = (statement_t) {
+        .type = STATEMENT_IF,
+        .if_ = {
+            .keyword = token(TK_IF, "if"),
+            .condition = integer_constant("1"),
+            .true_branch = expression_statement(integer_constant("2")),
+            .false_branch = expression_statement(integer_constant("3")),
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
+}
+
+void test_parse_if_else_if_else_statement() {
+    lexer_global_context_t context = create_context();
+    char *input = "if (1) 2; else if (3) 4; else 5;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    statement_t *expected = malloc(sizeof(statement_t));
+    *expected = (statement_t) {
+            .type = STATEMENT_IF,
+            .if_ = {
+                    .keyword = token(TK_IF, "if"),
+                    .condition = integer_constant("1"),
+                    .true_branch = expression_statement(integer_constant("2")),
+                    .false_branch = if_statement(integer_constant("3"), expression_statement(integer_constant("4")), expression_statement(integer_constant("5"))),
+            },
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
+}
+
 void test_parse_return_statement() {
     lexer_global_context_t context = create_context();
     char *input = "return 1;";
@@ -1084,6 +1161,9 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "expression statement", test_parse_expression_statement) ||
         NULL == CU_add_test(pSuite, "compound statement", test_parse_compound_statement) ||
         NULL == CU_add_test(pSuite, "compound statement with parse error", test_parse_compound_statement_with_error) ||
+        NULL == CU_add_test(pSuite, "if statement", test_parse_if_statement) ||
+        NULL == CU_add_test(pSuite, "if else statement", test_parse_if_else_statement) ||
+        NULL == CU_add_test(pSuite, "if else if else statement", test_parse_if_else_if_else_statement) ||
         NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement) ||
         NULL == CU_add_test(pSuite, "external declaration - declaration", parse_external_declaration_declaration) ||
         NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||

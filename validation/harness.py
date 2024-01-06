@@ -80,8 +80,6 @@ def discover_tests():
 
 
 if __name__ == '__main__':
-    print(os.environ.values())
-
     # Discover tests
     test_suite = discover_tests()
 

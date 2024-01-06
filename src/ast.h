@@ -190,6 +190,7 @@ typedef struct Statement {
         STATEMENT_COMPOUND,
         STATEMENT_EMPTY,
         STATEMENT_EXPRESSION,
+        STATEMENT_IF,
         STATEMENT_RETURN,
     } type;
     union {
@@ -198,6 +199,12 @@ typedef struct Statement {
             ptr_vector_t block_items;
         } compound;
         expression_t *expression;
+        struct {
+            token_t *keyword;
+            expression_t *condition;
+            statement_t *true_branch;
+            statement_t *false_branch;
+        } if_;
         struct {
             token_t *keyword;
             expression_t *expression;

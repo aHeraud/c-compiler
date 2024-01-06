@@ -60,6 +60,7 @@ void declare_symbol(codegen_context_t *context, symbol_t *symbol);
 symbol_t *lookup_symbol(const codegen_context_t *context, const char *name);
 
 typedef struct ExpressionResult {
+    const expression_t *expression;
     const type_t *type;
     LLVMValueRef llvm_value;
     LLVMTypeRef llvm_type;

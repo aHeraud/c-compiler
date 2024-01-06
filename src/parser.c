@@ -857,6 +857,8 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
     token_t *begin = NULL;
     if (accept(parser, TK_LBRACE, &begin)) {
         return parse_compound_statement(parser, stmt, begin);
+    } else if (accept(parser, TK_IF, &begin)) {
+        return parse_if_statement(parser, stmt, begin);
     } else if (accept(parser, TK_RETURN, &begin)) {
         return parse_return_statement(parser, stmt, begin);
     } else {
@@ -934,6 +936,43 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt, const token_t
         });
         return false;
     }
+}
+
+bool parse_if_statement(parser_t* parser, statement_t *statement, token_t *keyword) {
+    require(parser, TK_LPAREN, NULL, "if-statement", NULL);
+    expression_t *condition = malloc(sizeof(expression_t));
+    if (!parse_expression(parser, condition)) {
+        free(condition);
+        return false;
+    }
+    require(parser, TK_RPAREN, NULL, "if-statement", NULL);
+
+    statement_t *then_statement = malloc(sizeof(statement_t));
+    if (!parse_statement(parser, then_statement)) {
+        free(then_statement);
+        return false;
+    }
+
+    statement_t *else_statement = NULL;
+    if (accept(parser, TK_ELSE, NULL)) {
+        else_statement = malloc(sizeof(statement_t));
+        if (!parse_statement(parser, else_statement)) {
+            free(else_statement);
+            return false;
+        }
+    }
+
+    *statement = (statement_t) {
+        .type = STATEMENT_IF,
+        .if_ = {
+            .keyword = keyword,
+            .condition = condition,
+            .true_branch = then_statement,
+            .false_branch = else_statement,
+        },
+    };
+
+    return true;
 }
 
 bool parse_return_statement(parser_t *parser, statement_t *stmt, token_t *keyword) {

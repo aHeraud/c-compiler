@@ -117,6 +117,7 @@ bool parse_expression_statement(parser_t *parser, statement_t *statement);
 //bool selection_statement(parser_t* parser, ast_node_t* node);
 //bool iteration_statement(parser_t* parser, ast_node_t* node);
 //bool jump_statement(parser_t* parser, ast_node_t* node);
+bool parse_if_statement(parser_t* parser, statement_t *statement, token_t *keyword);
 bool parse_return_statement(parser_t* parser, statement_t *statement, token_t *keyword);
 
 bool parse_external_declaration(parser_t *parser, external_declaration_t *external_declaration);
