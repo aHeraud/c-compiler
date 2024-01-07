@@ -43,7 +43,7 @@ void preprocessor_directive(struct Lexer* lexer, token_t* token) {
     }
 
     fprintf(stderr, "%s:%d:%d: Invalid preprocessor directive '%s'\n",
-            lexer->input_path, lexer->position.line, lexer->position.column, directive_name_vec.buffer); // TODO: print the line
+            lexer->input_path, lexer->position.line, lexer->position.column, directive_name_vec.buffer);
     exit(1); // TODO: error recovery
 }
 
@@ -558,4 +558,38 @@ void preprocessor_expand_macro(lexer_t* lexer, macro_definition_t* macro_definit
 
     // Store the resulting tokens in the lexer
     lexer->pending_tokens = head;
+}
+
+/**
+ * Pre-processor __FILE__ substitution.
+ * Expands to the path of the translation unit being processed.
+ * @param lexer Lexer context
+ * @param token The token containing the __FILE__ directive.
+ * @return A new token containing the path of the translation unit being processed.
+ */
+token_t preprocessor_file_replacement(lexer_t *lexer, token_t *token) {
+    return (token_t) {
+        .position = token->position,
+        .kind = TK_STRING_LITERAL,
+        .value = lexer->input_path
+    };
+}
+
+/**
+ * Pre-processor __LINE__ substitution.
+ * Expands to the line number of the current token.
+ * @param lexer Lexer context
+ * @param token The token containing the __LINE__ directive.
+ * @return A new token containing the line number of the current token.
+ */
+token_t preprocessor_line_replacement(lexer_t *lexer, token_t *token) {
+    char_vector_t vec = {malloc(32), 0, 32};
+    snprintf(vec.buffer, 32, "%d", lexer->position.line);
+    vec.size = strlen(vec.buffer);
+    shrink_char_vector(&vec.buffer, &vec.size, &vec.capacity);
+    return (token_t) {
+        .position = token->position,
+        .kind = TK_INTEGER_CONSTANT,
+        .value = vec.buffer,
+    };
 }

@@ -390,14 +390,20 @@ token_t lscan(struct Lexer* lexer) {
                 identifier_or_reserved_word(lexer, &token);
                 if (token.kind == TK_IDENTIFIER) {
                     // check if this is a macro
-                    macro_definition_t* macro_definition;
-                    if (!lexer->global_context->disable_macro_expansion &&
-                        hash_table_lookup(&lexer->global_context->macro_definitions, token.value, (void**) &macro_definition)) {
-                        // expand macro
-                        macro_parameters_t parameters;
-                        preprocessor_parse_macro_invocation_parameters(lexer, macro_definition, &parameters);
-                        preprocessor_expand_macro(lexer, macro_definition, parameters);
-                        return lscan(lexer); // skip past the macro name and scan next token
+                    if (strcmp(token.value, "__LINE__") == 0) {
+                        token = preprocessor_line_replacement(lexer, &token);
+                    } else if (strcmp(token.value, "__FILE__") == 0) {
+                        token = preprocessor_file_replacement(lexer, &token);
+                    } else {
+                        macro_definition_t* macro_definition;
+                        if (!lexer->global_context->disable_macro_expansion &&
+                            hash_table_lookup(&lexer->global_context->macro_definitions, token.value, (void**) &macro_definition)) {
+                            // expand macro
+                            macro_parameters_t parameters;
+                            preprocessor_parse_macro_invocation_parameters(lexer, macro_definition, &parameters);
+                            preprocessor_expand_macro(lexer, macro_definition, parameters);
+                            return lscan(lexer); // skip past the macro name and scan next token
+                        }
                     }
                 }
             } else if (isdigit(c0)) {

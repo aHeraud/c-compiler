@@ -322,6 +322,44 @@ void test_macro_define_and_undefine() {
     CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[0].value, "FOO")
 }
 
+void test__FILE__substitution() {
+    char* input_path = "file-substitution.c";
+    char* source_buffer = "__FILE__\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 1)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[0].kind, TK_STRING_LITERAL)
+    CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[0].value, "file-substitution.c")
+}
+
+void test__LINE__substitution() {
+    char* input_path = "line-substitution.c";
+    char* source_buffer = "__LINE__\n__LINE__\n__LINE__\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 3)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[0].kind, TK_INTEGER_CONSTANT)
+    CU_ASSERT_EQUAL_FATAL(strcmp(tokens.buffer[0].value, "1"), 0)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[1].kind, TK_INTEGER_CONSTANT)
+    CU_ASSERT_EQUAL_FATAL(strcmp(tokens.buffer[1].value, "2"), 0)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[2].kind, TK_INTEGER_CONSTANT)
+    CU_ASSERT_EQUAL_FATAL(strcmp(tokens.buffer[2].value, "3"), 0)
+}
+
 int preprocessor_tests_init_suite() {
     CU_pSuite pSuite = CU_add_suite("preprocessor", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "#include - relative path", test_includes_header_relative_path) ||
@@ -334,7 +372,9 @@ int preprocessor_tests_init_suite() {
         NULL == CU_add_test(pSuite, "#define - variadic macro", test_macro_define_and_replace_varargs) ||
         NULL == CU_add_test(pSuite, "#define - parameter expansion", test_macro_define_and_replace_parameter_expansion) ||
         NULL == CU_add_test(pSuite, "#define - parameter name is defined macro", test_macro_define_and_replace_parameter_name_is_defined_macro) ||
-        NULL == CU_add_test(pSuite, "#define - and #undef", test_macro_define_and_undefine)
+        NULL == CU_add_test(pSuite, "#define - and #undef", test_macro_define_and_undefine) ||
+        NULL == CU_add_test(pSuite, "__FILE__", test__FILE__substitution) ||
+        NULL == CU_add_test(pSuite, "__LINE__", test__LINE__substitution)
     ) {
         CU_cleanup_registry();
         exit(CU_get_error());
