@@ -49,8 +49,25 @@ void append_ptr(void*** buffer, size_t* buffer_len, size_t* buffer_max_len, void
     *buffer_len += 1;
 }
 
+void* pop_ptr(void** buffer, size_t* buffer_len) {
+    if (*buffer_len == 0) {
+        return NULL;
+    }
+
+    *buffer_len -= 1;
+    return buffer[*buffer_len];
+}
+
 void shrink_ptr_vector(void*** buffer, const size_t* size, size_t* capacity) {
     *buffer = realloc(*buffer, *size * sizeof(void*));
     assert(buffer != NULL);
     *capacity = *size;
+}
+
+void reverse_ptr_vector(void** buffer, size_t size) {
+    for (size_t i = 0; i < size / 2; i++) {
+        const void* temp = buffer[i];
+        buffer[i] = buffer[size - i - 1];
+        buffer[size - i - 1] = temp;
+    }
 }

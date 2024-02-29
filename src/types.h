@@ -6,6 +6,7 @@
 #include "lexer.h"
 
 typedef struct Type type_t;
+typedef struct Expression expression_t;
 
 typedef enum TypeKind {
     TYPE_VOID,
@@ -13,6 +14,7 @@ typedef enum TypeKind {
     TYPE_FLOATING,
     TYPE_POINTER,
     TYPE_FUNCTION,
+    TYPE_ARRAY,
 } type_kind_t;
 
 
@@ -91,6 +93,10 @@ typedef struct Type {
             const type_t *return_type;
             const parameter_type_list_t *parameter_list;
         } function;
+        struct {
+            const type_t *element_type;
+            expression_t *size;
+        } array;
     };
 } type_t;
 

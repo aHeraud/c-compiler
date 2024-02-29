@@ -13,9 +13,15 @@ const char** token_value_array(token_t* tokens, size_t size);
 char* format_string_array(const char** array, size_t size);
 char* format_token_kind_array(const token_kind_t* array, size_t size);
 
-bool expression_eq(const expression_t *left, const expression_t *right);
-bool statement_eq(const statement_t *left, const statement_t *right);
-bool declaration_eq(const declaration_t *left, const declaration_t *right);
+// AST helpers
+source_position_t dummy_position();
+source_span_t dummy_span();
+expression_t *primary(primary_expression_t primary);
+expression_t *integer_constant(char* value);
+
+// Type helpers
+type_t *ptr_to(const type_t *type);
+type_t *array_of(const type_t *type, expression_t *size);
 
 #define TEST_ASSERT_ARRAYS_EQUAL(expected, expected_size, actual, actual_size, format) \
     do { \

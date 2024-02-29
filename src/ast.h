@@ -257,4 +257,8 @@ typedef struct TranslationUnit {
     size_t length;
 } translation_unit_t;
 
+bool expression_eq(const expression_t *left, const expression_t *right);
+bool statement_eq(const statement_t *left, const statement_t *right);
+bool declaration_eq(const declaration_t *left, const declaration_t *right);
+
 #endif //C_COMPILER_AST_H

@@ -63,11 +63,26 @@ void shrink_char_vector(char** buffer, const size_t* size, size_t* capacity);
 void append_ptr(void*** buffer, size_t* size, size_t* capacity, void* ptr);
 
 /**
+ * Removes the last pointer from a buffer.
+ * @param buffer buffer to pop from
+ * @param size number of elements in the buffer
+ * @param capacity maximum number of elements in the buffer
+ */
+void* pop_ptr(void** buffer, size_t* buffer_len);
+
+/**
  * Shrinks a buffer to its current size.
  * @param buffer buffer to shrink
  * @param size number of elements in the buffer
  * @param capacity maximum number of elements in the buffer
  */
 void shrink_ptr_vector(void*** buffer, const size_t* size, size_t* capacity);
+
+/**
+ * Reverses the order of elements in a buffer.
+ * @param buffer buffer to reverse
+ * @param size number of elements in the buffer
+ */
+void reverse_ptr_vector(void** buffer, size_t size);
 
 #endif //C_COMPILER_VECTORS_H

@@ -1,4 +1,5 @@
 // Recursive descent parser for the C language, based on the reference c99 grammar: see docs/c99.bnf
+// Currently intentionally leaks memory for the purpose of simplicity, will likely be fixed later (memory arena?).
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -713,46 +714,180 @@ bool parse_pointer(parser_t *parser, const type_t *base_type, type_t **pointer_t
     return true;
 }
 
-// Parses a direct declarator.
-// Currently only parses identifiers and (some) function declarations.
-// TODO: Implement the rest of the grammar.
+bool parse_direct_declarator_prime(parser_t *parser, type_t **type);
+
+/**
+ * Parses a direct declarator.
+ * More specifically, it converts the direct-declarator into a type + identifier.
+ *
+ * Currently only parses identifiers and (some) function declarations.
+ *
+ * After eliminating left recursion, the grammar for direct-declarator is:
+ *
+ * <direct-declarator> ::= <identifier> <direct-declarator-prime>?
+ *                       | '(' <declarator> ')' <direct-declarator-prime>?
+ *
+ * <direct-declarator-prime> ::= '[' <type-qualifier-list>? <assignment-expression>? ']'          // Array
+ *                             | '[' 'static' <type-qualifier-list>? <assignment-expression> ']'  // Array
+ *                             | '[' <type-qualifier-list> 'static' <assignment-expression> ']'   // Array
+ *                             | '[' <type-qualifier-list>? '*' ']'                               // Variable Length Array (VLA) - Not Implemented
+ *                             | '(' <parameter-type-list> ')'                                    // Parameter type list for a function pointer
+ *                             | '(' <identifier-list>? ')'                                       // K&R style function declaration - Not Implemented
+ *
+ * @param parser Parser instance
+ * @param type Base type derived from the declaration specifiers (e.g. int, float, etc...)
+ * @param decl Out parameter for the parsed declaration
+ * @return true if the direct declarator was parsed successfully, false otherwise
+ */
 bool parse_direct_declarator(parser_t *parser, const type_t *type, declaration_t *decl) {
-    token_t *token;
-    if (!require(parser, TK_IDENTIFIER, &token, "direct-declarator", NULL)) {
+    token_t *identifier;
+    if (accept(parser, TK_IDENTIFIER, &identifier)) {
+        *decl = (declaration_t) {
+            .type = type,
+            .identifier = identifier,
+            .initializer = NULL,
+        };
+
+        ptr_vector_t types = {.buffer = NULL, .size = 0, .capacity = 0}; // Stack of types that will be combined
+
+        if (next_token(parser)->kind == TK_LPAREN || next_token(parser)->kind == TK_LBRACKET) {
+            // Type will be modified by parse_direct_declarator_prime, so we make a copy.
+            type_t *this_type = malloc(sizeof(type_t));
+            *this_type = *type;
+            do {
+                type_t *inner;
+                if (!parse_direct_declarator_prime(parser, &inner)) {
+                    return false;
+                }
+                append_ptr(&types.buffer, &types.size, &types.capacity, inner); // push onto the stack
+            } while (next_token(parser)->kind == TK_LPAREN || next_token(parser)->kind == TK_LBRACKET);
+        }
+
+        // We parse this left-to right, but the rhs (array and function definitions) needs to be applied from right to left.
+        // So we reverse the types stack.
+        append_ptr(&types.buffer, &types.size, &types.capacity, type); // push base type onto the stack (will be at the bottom after reversing)
+        reverse_ptr_vector(types.buffer, types.size);
+
+        // Build the actual type from the types stack
+        // The base type is at the bottom of the stack, and the top of the stack is the outermost type.
+        type_t *current = pop_ptr(types.buffer, &types.size);
+        type_t *outer = current;
+        type_t *next;
+        while ((next = (type_t*)pop_ptr(types.buffer, &types.size)) != NULL) {
+            if (current->kind == TYPE_ARRAY) {
+                current->array.element_type = next;
+            } else if (current->kind == TYPE_FUNCTION) {
+                current->function.return_type = next;
+            }
+            // TODO: Do we need to also handle pointers here?
+            current = next;
+        }
+        decl->type = outer;
+
+        return true;
+    } else if (next_token(parser)->kind == TK_LPAREN) {
+        // Parenthesized declarator (e.g. int (foo), int (*foo), int (*foo)(), etc...).
+        // Can be arbitrarily nested.
+        // TODO: Handle parenthesized declarators
+        fprintf(stderr, "Parenthesized declarators are not yet implemented\n");
+        exit(1);
+    } else {
+        append_parse_error(&parser->errors, (parse_error_t) {
+                .token = next_token(parser),
+                .previous_token = NULL,
+                .production_name = "direct-declarator",
+                .previous_production_name = NULL,
+                .type = PARSE_ERROR_EXPECTED_TOKEN,
+                .expected_token = {
+                        .expected_count = 2,
+                        .expected = {TK_IDENTIFIER, TK_LPAREN},
+                },
+        });
         return false;
     }
+}
 
-    if (accept(parser, TK_LPAREN, NULL)) {
+/**
+ * Parses the right hand side of a direct declarator.
+ * @param parser Parser instance
+ * @param type Partial type derived from the declaration specifiers
+ * @return true if the direct declarator prime was parsed successfully, false otherwise
+ */
+bool parse_direct_declarator_prime(parser_t *parser, type_t **type) {
+    if (accept(parser, TK_LBRACKET, NULL)) {
+        // This is an array declaration.
+        bool is_static = false;
+        bool is_const = false;
+        bool is_volatile = false;
+        bool is_restrict = false;
+
+        // Parse type-qualifiers (and 'static') for the size expression.
+        // TODO: what are these type-qualifiers for?
+        // Ignores duplicates and illegal combinations of specifiers.
+        // TODO: report errors for illegal combinations of specifiers
+        // TODO: report warnings for duplicate specifiers
+        while (true) {
+            token_t *token;
+            if (accept(parser, TK_CONST, &token)) {
+                is_const = true;
+            } else if (accept(parser, TK_RESTRICT, &token)) {
+                is_restrict = true;
+            } else if (accept(parser, TK_VOLATILE, &token)) {
+                is_volatile = true;
+            } else {
+                break;
+            }
+        }
+
+        expression_t *size;
+        if (accept(parser, TK_RBRACKET, NULL))  {
+            // No size specified (e.g. `int a[]`)
+            size = NULL;
+        } else {
+            size = malloc(sizeof(expression_t));
+            if (!parse_assignment_expression(parser, size)) {
+                free(size);
+                return false;
+            }
+            if (!require(parser, TK_RBRACKET, NULL, "direct-declarator-prime", NULL)) {
+                free(size);
+                return false;
+            }
+        }
+
+        // Build the new partial array type.
+        // At this time we don't know what the element type is, so we just store the size and the qualifiers.
+
+        (*type) = malloc(sizeof(type_t));
+        **type = (type_t) {
+                .kind = TYPE_ARRAY,
+                .array = {
+                        .element_type = NULL, // This will be filled in later
+                        .size = size,
+                },
+        };
+
+        return true;
+    } else if (accept(parser, TK_LPAREN, NULL)) {
         // This is a function declaration.
-        // TODO: accept deprecated K&R style function declaration with identifier list?
-        //       E.g. int foo(a,b,c) int a; int b; int c; { ... }
         parameter_type_list_t *parameters = malloc(sizeof(parameter_type_list_t));
         if (!parse_parameter_type_list(parser, parameters)) {
-            free(parameters);
             return false;
         }
-        type_t *function_type = malloc(sizeof(type_t));
-        *function_type = (type_t) {
+
+        (*type) = malloc(sizeof(type_t));
+        **type = (type_t) {
                 .kind = TYPE_FUNCTION,
                 .function = {
-                        .return_type = type,
+                        .return_type = NULL, // This will be filled in later
                         .parameter_list = parameters,
                 },
         };
-        *decl = (declaration_t) {
-                .type = function_type,
-                .identifier = token,
-                .initializer = NULL,
-        };
-        return true;
-    }
 
-    *decl = (declaration_t) {
-        .type = type,
-        .identifier = token,
-        .initializer = NULL,
-    };
-    return true;
+        return true; // already consumed closing paren in parse_parameter_type_list
+    } else {
+        return false;
+    }
 }
 
 /**

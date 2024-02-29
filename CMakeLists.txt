@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.22.1)
 project(c_compiler C)
 
 function(add_git_submodule path)
@@ -37,7 +37,7 @@ add_library(cclib STATIC
         src/util/read-lines.h src/util/read-lines.c
         src/util/vectors.h src/util/vectors.c
         src/parser.c src/parser.h
-        src/ast.h
+        src/ast.h src/ast.c
         src/util/hashtable.c src/util/hashtable.h
         src/codegen.c src/codegen.h
         src/types.c src/types.h

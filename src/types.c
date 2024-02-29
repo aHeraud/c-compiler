@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include "types.h"
-
+#include "ast.h"
 
 
 bool is_integer_type(const type_t *type) {
@@ -68,6 +68,9 @@ bool types_equal(const type_t *a, const type_t *b) {
             return a->floating == b->floating;
         case TYPE_POINTER:
             return types_equal(a->pointer.base, b->pointer.base);
+        case TYPE_ARRAY:
+            return types_equal(a->array.element_type, b->array.element_type) &&
+                   expression_eq(a->array.size, b->array.size);
         case TYPE_FUNCTION:
             if (!types_equal(a->function.return_type, b->function.return_type)) {
                 return false;
@@ -82,6 +85,8 @@ bool types_equal(const type_t *a, const type_t *b) {
                 }
             }
             return true;
+        default: // unknown type
+            return false;
     }
 }
 
