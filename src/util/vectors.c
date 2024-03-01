@@ -41,7 +41,7 @@ void shrink_char_vector(char** buffer, const size_t* size, size_t* capacity) {
 void append_ptr(void*** buffer, size_t* buffer_len, size_t* buffer_max_len, void* ptr) {
     if (*buffer_len + 1 >= *buffer_max_len) {
         *buffer_max_len > 0 ? (*buffer_max_len *= 2) : (*buffer_max_len = 1);
-        *buffer = realloc(*buffer, *buffer_max_len);
+        *buffer = realloc(*buffer, *buffer_max_len * sizeof(void*));
         assert(buffer != NULL);
     }
 

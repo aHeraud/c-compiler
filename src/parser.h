@@ -91,8 +91,8 @@ bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *de
 //bool enumerator(parser_t* parser, ast_node_t* node);
 //bool type_qualifier(parser_t* parser, ast_node_t* node);
 //bool function_specifier(parser_t* parser, ast_node_t* node);
-bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *decl);
-bool parse_direct_declarator(parser_t *parser, const type_t *type, declaration_t *decl);
+bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *declaration);
+bool parse_direct_declarator(parser_t *parser, token_t **identifier_out, ptr_vector_t *left, ptr_vector_t *right);
 bool parse_pointer(parser_t *parser, const type_t *base_type, type_t **pointer_type);
 //bool type_qualifier_list(parser_t* parser, ast_node_t* node);
 bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *parameters);

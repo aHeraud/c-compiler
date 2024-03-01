@@ -488,6 +488,7 @@ void char_literal(struct Lexer* lexer, struct Token* token) {
         exit(1);
     }
     append_char(&buffer.buffer, &buffer.size, &buffer.capacity, c);
+    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '\0'); // null terminator!
 
     token->position = match_start;
     token->kind = TK_CHAR_LITERAL;

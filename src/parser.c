@@ -638,30 +638,132 @@ bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *de
     return true;
 }
 
+type_t* get_innermost_incomplete_type(type_t *type) {
+    type_t *current = type;
+    while (current->kind == TYPE_POINTER || current->kind == TYPE_ARRAY || current->kind == TYPE_FUNCTION) {
+        if (current->kind == TYPE_POINTER && current->pointer.base != NULL) {
+            current = current->pointer.base;
+        } else if (current->kind == TYPE_ARRAY && current->array.element_type != NULL) {
+            current = current->array.element_type;
+        } else if (current->kind == TYPE_FUNCTION && current->function.return_type != NULL) {
+            current = current->function.return_type;
+        } else {
+            break;
+        }
+    }
+    return current;
+}
+
+type_t *build_incomplete_type(ptr_vector_t *left, ptr_vector_t *right) {
+    assert(left != NULL && right != NULL);
+
+    if (left->size == 0 && right->size == 0) {
+        return NULL;
+    }
+
+    reverse_ptr_vector(right->buffer, right->size);
+
+    type_t *current;
+    if (right->size > 0) {
+        current = pop_ptr(right->buffer, &right->size);
+    } else {
+        current = pop_ptr(left->buffer, &left->size);
+    }
+    type_t *outer = current;
+    current = get_innermost_incomplete_type(current);
+
+    while (left->size > 0 || right->size > 0) {
+        type_t *next;
+        if (right->size > 0) {
+            next = pop_ptr(right->buffer, &right->size);
+        } else {
+            next = pop_ptr(left->buffer, &left->size);
+        }
+
+        if (current->kind == TYPE_POINTER) {
+            current->pointer.base = next;
+        } else if (current->kind == TYPE_ARRAY) {
+            current->array.element_type = next;
+        } else if (current->kind == TYPE_FUNCTION) {
+            current->function.return_type = next;
+        } else {
+            assert(false); // Invalid type stack
+        }
+        current = get_innermost_incomplete_type(next);
+    }
+
+    return outer;
+}
+
+/**
+ * Inner function for parsing a declarator.
+ * Outputs the raw identifier token and the incomplete type stack.
+ *
+ * @param parser Parser instance
+ * @param identifier_out Output parameter for the pointer to the identifier token.
+ * @param left Reference to the declarator segments to the left of the identifier
+ * @param right Reference to the declarator segments to the right of the identifier
+ * @return true if the declarator was parsed successfully, false otherwise
+ */
+bool _parse_declarator(parser_t *parser, token_t **identifier_out, type_t **type_out) {
+    ptr_vector_t left = (ptr_vector_t) {.buffer = NULL, .size = 0, .capacity = 0};
+    ptr_vector_t right = (ptr_vector_t) {.buffer = NULL, .size = 0, .capacity = 0};
+    if (accept(parser, TK_STAR, NULL)) {
+        type_t *type = NULL;
+        if (!parse_pointer(parser, NULL, &type)) {
+            return false;
+        }
+        append_ptr(&left.buffer, &left.size, &left.capacity, type);
+    }
+
+    if (!parse_direct_declarator(parser, identifier_out, &left, &right)) {
+        return false;
+    }
+
+    *type_out = build_incomplete_type(&left, &right);
+
+    return true;
+}
+
 /**
  * Parses a declarator.
  *
  * <declarator> ::= <pointer>? <direct-declarator>
  *
  * @param parser Parser instance
- * @param base_type Type derived from the declaration specifiers.
+ * @param base_type Base type derived from the declaration specifiers (e.g. int, float, etc...)
+ * @param declaration Out parameter for the parsed declaration
  * @return true if the declarator was parsed successfully, false otherwise
  */
-bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *decl) {
+bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *declaration) {
+    token_t *identifier = NULL;
     type_t *type = NULL;
-    if (accept(parser, TK_STAR, NULL)) {
-        type_t *base = malloc(sizeof(type_t));
-        *base = base_type;
-        parse_pointer(parser, base, &type);
-    } else {
-        type = malloc(sizeof(type_t));
-        *type = base_type;
-    }
-
-    if (!parse_direct_declarator(parser, type, decl)) {
-        free(type);
+    if (!_parse_declarator(parser, &identifier, &type)) {
         return false;
     }
+
+    // Move the base type to the heap
+    type_t *base = malloc(sizeof(token_t));
+    *base = base_type;
+
+    if (type == NULL) {
+        type = base;
+    } else {
+        type_t *inner = get_innermost_incomplete_type(type);
+        if (inner->kind == TYPE_POINTER) {
+            inner->pointer.base = base;
+        } else if (inner->kind == TYPE_ARRAY) {
+            inner->array.element_type = base;
+        } else if (inner->kind == TYPE_FUNCTION) {
+            inner->function.return_type = base;
+        } else {
+            assert(false); // Invalid type stack
+        }
+    }
+
+    declaration->identifier = identifier;
+    declaration->type = type;
+    declaration->initializer = NULL;
 
     return true;
 }
@@ -671,12 +773,12 @@ bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *decl) {
  *
  * <pointer> ::= '*' <type-qualifier-list>? <pointer>?
  *
- * @param parser
- * @param base_type
- * @return
+ * @param parser Parser instance.
+ * @param base_type May be NULL, will result in an incomplete type.
+ * @return True if the pointer was parsed successfully, false otherwise
  */
 bool parse_pointer(parser_t *parser, const type_t *base_type, type_t **pointer_type) {
-    assert(parser != NULL && base_type != NULL && pointer_type != NULL);
+    assert(parser != NULL && pointer_type != NULL);
 
     bool is_const = false;
     bool is_volatile = false;
@@ -720,8 +822,6 @@ bool parse_direct_declarator_prime(parser_t *parser, type_t **type);
  * Parses a direct declarator.
  * More specifically, it converts the direct-declarator into a type + identifier.
  *
- * Currently only parses identifiers and (some) function declarations.
- *
  * After eliminating left recursion, the grammar for direct-declarator is:
  *
  * <direct-declarator> ::= <identifier> <direct-declarator-prime>?
@@ -735,62 +835,55 @@ bool parse_direct_declarator_prime(parser_t *parser, type_t **type);
  *                             | '(' <identifier-list>? ')'                                       // K&R style function declaration - Not Implemented
  *
  * @param parser Parser instance
- * @param type Base type derived from the declaration specifiers (e.g. int, float, etc...)
- * @param decl Out parameter for the parsed declaration
+ * @param identifier_out Output parameter for the pointer to the identifier token.
+ * @param left Reference to the declarator segments to the left of the identifier
+ * @param right Reference to the declarator segments to the right of the identifier
  * @return true if the direct declarator was parsed successfully, false otherwise
  */
-bool parse_direct_declarator(parser_t *parser, const type_t *type, declaration_t *decl) {
-    token_t *identifier;
-    if (accept(parser, TK_IDENTIFIER, &identifier)) {
-        *decl = (declaration_t) {
-            .type = type,
-            .identifier = identifier,
-            .initializer = NULL,
-        };
+bool parse_direct_declarator(parser_t *parser, token_t **identifier_out, ptr_vector_t *left, ptr_vector_t *right) {
+    // Declarations are parsed from left to right, but decoded from the inside out starting at the identifier.
+    // `()` (function) and `[]` (array) have a higher precedence than `*` (pointer).
 
-        ptr_vector_t types = {.buffer = NULL, .size = 0, .capacity = 0}; // Stack of types that will be combined
-
-        if (next_token(parser)->kind == TK_LPAREN || next_token(parser)->kind == TK_LBRACKET) {
-            // Type will be modified by parse_direct_declarator_prime, so we make a copy.
-            type_t *this_type = malloc(sizeof(type_t));
-            *this_type = *type;
-            do {
-                type_t *inner;
-                if (!parse_direct_declarator_prime(parser, &inner)) {
-                    return false;
-                }
-                append_ptr(&types.buffer, &types.size, &types.capacity, inner); // push onto the stack
-            } while (next_token(parser)->kind == TK_LPAREN || next_token(parser)->kind == TK_LBRACKET);
-        }
-
-        // We parse this left-to right, but the rhs (array and function definitions) needs to be applied from right to left.
-        // So we reverse the types stack.
-        append_ptr(&types.buffer, &types.size, &types.capacity, type); // push base type onto the stack (will be at the bottom after reversing)
-        reverse_ptr_vector(types.buffer, types.size);
-
-        // Build the actual type from the types stack
-        // The base type is at the bottom of the stack, and the top of the stack is the outermost type.
-        type_t *current = pop_ptr(types.buffer, &types.size);
-        type_t *outer = current;
-        type_t *next;
-        while ((next = (type_t*)pop_ptr(types.buffer, &types.size)) != NULL) {
-            if (current->kind == TYPE_ARRAY) {
-                current->array.element_type = next;
-            } else if (current->kind == TYPE_FUNCTION) {
-                current->function.return_type = next;
+    if (accept(parser, TK_IDENTIFIER, identifier_out)) {
+        // Parse the components to the right of the identifier
+        while (next_token(parser)->kind == TK_LPAREN || next_token(parser)->kind == TK_LBRACKET) {
+            type_t *inner;
+            if (!parse_direct_declarator_prime(parser, &inner)) {
+                return false;
             }
-            // TODO: Do we need to also handle pointers here?
-            current = next;
+            append_ptr(&right->buffer, &right->size, &right->capacity, inner);
         }
-        decl->type = outer;
 
         return true;
-    } else if (next_token(parser)->kind == TK_LPAREN) {
+    } else if (accept(parser, TK_LPAREN, NULL)) {
         // Parenthesized declarator (e.g. int (foo), int (*foo), int (*foo)(), etc...).
         // Can be arbitrarily nested.
-        // TODO: Handle parenthesized declarators
-        fprintf(stderr, "Parenthesized declarators are not yet implemented\n");
-        exit(1);
+        // Example: `int (*foo[2])(void);` -> type of `foo` = array 2 of pointer to function (void) returning int
+
+        // Parse the nested declarator.
+        {
+            type_t *inner;
+            if (!_parse_declarator(parser, identifier_out, &inner)) {
+                return false;
+            }
+            if (inner != NULL) {
+                append_ptr(&right->buffer, &right->size, &right->capacity, inner);
+            }
+        }
+
+        if (!require(parser, TK_RPAREN, NULL, "direct-declarator", NULL)) {
+            return false;
+        }
+
+        while (next_token(parser)->kind == TK_LPAREN || next_token(parser)->kind == TK_LBRACKET) {
+            type_t *inner;
+            if (!parse_direct_declarator_prime(parser, &inner)) {
+                return false;
+            }
+            append_ptr(&right->buffer, &right->size, &right->capacity, inner); // push onto the stack
+        }
+
+        return true;
     } else {
         append_parse_error(&parser->errors, (parse_error_t) {
                 .token = next_token(parser),

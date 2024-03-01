@@ -839,6 +839,127 @@ void test_parse_array_of_functions_declaration() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
+void test_parse_function_pointer() {
+    lexer_global_context_t context = create_context();
+    char* input = "int (*foo)(void);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    parameter_declaration_t *parameters[] = {
+        &(parameter_declaration_t) {
+            .type = &VOID,
+            .identifier = NULL,
+        }
+    };
+
+    parameter_type_list_t parameter_list = {
+        .variadic = false,
+        .parameters = (parameter_declaration_t**)&parameters,
+        .length = 1,
+    };
+
+    type_t expected = {
+        .storage_class = STORAGE_CLASS_AUTO,
+        .is_volatile = false,
+        .is_const = false,
+        .kind = TYPE_POINTER,
+        .pointer = {
+            .is_const = false,
+            .is_volatile = false,
+            .is_restrict = false,
+            .base = &(type_t) {
+                .storage_class = STORAGE_CLASS_AUTO,
+                .is_volatile = false,
+                .is_const = false,
+                .kind = TYPE_FUNCTION,
+                .function = {
+                    .return_type = &INT,
+                    .parameter_list = &parameter_list,
+                },
+            }
+        }
+    };
+
+    declaration_t *declaration = declarations.buffer[0];
+    CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected));
+    CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "foo");
+}
+
+void test_parse_complex_declaration() {
+    lexer_global_context_t context = create_context();
+    char* input = "float *(*(*bar[1][2])(void))(int);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    type_t expected = {
+        .storage_class = STORAGE_CLASS_AUTO,
+        .is_const = false,
+        .is_volatile = false,
+        .kind = TYPE_ARRAY,
+        .array = {
+            .size = integer_constant("1"),
+            .element_type = &(type_t) {
+                .storage_class = STORAGE_CLASS_AUTO,
+                .is_const = false,
+                .is_volatile = false,
+                .kind = TYPE_ARRAY,
+                .array = {
+                    .size = integer_constant("2"),
+                    .element_type = ptr_to(&(type_t) {
+                        .storage_class = STORAGE_CLASS_AUTO,
+                        .is_const = false,
+                        .is_volatile = false,
+                        .kind = TYPE_FUNCTION,
+                        .function = {
+                            .parameter_list = &(parameter_type_list_t) {
+                                .variadic = false,
+                                .parameters = (parameter_declaration_t*[]) {
+                                    &(parameter_declaration_t) {
+                                        .type = &VOID,
+                                        .identifier = NULL,
+                                    },
+                                },
+                                .length = 1,
+                            },
+                            .return_type = ptr_to(&(type_t) {
+                                .storage_class = STORAGE_CLASS_AUTO,
+                                .is_const = false,
+                                .is_volatile = false,
+                                .kind = TYPE_FUNCTION,
+                                .function = {
+                                    .return_type = ptr_to(&FLOAT),
+                                    .parameter_list = &(parameter_type_list_t) {
+                                        .variadic = false,
+                                        .parameters = (parameter_declaration_t*[]) {
+                                            &(parameter_declaration_t) {
+                                                .type = &INT,
+                                                .identifier = NULL,
+                                            },
+                                        },
+                                        .length = 1,
+                                    },
+                                }
+                            }),
+                        }
+                    })
+                }
+            }
+        }
+    };
+
+    declaration_t *declaration = declarations.buffer[0];
+    CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected));
+    CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "bar");
+}
+
 void test_parse_function_prototype_void() {
     lexer_global_context_t context = create_context();
     char *input = "float foo(void);";
@@ -1222,6 +1343,8 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "declaration - array", test_parse_array_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - 2d array", test_parse_2d_array_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - array of functions", test_parse_array_of_functions_declaration) ||
+        NULL == CU_add_test(pSuite, "declaration - function pointer", test_parse_function_pointer) ||
+        NULL == CU_add_test(pSuite, "declaration - complex", test_parse_complex_declaration) ||
         NULL == CU_add_test(pSuite, "function prototype (void)", test_parse_function_prototype_void) ||
         NULL == CU_add_test(pSuite, "function prototype", test_parse_function_prototype) ||
         NULL == CU_add_test(pSuite, "empty statement", test_parse_empty_statement) ||
