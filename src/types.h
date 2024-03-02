@@ -17,7 +17,6 @@ typedef enum TypeKind {
     TYPE_ARRAY,
 } type_kind_t;
 
-
 typedef enum IntegerType {
     INTEGER_TYPE_BOOL,
     INTEGER_TYPE_CHAR,
@@ -142,11 +141,15 @@ const type_t *get_common_type(const type_t *a, const type_t *b);
 // Static type objects for common types
 
 static const type_t VOID = {
+        .is_const = false,
+        .is_volatile = false,
         .kind = TYPE_VOID,
 };
 
 static const type_t BOOL = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = false,
                 .size = INTEGER_TYPE_BOOL,
@@ -155,6 +158,8 @@ static const type_t BOOL = {
 
 static const type_t CHAR = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = true,
                 .size = INTEGER_TYPE_CHAR,
@@ -163,6 +168,8 @@ static const type_t CHAR = {
 
 static const type_t SHORT = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = true,
                 .size = INTEGER_TYPE_SHORT,
@@ -171,6 +178,8 @@ static const type_t SHORT = {
 
 static const type_t INT = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = true,
                 .size = INTEGER_TYPE_INT,
@@ -179,6 +188,8 @@ static const type_t INT = {
 
 static const type_t LONG = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = false,
                 .size = INTEGER_TYPE_LONG,
@@ -187,6 +198,8 @@ static const type_t LONG = {
 
 static const type_t LONG_LONG = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = false,
                 .size = INTEGER_TYPE_INT,
@@ -195,6 +208,8 @@ static const type_t LONG_LONG = {
 
 static const type_t UNSIGNED_CHAR = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = false,
                 .size = INTEGER_TYPE_CHAR,
@@ -203,6 +218,8 @@ static const type_t UNSIGNED_CHAR = {
 
 static const type_t UNSIGNED_SHORT = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = false,
                 .size = INTEGER_TYPE_SHORT,
@@ -211,6 +228,8 @@ static const type_t UNSIGNED_SHORT = {
 
 static const type_t UNSIGNED_INT = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = false,
                 .size = INTEGER_TYPE_INT,
@@ -219,6 +238,8 @@ static const type_t UNSIGNED_INT = {
 
 static const type_t UNSIGNED_LONG = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = false,
                 .size = INTEGER_TYPE_LONG,
@@ -227,6 +248,8 @@ static const type_t UNSIGNED_LONG = {
 
 static const type_t UNSIGNED_LONG_LONG = {
         .kind = TYPE_INTEGER,
+        .is_const = false,
+        .is_volatile = false,
         .integer = {
                 .is_signed = false,
                 .size = INTEGER_TYPE_LONG_LONG,
@@ -236,16 +259,22 @@ static const type_t UNSIGNED_LONG_LONG = {
 static const type_t FLOAT = {
         .kind = TYPE_FLOATING,
         .floating = FLOAT_TYPE_FLOAT,
+        .is_const = false,
+        .is_volatile = false,
 };
 
 static const type_t DOUBLE = {
         .kind = TYPE_FLOATING,
         .floating = FLOAT_TYPE_DOUBLE,
+        .is_const = false,
+        .is_volatile = false,
 };
 
 static const type_t LONG_DOUBLE = {
         .kind = TYPE_FLOATING,
         .floating = FLOAT_TYPE_LONG_DOUBLE,
+        .is_const = false,
+        .is_volatile = false,
 };
 
 #endif //C_COMPILER_TYPES_H

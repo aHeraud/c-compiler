@@ -101,6 +101,7 @@ typedef struct UnaryExpression {
         UNARY_PRE_DECREMENT,
         UNARY_POST_INCREMENT,
         UNARY_POST_DECREMENT,
+        UNARY_SIZEOF,
     } operator;
 } unary_expression_t;
 
@@ -126,6 +127,11 @@ typedef struct MemberAccessExpression {
     token_t member; // identifier
 } member_access_expression_t;
 
+typedef struct CastExpression {
+    type_t *type;
+    expression_t *expression;
+} cast_expression_t;
+
 typedef struct Expression {
     source_span_t span;
     enum {
@@ -136,6 +142,8 @@ typedef struct Expression {
         EXPRESSION_CALL,
         EXPRESSION_ARRAY_SUBSCRIPT,
         EXPRESSION_MEMBER_ACCESS,
+        EXPRESSION_SIZEOF,
+        EXPRESSION_CAST,
     } type;
     union {
         primary_expression_t primary;
@@ -145,6 +153,8 @@ typedef struct Expression {
         call_expression_t call;
         array_subscript_expression_t array_subscript;
         member_access_expression_t member_access;
+        type_t *sizeof_type;
+        cast_expression_t cast;
     };
 } expression_t;
 

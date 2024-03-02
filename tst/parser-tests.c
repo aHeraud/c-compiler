@@ -278,6 +278,111 @@ void test_parse_postfix_expression_member_access() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
+void test_parse_unary_sizeof_constant() {
+    lexer_global_context_t context = create_context();
+    char* input = "sizeof 1";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_unary_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+            .span = dummy_span(),
+            .type = EXPRESSION_UNARY,
+            .unary = (unary_expression_t) {
+                    .operator = UNARY_SIZEOF,
+                    .operand = integer_constant("1"),
+            }
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
+}
+
+void test_parse_unary_sizeof_type() {
+    lexer_global_context_t context = create_context();
+    char* input = "sizeof(int)";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_unary_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+            .span = dummy_span(),
+            .type = EXPRESSION_SIZEOF,
+            .sizeof_type = &INT,
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
+}
+
+void test_parse_unary_sizeof_function_pointer_type() {
+    lexer_global_context_t context = create_context();
+    char* input = "sizeof(int (*)(void))";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_unary_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+        .span = dummy_span(),
+        .type = EXPRESSION_SIZEOF,
+        .sizeof_type = pointer_to(&(type_t) {
+            .kind = TYPE_FUNCTION,
+            .function = {
+                .return_type = &INT,
+                .parameter_list = &(parameter_type_list_t) {
+                    .length = 1,
+                    .variadic = false,
+                    .parameters = (void*[]) {
+                        &(parameter_declaration_t) {
+                            .type = &VOID,
+                            .identifier = NULL,
+                        },
+                    }
+                },
+            },
+        })
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
+}
+
+void test_parse_unary_sizeof_parenthesized_expression() {
+    lexer_global_context_t context = create_context();
+    char* input = "sizeof(1+1)";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_unary_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+            .span = dummy_span(),
+            .type = EXPRESSION_UNARY,
+            .unary = (unary_expression_t) {
+                .operator = UNARY_SIZEOF,
+                .operand = binary((binary_expression_t) {
+                    .type = BINARY_ARITHMETIC,
+                    .left = integer_constant("1"),
+                    .right = integer_constant("1"),
+                    .operator = token(TK_PLUS, "+"),
+                    .arithmetic_operator = BINARY_ARITHMETIC_ADD,
+                }),
+            },
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
+}
+
+void test_parse_cast_expression() {
+    lexer_global_context_t context = create_context();
+    char* input = "(float) 14";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_cast_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+            .span = dummy_span(),
+            .type = EXPRESSION_CAST,
+            .cast = (cast_expression_t) {
+                    .type = &FLOAT,
+                    .expression = integer_constant("14"),
+            },
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
+}
+
 void test_parse_multiplicative_expression() {
     lexer_global_context_t context = create_context();
     char *input = "1 / 2 * 3 % 4";
@@ -702,6 +807,61 @@ void test_parse_function_declaration_no_parameters() {
             .type = &type,
             .identifier = token(TK_IDENTIFIER, "foo"),
             .initializer = NULL,
+    };
+
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+}
+
+void test_parse_function_declaration_with_parameters() {
+    lexer_global_context_t context = create_context();
+    // combination of abstract declarator and direct declarator parameters
+    char *input = "int foo(int a, float (*)(void), ...);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    parameter_type_list_t parameter_type_list = {
+        .variadic = true,
+        .length = 2,
+        .parameters = (parameter_declaration_t*[2]) {
+            &(parameter_declaration_t) {
+                .type = &INT,
+                .identifier = token(TK_IDENTIFIER, "a"),
+            },
+            &(parameter_declaration_t) {
+                .type = pointer_to(&(type_t) {
+                    .kind = TYPE_FUNCTION,
+                    .function = {
+                        .return_type = &FLOAT,
+                        .parameter_list = &(parameter_type_list_t) {
+                            .variadic = false,
+                            .length = 1,
+                            .parameters = (parameter_declaration_t*[1]) {
+                                &(parameter_declaration_t) {
+                                    .type = &VOID,
+                                    .identifier = NULL,
+                                },
+                            },
+                        },
+                    },
+                }),
+            },
+        }
+    };
+
+    declaration_t expected = (declaration_t) {
+        .type = &(type_t) {
+            .kind = TYPE_FUNCTION,
+            .function = {
+                .return_type = &INT,
+                .parameter_list = &parameter_type_list,
+            },
+        },
+        .identifier = token(TK_IDENTIFIER, "foo"),
+        .initializer = NULL,
     };
 
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
@@ -1319,6 +1479,11 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "postfix expression - function call", test_parse_postfix_expression_function_call) ||
         NULL == CU_add_test(pSuite, "postfix expression - array subscript", test_parse_postfix_expression_array_subscript) ||
         NULL == CU_add_test(pSuite, "postfix expression - member access", test_parse_postfix_expression_member_access) ||
+        NULL == CU_add_test(pSuite, "unary expression - sizeof constant", test_parse_unary_sizeof_constant) ||
+        NULL == CU_add_test(pSuite, "unary expression - sizeof (type)", test_parse_unary_sizeof_type) ||
+        NULL == CU_add_test(pSuite, "unary expression - sizeof (more complicated type)", test_parse_unary_sizeof_function_pointer_type) ||
+        NULL == CU_add_test(pSuite, "unary expression - sizeof (expression)", test_parse_unary_sizeof_parenthesized_expression) ||
+        NULL == CU_add_test(pSuite, "cast expression", test_parse_cast_expression) ||
         NULL == CU_add_test(pSuite, "multiplicative expression", test_parse_multiplicative_expression) ||
         NULL == CU_add_test(pSuite, "additive expression", test_parse_additive_expression) ||
         NULL == CU_add_test(pSuite, "additive expression 2", test_parse_additive_expression_2) ||
@@ -1339,6 +1504,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "declaration - pointer", test_parse_pointer_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - compound", test_parse_compound_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - function (no parameters)", test_parse_function_declaration_no_parameters) ||
+        NULL == CU_add_test(pSuite, "declaration - function (with parameters)", test_parse_function_declaration_with_parameters) ||
         NULL == CU_add_test(pSuite, "declaration - function (returning pointer)", test_parse_function_declaration_returning_pointer) ||
         NULL == CU_add_test(pSuite, "declaration - array", test_parse_array_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - 2d array", test_parse_2d_array_declaration) ||

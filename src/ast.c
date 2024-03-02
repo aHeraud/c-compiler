@@ -112,6 +112,14 @@ bool expression_eq(const expression_t *left, const expression_t *right) {
                 return false;
             }
             return expression_eq(left->member_access.struct_or_union, right->member_access.struct_or_union);
+        case EXPRESSION_SIZEOF:
+            return types_equal(left->sizeof_type, right->sizeof_type);
+        case EXPRESSION_CAST:
+            return types_equal(left->cast.type, right->cast.type) &&
+                   expression_eq(left->cast.expression, right->cast.expression);
+        default:
+            assert("Invalid expression type" && false);
+            return false;
     }
 }
 
@@ -184,6 +192,10 @@ bool declaration_eq(const declaration_t *left, const declaration_t *right) {
 
     if (!types_equal(left->type, right->type)) {
         return false;
+    }
+
+    if (left->identifier == NULL || right->identifier == NULL) {
+        return left->identifier == right->identifier;
     }
 
     if (strcmp(left->identifier->value, right->identifier->value) != 0) {

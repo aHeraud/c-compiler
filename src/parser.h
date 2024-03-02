@@ -18,6 +18,8 @@ typedef struct ParseError {
         PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS,
         PARSE_ERROR_TYPE_SPECIFIER_MISSING,
         PARSE_ERROR_ILLEGAL_USE_OF_RESTRICT,
+        PARSE_ERROR_EXPECTED_EXPRESSION_OR_TYPE_NAME_AFTER_SIZEOF,
+        PARSE_ERROR_PARAMETER_TYPE_MALFORMED,
     } type;
     union {
         struct {
@@ -101,7 +103,7 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
 //bool identifier_list(parser_t* parser, ast_node_t* node);
 //bool type_name(parser_t* parser, ast_node_t* node);
 //bool abstract_declarator(parser_t* parser, ast_node_t* node);
-//bool direct_abstract_declarator(parser_t* parser, ast_node_t* node);
+bool parse_abstract_declarator(parser_t *parser, type_t base_type, type_t **type_out);
 //bool initializer(parser_t* parser, ast_node_t* node);
 //bool initializer_list(parser_t* parser, ast_node_t* node);
 //bool designation(parser_t* parser, ast_node_t* node);

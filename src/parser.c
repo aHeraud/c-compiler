@@ -1,5 +1,18 @@
 // Recursive descent parser for the C language, based on the reference c99 grammar: see docs/c99.bnf
 // Currently intentionally leaks memory for the purpose of simplicity, will likely be fixed later (memory arena?).
+//
+// The grammar has been modified to remove left-recursion to enable parsing via recursive descent (see docs/c99.bnf) for
+// the reference grammar. However, the modified grammar is not LL(k), as there are some ambiguities that require an
+// infinite lookahead to resolve.
+// These are:
+// 1. When parsing a <unary-expression> starting with 'sizeof', it is not possible predict whether to parse
+//    'sizeof' <unary-expression> or 'sizeof' '(' <type-name> ')', as both a <unary-expression> and a <type-name> can
+//    be prefixed with an arbitrary number of '(' tokens.
+// 2. When parsing a <parameter-declarator> it is not possible to determine whether to parse a <declarator> or an
+//    abstract declarator without an infinite lookahead, as both can be prefixed with an arbitrary number of '*' and
+//    '(' tokens.
+// To resolve these ambiguities, we use a simple backtracking mechanism to try all possible parses and backtrack if
+// a parse fails.
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -93,6 +106,12 @@ void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
         case PARSE_ERROR_TYPE_SPECIFIER_MISSING:
             fprintf(stream, "Type specifier missing\n");
             break;
+        case PARSE_ERROR_EXPECTED_EXPRESSION_OR_TYPE_NAME_AFTER_SIZEOF:
+            fprintf(stream, "Expected expression or `(` type-name `)` after 'sizeof'\n");
+            break;
+        case PARSE_ERROR_PARAMETER_TYPE_MALFORMED:
+            fprintf(stream, "Expected a declarator, comma, closing parenthesis, or ellipsis after type\n");
+            break;
     }
 }
 
@@ -140,13 +159,24 @@ parser_t pinit(lexer_t lexer) {
 
 void recover(parser_t *parser);
 
-parse_checkpoint_t checkpoint(const parser_t* parser) {
+/**
+ * Creates a checkpoint at the current parser state. Later, the parser can be restored to this state using
+ * the backtrack function.
+ * @param parser Parser instance
+ * @return Checkpoint
+ */
+parse_checkpoint_t create_checkpoint(const parser_t* parser) {
     return (parse_checkpoint_t) {
         .token_index = parser->next_token_index,
         .error_index = parser->errors.size,
     };
 }
 
+/**
+ * Restores the parser to a previously saved state.
+ * @param parser Parser instance
+ * @param checkpoint Checkpoint to restore to
+ */
 void backtrack(parser_t* parser, parse_checkpoint_t checkpoint) {
     parser->next_token_index = checkpoint.token_index;
     parser->errors.size = checkpoint.error_index;
@@ -167,6 +197,10 @@ token_t *next_token(parser_t* parser) {
 
 source_position_t* current_position(parser_t* parser) {
     return &next_token(parser)->position;
+}
+
+bool peek(parser_t* parser, token_kind_t kind) {
+    return next_token(parser)->kind == kind;
 }
 
 bool accept(parser_t* parser, token_kind_t kind, token_t** token_out) {
@@ -335,12 +369,15 @@ parse_error_t illegal_declaration_specifiers(token_t *token, token_t *prev) {
 }
 
 /**
- * Parses declaration specifiers, and returns the type that they represent.
+ * Parses either a specifier-qualifier-list or declaration-specifiers.
  *
- * <declaration-specifiers> ::= <storage-class-specifier> <declaration-specifiers>
- *                           | <type-specifier> <declaration-specifiers>
- *                           | <type-qualifier> <declaration-specifiers>
- *                           | <function-specifier> <declaration-specifiers>
+ * * <declaration-specifiers> ::= <storage-class-specifier> <declaration-specifiers>
+ *                              | <type-specifier> <declaration-specifiers>
+ *                              | <type-qualifier> <declaration-specifiers>
+ *                              | <function-specifier> <declaration-specifiers>
+ *
+ *  <specifier-qualifier-list> ::= <type-specifier> <specifier-qualifier-list>?
+ *                               | <type-qualifier> <specifier-qualifier-list>?
  *
  * <storage-class-specifier> ::= 'typedef' | 'extern' | 'static' | 'auto' | 'register'
  *
@@ -382,11 +419,13 @@ parse_error_t illegal_declaration_specifiers(token_t *token, token_t *prev) {
  * - enum-specifier
  * - typedef-name
  *
- * @param parser Parser instance
- * @param type Out parameter for the type that the declaration specifiers represent
- * @return true
+ * @param parser
+ * @param is_declaration true if this is a declaration, false if this is a type specifier
+ *                       if false, only type-specifiers and type-qualifiers are allowed
+ * @param type Out parameter for the type that the specifiers represent
+ * @return
  */
-bool parse_declaration_specifiers(parser_t *parser, type_t *type) {
+bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
     const token_t *storage_class =NULL;
     bool is_const = false;
     bool is_volatile = false;
@@ -409,12 +448,13 @@ bool parse_declaration_specifiers(parser_t *parser, type_t *type) {
 
     while (true) {
         token_t *token;
-        if (accept(parser, TK_TYPEDEF, &token) ||
+        if (is_declaration && (accept(parser, TK_TYPEDEF, &token) ||
             accept(parser, TK_EXTERN, &token) ||
             accept(parser, TK_STATIC, &token) ||
             accept(parser, TK_AUTO, &token) ||
-            accept(parser, TK_REGISTER, &token)) {
+            accept(parser, TK_REGISTER, &token))) {
             // storage-class-specifier
+
             if (storage_class != NULL) {
                 // TODO: warn about duplicate specifiers
                 if (token->kind != storage_class->kind) {
@@ -429,7 +469,7 @@ bool parse_declaration_specifiers(parser_t *parser, type_t *type) {
             } else {
                 storage_class = token;
             }
-        } else if (accept(parser, TK_INLINE, &token)) {
+        } else if (is_declaration && accept(parser, TK_INLINE, &token)) {
             // TODO: inline
         } else if (accept(parser, TK_CONST, &token)) {
             is_const = true;
@@ -618,6 +658,14 @@ bool parse_declaration_specifiers(parser_t *parser, type_t *type) {
     }
 
     return true;
+}
+
+bool parse_declaration_specifiers(parser_t *parser, type_t *type) {
+    parse_specifiers(parser, true, type);
+}
+
+bool parse_specifier_qualifier_list(parser_t *parser, type_t *type) {
+    parse_specifiers(parser, false, type);
 }
 
 bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *decl) {
@@ -901,7 +949,7 @@ bool parse_direct_declarator(parser_t *parser, token_t **identifier_out, ptr_vec
 }
 
 /**
- * Parses the right hand side of a direct declarator.
+ * Parses the right hand side of a direct (possibly abstract) declarator.
  * @param parser Parser instance
  * @param type Partial type derived from the declaration specifiers
  * @return true if the direct declarator prime was parsed successfully, false otherwise
@@ -1020,43 +1068,53 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
             break;
         }
 
-        type_t *type = malloc(sizeof(type_t));
-        if (!parse_declaration_specifiers(parser, type)) {
-            free(type);
+        type_t *base = malloc(sizeof(type_t));
+        if (!parse_declaration_specifiers(parser, base)) {
+            free(base);
             return false;
         }
 
         parameter_declaration_t *param = malloc(sizeof(parameter_declaration_t));
         *param = (parameter_declaration_t) {
-                .type = type,
+                .type = base,
                 .identifier = NULL,
         };
 
-        // TODO: parse abstract declarators
         if (next_token(parser)->kind == TK_COMMA) {
-            // This is a parameter declaration without an identifier.
+            // This is a parameter declaration without a declarator/abstract-declarator.
             append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
         } else if (next_token(parser)->kind == TK_RPAREN) {
             // This is a parameter declaration with an identifier, and it's the last parameter.
             append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
             break;
-        }
+        } else {
+            // The declaration specifiers can either be followed by a declarator, or an abstract-declarator.
+            // It's not possible to predict which is next with a fixed lookahead, so we will try to parse both and backtrack
+            // after any failures.
+            parse_checkpoint_t checkpoint = create_checkpoint(parser);
 
-        declaration_t decl;
-        if (!parse_declarator(parser, *type, &decl)) {
-            // TODO: error recovery?
-            free(type);
-            return false;
+            declaration_t decl;
+            if (parse_declarator(parser, *base, &decl)) {
+                param->type = decl.type;
+                param->identifier = decl.identifier;
+                append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
+            } else {
+                backtrack(parser, checkpoint); // parse_declarator failed, so reset the parser state
+                type_t *type = NULL;
+                if (parse_abstract_declarator(parser, *base, &type)) {
+                    param->identifier = NULL;
+                    param->type = type;
+                    append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
+                } else {
+                    append_parse_error(&parser->errors, (parse_error_t) {
+                            .type = PARSE_ERROR_PARAMETER_TYPE_MALFORMED,
+                            .token = next_token(parser),
+                            .production_name = "parameter-declaration",
+                    });
+                    return false;
+                }
+            }
         }
-
-        param->type = decl.type;
-        param->identifier = decl.identifier;
-        if (decl.initializer != NULL) {
-            // Initializers aren't allowed here
-            // TODO: report an error and continue parsing
-        }
-
-        append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
     } while (accept(parser, TK_COMMA, NULL));
 
     if (!require(parser, TK_RPAREN, NULL, "parameter-type-list", NULL)) {
@@ -1068,6 +1126,183 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
     parameters->length = vec.size;
 
     return true;
+}
+
+/**
+ * Parses a type name (e.g. for a cast expression).
+ *
+ * @param parser Parser instance
+ * @param type_out Output parameter for the derived type
+ * @return true if the type name was parsed successfully, false otherwise
+ */
+bool parse_type_name(parser_t *parser, type_t **type_out) {
+    type_t *base_type = malloc(sizeof(type_t));
+    parse_specifier_qualifier_list(parser, base_type);
+
+    // abstract-declarator is optional
+    if (peek(parser, TK_STAR) || peek(parser, TK_LPAREN) || peek(parser, TK_LBRACKET)) {
+        if (!parse_abstract_declarator(parser, *base_type, type_out)) {
+            free(base_type);
+            return false;
+        }
+    } else {
+        *type_out = base_type;
+    }
+
+    return true;
+}
+
+bool parse_direct_abstract_declarator(parser_t *parser, ptr_vector_t *right);
+
+/**
+ * Inner function for parsing an abstract declarator.
+ * Outputs the incomplete type derived from the declarator.
+ *
+ * @param parser Parser instance
+ * @param identifier_out Output parameter for the pointer to the identifier token.
+ * @param left Reference to the declarator segments to the left of the identifier
+ * @param right Reference to the declarator segments to the right of the identifier
+ * @return true if the declarator was parsed successfully, false otherwise
+ */
+bool _parse_abstract_declarator(parser_t *parser, type_t **type_out) {
+    ptr_vector_t left = (ptr_vector_t) {.buffer = NULL, .size = 0, .capacity = 0};
+    ptr_vector_t right = (ptr_vector_t) {.buffer = NULL, .size = 0, .capacity = 0};
+
+    bool matched_ptr = false;
+    if (accept(parser, TK_STAR, NULL)) {
+        matched_ptr = true;
+        type_t *type = NULL;
+        if (!parse_pointer(parser, NULL, &type)) {
+            return false;
+        }
+        append_ptr(&left.buffer, &left.size, &left.capacity, type);
+    }
+
+    // The <direct-abstract-declarator> is optional if we've already matched a pointer
+    if (peek(parser, TK_LPAREN) || peek(parser, TK_LBRACKET) || !matched_ptr) {
+        if (!parse_direct_abstract_declarator(parser, &right)) {
+            return false;
+        }
+    }
+
+    *type_out = build_incomplete_type(&left, &right);
+
+    return true;
+}
+
+/**
+ * Parses an abstract declarator.
+ * TODO: shares a lot of code with parse_declarator, consider refactoring
+ *
+ * <abstract-declarator> ::= <pointer>
+ *                         | <pointer>? <direct-abstract-declarator>
+ *
+ * @param parser Parser instance
+ * @param base_type Base type derived from the declaration specifiers (e.g. int, float, etc...)
+ * @param type_out Out parameter for the derived type
+ * @return true if the abstract declarator was parsed successfully, false otherwise
+ */
+bool parse_abstract_declarator(parser_t *parser, type_t base_type, type_t **type_out) {
+    type_t *type = NULL;
+    if (!_parse_abstract_declarator(parser, &type)) {
+        return false;
+    }
+
+    // Move the base type to the heap
+    type_t *base = malloc(sizeof(token_t));
+    *base = base_type;
+
+    if (type == NULL) {
+        type = base;
+    } else {
+        type_t *inner = get_innermost_incomplete_type(type);
+        if (inner->kind == TYPE_POINTER) {
+            inner->pointer.base = base;
+        } else if (inner->kind == TYPE_ARRAY) {
+            inner->array.element_type = base;
+        } else if (inner->kind == TYPE_FUNCTION) {
+            inner->function.return_type = base;
+        } else {
+            assert(false); // Invalid type stack
+        }
+    }
+
+    *type_out = type;
+
+    return true;
+}
+
+/**
+ * Parses a direct abstract declarator.
+ *
+ * After eliminating left recursion, the grammar for direct-abstract-declarator is:
+ *
+ * <direct-abstract-declarator> ::= '(' <abstract-declarator> ')' <direct-abstract-declarator-prime>*
+ *                                | <direct-abstract-declarator-prime>+
+ *
+ * <direct-abstract-declarator-prime> ::= '[' <type-qualifier-list>? <assignment-expression>? ']'          // Array
+ *                                      | '[' 'static' <type-qualifier-list>? <assignment-expression> ']'  // Array
+ *                                      | '[' <type-qualifier-list> 'static' <assignment-expression> ']'   // Array
+ *                                      | '[' '*' ']'                                                      // Variable Length Array (VLA) - Not Implemented
+ *                                      | '(' <parameter-type-list> ')'                                    // Parameter type list for a function pointer
+ *
+ * @param parser Parser instance
+ * @param right Reference to the declarator segments to the right of the identifier (or rather, where the imaginary identifier would be)
+ * @return true if the direct declarator was parsed successfully, false otherwise
+ */
+bool parse_direct_abstract_declarator(parser_t *parser, ptr_vector_t *right) {
+    if (accept(parser, TK_LPAREN, NULL)) {
+        {
+            type_t *inner;
+            if (!_parse_abstract_declarator(parser, &inner)) {
+                return false;
+            }
+            if (inner != NULL) {
+                append_ptr(&right->buffer, &right->size, &right->capacity, inner);
+            }
+        }
+
+        if (!require(parser, TK_RPAREN, NULL, "direct-abstract-declarator", NULL)) {
+            return false;
+        }
+
+        while (next_token(parser)->kind == TK_LPAREN || next_token(parser)->kind == TK_LBRACKET) {
+            type_t *inner;
+            if (!parse_direct_declarator_prime(parser, &inner)) {
+                return false;
+            }
+            append_ptr(&right->buffer, &right->size, &right->capacity, inner); // push onto the stack
+        }
+
+        return true;
+    } else {
+        bool matched_at_least_one = false;
+        while (peek(parser, TK_LPAREN) || peek(parser, TK_LBRACKET)) {
+            type_t *inner;
+            if (!parse_direct_declarator_prime(parser, &inner)) {
+                return false;
+            }
+            append_ptr(&right->buffer, &right->size, &right->capacity, inner); // push onto the stack
+            matched_at_least_one = true;
+        }
+
+        if (matched_at_least_one) {
+            return true;
+        } else {
+            append_parse_error(&parser->errors, (parse_error_t) {
+                    .token = next_token(parser),
+                    .previous_token = NULL,
+                    .production_name = "direct-abstract-declarator",
+                    .previous_production_name = NULL,
+                    .type = PARSE_ERROR_EXPECTED_TOKEN,
+                    .expected_token = {
+                            .expected_count = 2,
+                            .expected = {TK_LPAREN, TK_LBRACKET},
+                    },
+            });
+            return false;
+        }
+    }
 }
 
 // Statements
@@ -1996,9 +2231,36 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const
 }
 
 bool parse_cast_expression(parser_t *parser, expression_t *expr) {
-    if (accept(parser, TK_LPAREN, NULL)) {
-        fprintf(stderr, "TODO: Implement parsing cast-expression ::= '(' <type-name> ')' <cast-expression>\n");
-        assert(false);
+    token_t *token = NULL;
+    if (accept(parser, TK_LPAREN, &token)) {
+        type_t *type = NULL;
+        if (!parse_type_name(parser, &type)) {
+            if (type != NULL) {
+                free(type);
+            }
+            return false;
+        }
+
+        if (!require(parser, TK_RPAREN, NULL, "cast-expression", "type-name")) {
+            free(type);
+            return false;
+        }
+
+        expression_t *operand = malloc(sizeof(expression_t));
+        if (!parse_cast_expression(parser, operand)) {
+            free(operand);
+            free(type);
+            return false;
+        }
+
+        *expr = (expression_t) {
+            .span = SPANNING_NEXT(token),
+            .type = EXPRESSION_CAST,
+            .cast = {
+                .type = type,
+                .expression = operand,
+            },
+        };
     } else {
         return parse_unary_expression(parser, expr);
     }
@@ -2090,8 +2352,73 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
                accept(parser, TK_EXCLAMATION, &token)) {
         return unary_op(parser, expr, token);
     } else if (accept(parser, TK_SIZEOF, &token)) {
-        fprintf(stderr, "TODO: Implement parsing unary-expression ::= 'sizeof' unary-expression\n");
-        assert(false);
+        if (peek(parser, TK_LPAREN)) {
+            // Ambiguous, could be sizeof(type) or sizeof expression, as a primary expression also starts with a '('.
+            // Try both and return the first that succeeds.
+            parse_checkpoint_t checkpoint = create_checkpoint(parser);
+
+            expression_t *inner = malloc(sizeof(expression_t));
+            if (parse_unary_expression(parser, inner)) {
+                *expr = (expression_t) {
+                    .span = SPANNING_NEXT(token),
+                    .type = EXPRESSION_UNARY,
+                    .unary = {
+                        .operator = UNARY_SIZEOF,
+                        .operand = inner,
+                    },
+                };
+                return true;
+            }
+
+            free(inner); // Cleanup
+
+            // Restore the parser state and try the other alternative: '(' <type-name> ')'
+            backtrack(parser, checkpoint);
+
+            // We know the next token is '(', since we rolled back the parser state.
+            accept(parser, TK_LPAREN, NULL);
+
+            type_t *type = NULL;
+            if (!parse_type_name(parser, &type)) {
+                free(type);
+                append_parse_error(&parser->errors, (parse_error_t) {
+                    .type = PARSE_ERROR_EXPECTED_EXPRESSION_OR_TYPE_NAME_AFTER_SIZEOF,
+                    .production_name = "unary-expression",
+                    .previous_production_name = NULL,
+                    .token = token,
+                });
+                return false;
+            }
+
+            if (!require(parser, TK_RPAREN, NULL, "unary-expression", "type-name")) {
+                free(type);
+                return false;
+            }
+
+            *expr = (expression_t) {
+                .span = SPANNING_NEXT(token),
+                .type = EXPRESSION_SIZEOF,
+                .sizeof_type = type,
+            };
+            return true;
+        } else {
+            // Must be 'sizeof' <unary-expression>
+            expression_t *inner = malloc(sizeof(expression_t));
+            if (!parse_unary_expression(parser, inner)) {
+                free(inner);
+                return false;
+            }
+
+            *expr = (expression_t) {
+                .span = SPANNING_NEXT(token),
+                .type = EXPRESSION_UNARY,
+                .unary = {
+                    .operator = UNARY_SIZEOF,
+                    .operand = inner,
+                },
+            };
+            return true;
+        }
     } else {
         return parse_postfix_expression(parser, expr);
     }
