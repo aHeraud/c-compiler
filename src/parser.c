@@ -2425,126 +2425,127 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
 }
 
 bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
-    if (!parse_primary_expression(parser, expr)) {
+    expression_t *primary = malloc(sizeof(expression_t));
+    if (!parse_primary_expression(parser, primary)) {
+        free(primary);
         return false;
     }
 
-    token_t *token = NULL;
-    if (accept(parser, TK_LBRACKET, NULL)) {
-        // array indexing
-        expression_t *index = malloc(sizeof(expression_t));
-        if (!parse_expression(parser, index)) {
-            free(index);
-            return false;
-        }
-
-        if (!require(parser, TK_RBRACKET, NULL, "postfix-expression", "expression")) {
-            free(index);
-            return false;
-        }
-
-        expression_t *array = malloc(sizeof(expression_t));
-        *array = *expr;
-
-        *expr = (expression_t) {
-            .span = spanning(array->span.start, *current_position(parser)),
-            .type = EXPRESSION_ARRAY_SUBSCRIPT,
-            .array_subscript = {
-                .array = array,
-                .index = index,
-            },
-        };
-
-        return true;
-    } else if (accept(parser, TK_LPAREN, NULL)) {
-        // function call
-        // parse argument list
-        ptr_vector_t arguments = {.size = 0, .capacity = 0, .buffer = NULL};
-        while (next_token(parser) ->kind != TK_RPAREN && next_token(parser)->kind != TK_EOF) {
-            expression_t *argument = malloc(sizeof(expression_t));
-            if (!parse_assignment_expression(parser, argument)) {
-                free(argument);
-                // TODO: cleanup arguments
+    expression_t *current = primary;
+    while (TOKEN_KIND_ONE_OF(next_token(parser)->kind, TK_LBRACKET, TK_LPAREN, TK_DOT, TK_ARROW, TK_INCREMENT, TK_DECREMENT)) {
+        token_t *token = NULL;
+        if (accept(parser, TK_LBRACKET, NULL)) {
+            // array indexing
+            expression_t *index = malloc(sizeof(expression_t));
+            if (!parse_expression(parser, index)) {
+                free(index);
                 return false;
             }
 
-            append_ptr(&arguments.buffer, &arguments.size, &arguments.capacity, argument);
-
-            if (!accept(parser, TK_COMMA, NULL)) {
-                break;
+            if (!require(parser, TK_RBRACKET, NULL, "postfix-expression", "expression")) {
+                free(index);
+                return false;
             }
+
+            expression_t *array = current;
+            current = malloc(sizeof(expression_t));
+            *current = (expression_t) {
+                    .span = spanning(array->span.start, *current_position(parser)),
+                    .type = EXPRESSION_ARRAY_SUBSCRIPT,
+                    .array_subscript = {
+                            .array = array,
+                            .index = index,
+                    },
+            };
+        } else if (accept(parser, TK_LPAREN, NULL)) {
+            // function call
+            // parse argument list
+            ptr_vector_t arguments = {.size = 0, .capacity = 0, .buffer = NULL};
+            while (next_token(parser) ->kind != TK_RPAREN && next_token(parser)->kind != TK_EOF) {
+                expression_t *argument = malloc(sizeof(expression_t));
+                if (!parse_assignment_expression(parser, argument)) {
+                    free(argument);
+                    // TODO: cleanup arguments
+                    return false;
+                }
+
+                append_ptr(&arguments.buffer, &arguments.size, &arguments.capacity, argument);
+
+                if (!accept(parser, TK_COMMA, NULL)) {
+                    break;
+                }
+            }
+
+            if (!require(parser, TK_RPAREN, NULL, "argument-expression-list", "")) {
+                // TODO: cleanup
+                return false;
+            }
+
+            expression_t *callee = current;
+            current = malloc(sizeof(expression_t));
+
+            *current = (expression_t) {
+                    .span = spanning(callee->span.start, *current_position(parser)),
+                    .type = EXPRESSION_CALL,
+                    .call = {
+                            .callee = callee,
+                            .arguments = arguments,
+                    },
+            };
+        } else if (accept(parser, TK_DOT, &token) || accept(parser, TK_ARROW, &token)) {
+            // struct member access
+            token_t *identifier;
+            if (!require(parser, TK_IDENTIFIER, &identifier, "postfix-expression", "expression")) {
+                return false;
+            }
+
+            expression_t *struct_or_union = current;
+            current = malloc(sizeof(expression_t));
+
+            *current = (expression_t) {
+                    .span = spanning(struct_or_union->span.start, *current_position(parser)),
+                    .type = EXPRESSION_MEMBER_ACCESS,
+                    .member_access = {
+                            .struct_or_union = struct_or_union,
+                            .operator = *token,
+                            .member = *identifier,
+                    },
+            };
+        } else if (accept(parser, TK_INCREMENT, NULL)) {
+            // post-increment
+            expression_t *operand = current;
+            current = malloc(sizeof(expression_t));
+            *current = (expression_t) {
+                    .span = SPAN_STARTING(operand->span.start),
+                    .type = EXPRESSION_UNARY,
+                    .unary = {
+                            .operator = UNARY_POST_INCREMENT,
+                            .operand = operand,
+                    },
+            };
+        } else if (accept(parser, TK_DECREMENT, NULL)) {
+            expression_t *operand = current;
+            current = malloc(sizeof(expression_t));
+
+            *current = (expression_t) {
+                    .span = {
+                            .start = operand->span.start,
+                            .end = *current_position(parser),
+                    },
+                    .type = EXPRESSION_UNARY,
+                    .unary = {
+                            .operator = UNARY_POST_DECREMENT,
+                            .operand = operand,
+                    },
+            };
+            return true;
         }
-
-        if (!require(parser, TK_RPAREN, NULL, "argument-expression-list", "")) {
-            // TODO: cleanup
-            return false;
-        }
-
-        expression_t *callee = malloc(sizeof(expression_t));
-        *callee = *expr;
-
-        *expr = (expression_t) {
-            .span = spanning(callee->span.start, *current_position(parser)),
-            .type = EXPRESSION_CALL,
-            .call = {
-                .callee = callee,
-                .arguments = arguments,
-            },
-        };
-
-        return true;
-    } else if (accept(parser, TK_DOT, &token) || accept(parser, TK_ARROW, &token)) {
-        // struct member access
-        token_t *identifier;
-        if (!require(parser, TK_IDENTIFIER, &identifier, "postfix-expression", "expression")) {
-            return false;
-        }
-
-        expression_t *struct_or_union = malloc(sizeof(expression_t));
-        *struct_or_union = *expr;
-
-        *expr = (expression_t) {
-            .span = spanning(struct_or_union->span.start, *current_position(parser)),
-            .type = EXPRESSION_MEMBER_ACCESS,
-            .member_access = {
-                .struct_or_union = struct_or_union,
-                .operator = *token,
-                .member = *identifier,
-            },
-        };
-        return true;
-    } else if (accept(parser, TK_INCREMENT, NULL)) {
-        // post-increment
-        expression_t *operand = malloc(sizeof(expression_t));
-        *operand = *expr;
-        *expr = (expression_t) {
-            .span = SPAN_STARTING(operand->span.start),
-            .type = EXPRESSION_UNARY,
-            .unary = {
-                    .operator = UNARY_POST_INCREMENT,
-                    .operand = operand,
-            },
-        };
-        return true;
-    } else if (accept(parser, TK_DECREMENT, NULL)) {
-        expression_t *operand = malloc(sizeof(expression_t));
-        *operand = *expr;
-
-        *expr = (expression_t) {
-            .span = {
-                .start = operand->span.start,
-                .end = *current_position(parser),
-            },
-            .type = EXPRESSION_UNARY,
-            .unary = {
-                .operator = UNARY_POST_DECREMENT,
-                .operand = operand,
-            },
-        };
-        return true;
-    } else {
-        return true;
     }
+
+    *expr = *current;
+    free(current);
+
+    return true;
 }
 
 bool parse_primary_expression(parser_t* parser, expression_t* expr) {

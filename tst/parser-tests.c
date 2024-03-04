@@ -251,6 +251,31 @@ void test_parse_postfix_expression_array_subscript() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
+void test_parse_postfix_expression_2d_array_subscript() {
+    lexer_global_context_t context = create_context();
+    char* input = "arr[i][j]";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+        .span = dummy_span(),
+        .type = EXPRESSION_ARRAY_SUBSCRIPT,
+        .array_subscript = (array_subscript_expression_t) {
+            .array = &(expression_t) {
+                .span = dummy_span(),
+                .type = EXPRESSION_ARRAY_SUBSCRIPT,
+                .array_subscript = (array_subscript_expression_t) {
+                    .array = make_identifier("arr"),
+                    .index = make_identifier("i"),
+                },
+            },
+            .index = make_identifier("j"),
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
+}
+
 void test_parse_postfix_expression_member_access() {
     lexer_global_context_t context = create_context();
     char* input = "foo.bar";
@@ -1478,6 +1503,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "primary expression - parenthesized", test_parse_primary_expression_parenthesized) ||
         NULL == CU_add_test(pSuite, "postfix expression - function call", test_parse_postfix_expression_function_call) ||
         NULL == CU_add_test(pSuite, "postfix expression - array subscript", test_parse_postfix_expression_array_subscript) ||
+        NULL == CU_add_test(pSuite, "postfix expression - multiple postfix expressions", test_parse_postfix_expression_2d_array_subscript) ||
         NULL == CU_add_test(pSuite, "postfix expression - member access", test_parse_postfix_expression_member_access) ||
         NULL == CU_add_test(pSuite, "unary expression - sizeof constant", test_parse_unary_sizeof_constant) ||
         NULL == CU_add_test(pSuite, "unary expression - sizeof (type)", test_parse_unary_sizeof_type) ||
