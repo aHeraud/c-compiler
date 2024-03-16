@@ -54,7 +54,7 @@ void codegen_finalize(codegen_context_t *context, const char* output_filename);
 
 void enter_scope(codegen_context_t *context);
 void leave_scope(codegen_context_t *context);
-void enter_function(codegen_context_t *context, const function_definition_t *function);
+void enter_function(codegen_context_t *context, const function_definition_t *function, symbol_t *symtab_entry);
 void leave_function(codegen_context_t *context);
 void declare_symbol(codegen_context_t *context, symbol_t *symbol);
 symbol_t *lookup_symbol(const codegen_context_t *context, const char *name);

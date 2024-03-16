@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import unittest
+from typing import Optional
 
 compiler_path = os.path.abspath(sys.path[0] + "/../bin/cc")
 
@@ -11,7 +12,7 @@ class ValidationTestCase(unittest.TestCase):
         super().__init__()
         self.test_dir = test_dir
 
-    def id(self):
+    def id(self) -> str:
         return self.test_dir
 
     def setUp(self):
@@ -27,9 +28,11 @@ class ValidationTestCase(unittest.TestCase):
 
     def runTest(self):
         binary = self.build()
-        result = subprocess.run([binary])
-        expected_exit_code = self.expected_exit_code()
-        self.assertEqual(result.returncode, expected_exit_code, "Program exited with unexpected exit code " + str(result.returncode))
+        result = subprocess.run([binary], stdout=subprocess.PIPE, text=True)
+
+        self.assertEqual(result.returncode, self.expected_exit_code(), "Program exited with unexpected exit code " +
+                         str(result.returncode))
+        self.assertEqual(result.stdout, self.expected_stdout(), "Program produced unexpected output (stdout)")
 
     # Builds the test program, and returns the path to the resulting binary.
     def build(self):
@@ -41,7 +44,7 @@ class ValidationTestCase(unittest.TestCase):
 
         # Currently this just emits LLVM IR, so we need to assemble and link the output into a binary we can run.
         object_file_path = self.tempdir + "/program.o"
-        assemble_result = subprocess.run(["llc", ir_file_path, "-filetype=obj", "-o", object_file_path])
+        assemble_result = subprocess.run(["llc", "-relocation-model=pic", ir_file_path, "-filetype=obj", "-o", object_file_path])
         if assemble_result.returncode != 0:
             raise Exception("Failed to assemble test program " + test_file)
 
@@ -53,15 +56,23 @@ class ValidationTestCase(unittest.TestCase):
         return output_file_path
 
     # Gets the expected exit code of the test program.
-    def expected_exit_code(self):
+    def expected_exit_code(self) -> int:
         expected_exit_code_file = self.test_dir + "/exit.expected"
         if not os.path.exists(expected_exit_code_file):
             return 0
         with open(expected_exit_code_file, "r") as f:
             return int(f.read())
 
+    # Gets the expected output to stdout of the test program.
+    def expected_stdout(self) -> str:
+        expected_stdout_file = self.test_dir + "/stdout.expected"
+        if not os.path.exists(expected_stdout_file):
+            return ""
+        with open(expected_stdout_file, "r") as f:
+            return f.read()
 
-def discover_tests():
+
+def discover_tests() -> unittest.TestSuite:
     # This will find all the subdirectories of the validation test root directory that start with 3 numbers (e.g. 001).
     script_directory = sys.path[0]
     test_directories = []

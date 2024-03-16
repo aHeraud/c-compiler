@@ -49,6 +49,7 @@ void preprocessor_directive(struct Lexer* lexer, token_t* token) {
 
 // For resolving relative paths in #include directives
 void get_file_prefix(const char* path, const size_t len, char buffer[len]) {
+    memset(buffer, 0, len); // zero out the buffer
     ssize_t pathlen = strlen(path);
 
     // find the last '/'

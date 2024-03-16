@@ -78,6 +78,9 @@ bool types_equal(const type_t *a, const type_t *b) {
             if (a->function.parameter_list->length != b->function.parameter_list->length) {
                 return false;
             }
+            if (a->function.parameter_list->variadic != b->function.parameter_list->variadic) {
+                return false;
+            }
             for (size_t i = 0; i < a->function.parameter_list->length; i++) {
                 if (!parameter_declaration_eq(a->function.parameter_list->parameters[i],
                                              b->function.parameter_list->parameters[i])) {

@@ -1401,6 +1401,40 @@ void parse_external_declaration_declaration() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(node.declaration.declarations[0], &expected))
 }
 
+void parse_external_definition_prototype_var_args() {
+    lexer_global_context_t context = create_context();
+    char *input = "int printf(const char *format, ...);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    external_declaration_t node;
+    CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &node))
+    CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_DECLARATION)
+
+    declaration_t *declaration = node.declaration.declarations[0];
+
+    type_t *expected_type = &(type_t) {
+        .kind = TYPE_FUNCTION,
+        .is_const = false,
+        .is_volatile = false,
+        .function = {
+            .return_type = &INT,
+            .parameter_list = &(parameter_type_list_t) {
+                .variadic = true,
+                .parameters = (parameter_declaration_t*[]) {
+                    &(parameter_declaration_t) {
+                        .type = pointer_to(&CHAR),
+                        .identifier = token(TK_IDENTIFIER, "format"),
+                    },
+                },
+                .length = 1,
+            },
+        }
+    };
+
+    CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, expected_type))
+    CU_ASSERT_TRUE_FATAL(strcmp(declaration->identifier->value, "printf") == 0)
+}
+
 void parse_external_declaration_function_definition() {
     lexer_global_context_t context = create_context();
     char *input = "float square(float val) { return val * val; }";
@@ -1543,6 +1577,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "if else if else statement", test_parse_if_else_if_else_statement) ||
         NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement) ||
         NULL == CU_add_test(pSuite, "external declaration - declaration", parse_external_declaration_declaration) ||
+        NULL == CU_add_test(pSuite, "external declaration - prototype (var args)", parse_external_definition_prototype_var_args) ||
         NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||
         NULL == CU_add_test(pSuite, "external declaration - function (void) definition", parse_external_definition_function_taking_void) ||
         NULL == CU_add_test(pSuite, "program", test_parse_program)

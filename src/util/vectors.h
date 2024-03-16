@@ -1,6 +1,8 @@
 #ifndef C_COMPILER_VECTORS_H
 #define C_COMPILER_VECTORS_H
 
+#include <assert.h>
+#include <stdlib.h>
 #include <stddef.h>
 
 #define VEC_DEFINE(name, typedef_name, type) \

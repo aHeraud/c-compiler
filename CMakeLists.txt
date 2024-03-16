@@ -39,6 +39,7 @@ add_library(cclib STATIC
         src/parser.c src/parser.h
         src/ast.h src/ast.c
         src/util/hashtable.c src/util/hashtable.h
+        src/util/strings.c src/util/strings.h
         src/codegen.c src/codegen.h
         src/types.c src/types.h
 )

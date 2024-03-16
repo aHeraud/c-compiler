@@ -10,6 +10,7 @@
 #include "codegen.h"
 #include "types.h"
 #include "util/hashtable.h"
+#include "util/strings.h"
 
 LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, const type_t *from, const type_t *to);
 LLVMValueRef get_rvalue(codegen_context_t *context, expression_result_t expr);
@@ -63,37 +64,12 @@ void leave_scope(codegen_context_t *context) {
     free(scope);
 }
 
-void enter_function(codegen_context_t *context, const function_definition_t *function) {
+void enter_function(codegen_context_t *context, const function_definition_t *function, symbol_t *symtab_entry) {
     assert(context != NULL && function != NULL);
     context->current_function = function;
 
-    // If this function was previously declared, we need to retrieve the LLVM function value.
-    // Otherwise, we declare it.
-    LLVMValueRef function_value = LLVMGetNamedFunction(context->llvm_module, function->identifier->value);
-    if (function_value == NULL) {
-        // Parameters
-        bool has_varargs = function->parameter_list->variadic;
-        size_t param_count = function->parameter_list->length;
-        LLVMTypeRef *param_types = malloc(sizeof(LLVMTypeRef) * param_count);
-        for (int i = 0; i < param_count; i += 1) {
-            param_types[i] = llvm_type_for(function->parameter_list->parameters[i]->type);
-        }
-
-        LLVMTypeRef return_type = llvm_type_for(function->return_type);
-        LLVMTypeRef function_type = LLVMFunctionType(return_type, param_types, param_count, has_varargs);
-        function_value = LLVMAddFunction(context->llvm_module, function->identifier->value, function_type);
-
-        // For now everything has internal linkage other than main.
-        // TODO: determine linkage for functions
-        if (strcmp(function->identifier->value, "main") == 0) {
-            LLVMSetLinkage(function_value, LLVMExternalLinkage);
-        } else {
-            LLVMSetLinkage(function_value, LLVMInternalLinkage);
-        }
-    }
-
-    context->llvm_current_function = function_value;
-    context->llvm_current_block = LLVMAppendBasicBlock(function_value, "entry");
+    context->llvm_current_function = symtab_entry->llvm_value;
+    context->llvm_current_block = LLVMAppendBasicBlock(context->llvm_current_function, "entry");
     context->llvm_builder = LLVMCreateBuilder();
     context->llvm_entry_block = context->llvm_current_block;
     context->llvm_last_alloca = NULL;
@@ -175,19 +151,41 @@ void visit_function_definition(codegen_context_t *context, const function_defini
             exit(1);
         }
     } else {
+        LLVMValueRef llvm_function_value = NULL;
+
+        // Parameters
+        bool has_varargs = function->parameter_list->variadic;
+        size_t param_count = function->parameter_list->length;
+        LLVMTypeRef *param_types = malloc(sizeof(LLVMTypeRef) * param_count);
+        for (int i = 0; i < param_count; i += 1) {
+            param_types[i] = llvm_type_for(function->parameter_list->parameters[i]->type);
+        }
+
+        LLVMTypeRef return_type = llvm_type_for(function->return_type);
+        LLVMTypeRef llvm_function_type = LLVMFunctionType(return_type, param_types, param_count, has_varargs);
+        llvm_function_value = LLVMAddFunction(context->llvm_module, function->identifier->value, llvm_function_type);
+
+        // For now everything has internal linkage other than main.
+        // TODO: determine linkage for functions
+        if (strcmp(function->identifier->value, "main") == 0) {
+            LLVMSetLinkage(llvm_function_value, LLVMExternalLinkage);
+        } else {
+            LLVMSetLinkage(llvm_function_value, LLVMInternalLinkage);
+        }
+
         // Add the function to the symbol table
         entry = malloc(sizeof(symbol_t));
         *entry = (symbol_t) {
             .kind = SYMBOL_FUNCTION,
             .type = function_type,
             .identifier = function->identifier,
-            .llvm_type = llvm_type_for(function_type),
-            .llvm_value = NULL,
+            .llvm_type = llvm_function_type,
+            .llvm_value = llvm_function_value,
         };
         declare_symbol(context, entry);
     }
 
-    enter_function(context, function);
+    enter_function(context, function, entry);
     enter_scope(context);
 
     // Declare the function parameters as local variables.
@@ -875,8 +873,17 @@ expression_result_t visit_primary_expression(codegen_context_t *context, const e
         case PE_CONSTANT: {
             return visit_constant(context, expr);
         }
-        case PE_STRING_LITERAL:
-            assert(false && "String literals not yet implemented");
+        case PE_STRING_LITERAL: {
+            char* literal = replace_escape_sequences(expr->primary.token.value);
+            LLVMValueRef ptr = LLVMBuildGlobalStringPtr(context->llvm_builder, literal, ".str");
+            return (expression_result_t) {
+                    .expression = expr,
+                    .type = &CONST_CHAR_PTR,
+                    .llvm_value = ptr,
+                    .llvm_type = LLVMTypeOf(ptr),
+                    .is_lvalue = false,
+            };
+        }
         case PE_EXPRESSION:
             return visit_expression(context, expr->primary.expression);
     }
@@ -974,14 +981,14 @@ expression_result_t visit_call_expression(codegen_context_t *context, const expr
     if (parameters->variadic) {
         if (parameters->length > expression->call.arguments.size) {
             source_position_t position = expression->call.callee->primary.token.position;
-            fprintf(stderr, "%s:%d:%d: error: too few arguments to function call\n",
+            fprintf(stderr, "%s:%d:%d: error: too few arguments in variadic function call\n",
                     position.path, position.line, position.column);
             exit(1);
         }
     } else {
         if (parameters->length != expression->call.arguments.size) {
             source_position_t position = expression->call.callee->primary.token.position;
-            fprintf(stderr, "%s:%d:%d: error: incorrect number of arguments to function call\n",
+            fprintf(stderr, "%s:%d:%d: error: incorrect number of arguments in function call\n",
                     position.path, position.line, position.column);
             exit(1);
         }
@@ -991,7 +998,8 @@ expression_result_t visit_call_expression(codegen_context_t *context, const expr
     size_t num_args = expression->call.arguments.size;
     LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * expression->call.arguments.size);
     for (int i = 0; i < num_args; i += 1) {
-        const parameter_declaration_t *parameter = parameters->parameters[i];
+        const parameter_declaration_t *parameter = i >= parameters->length ?
+                parameters->parameters[parameters->length - 1] : parameters->parameters[i];
         const expression_t *argument = expression->call.arguments.buffer[i];
         expression_result_t resolved_argument = visit_expression(context, argument);
         if (resolved_argument.is_lvalue) {

@@ -166,6 +166,18 @@ static const type_t CHAR = {
         },
 };
 
+static const type_t CONST_CHAR_PTR = {
+        .kind = TYPE_POINTER,
+        .is_const = true,
+        .is_volatile = false,
+        .pointer = {
+            .base = &CHAR,
+            .is_const = false,
+            .is_volatile = false,
+            .is_restrict = false,
+        },
+};
+
 static const type_t SHORT = {
         .kind = TYPE_INTEGER,
         .is_const = false,
