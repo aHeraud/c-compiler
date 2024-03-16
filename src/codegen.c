@@ -15,6 +15,8 @@ LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, con
 LLVMValueRef get_rvalue(codegen_context_t *context, expression_result_t expr);
 LLVMTypeRef get_function_type(const type_t *function);
 LLVMValueRef as_boolean(codegen_context_t *context, expression_result_t value);
+type_t *type_of_function_definition(const function_definition_t *function_definition);
+bool function_types_equivalent(const type_t *a, const type_t* b);
 
 codegen_context_t *codegen_init(const char* module_name) {
     codegen_context_t *context = malloc(sizeof(codegen_context_t));
@@ -152,6 +154,39 @@ void visit_function_definition(codegen_context_t *context, const function_defini
     // TODO: Before calling enter_function, verify that the function was not previously declared with a different
     //       signature. If it was, emit an error.
     //       Alternatively, that logic can be moved to enter_function.
+
+    type_t *function_type = type_of_function_definition(function);
+
+    // Verify that the function was not previously defined with a different signature.
+    symbol_t *entry = lookup_symbol(context, function->identifier->value);
+    if (entry != NULL) {
+        if (entry->kind != SYMBOL_FUNCTION || entry->type->kind != TYPE_FUNCTION) {
+            source_position_t position = function->identifier->position;
+            fprintf(stderr, "%s:%d:%d: error: redefinition of '%s' as a different kind of symbol\n",
+                    position.path, position.line, position.column, function->identifier->value);
+            exit(1);
+        }
+
+        // Compare function signatures, the types must match exactly (excluding the parameter names)
+        if (!function_types_equivalent(entry->type, function_type)) {
+            source_position_t position = function->identifier->position;
+            fprintf(stderr, "%s:%d:%d: error: redefinition of '%s' with a different signature\n",
+                    position.path, position.line, position.column, function->identifier->value);
+            exit(1);
+        }
+    } else {
+        // Add the function to the symbol table
+        entry = malloc(sizeof(symbol_t));
+        *entry = (symbol_t) {
+            .kind = SYMBOL_FUNCTION,
+            .type = function_type,
+            .identifier = function->identifier,
+            .llvm_type = llvm_type_for(function_type),
+            .llvm_value = NULL,
+        };
+        declare_symbol(context, entry);
+    }
+
     enter_function(context, function);
     enter_scope(context);
 
@@ -1138,4 +1173,51 @@ LLVMValueRef as_boolean(codegen_context_t *context, expression_result_t value) {
     }
 
     return condition;
+}
+
+type_t *type_of_function_definition(const function_definition_t *function_definition) {
+    if (function_definition == NULL) {
+        return NULL;
+    }
+
+    type_t *type = malloc(sizeof(type_t));
+    *type = (type_t) {
+        .kind = TYPE_FUNCTION,
+        .is_volatile = false,
+        .is_const = false,
+        .function = {
+            .return_type = function_definition->return_type,
+            .parameter_list = function_definition->parameter_list,
+        },
+    };
+    return type;
+}
+
+bool function_types_equivalent(const type_t *a, const type_t* b) {
+    if (a == NULL || b == NULL) {
+        // A previous error occurred, so we don't need to report another error.
+        return true;
+    }
+
+    assert(a->kind == TYPE_FUNCTION && b->kind == TYPE_FUNCTION);
+
+    if (!types_equal(a->function.return_type, b->function.return_type)) {
+        return false;
+    }
+
+    if (a->function.parameter_list->length != b->function.parameter_list->length) {
+        return false;
+    }
+
+    if (a->function.parameter_list->variadic != b->function.parameter_list->variadic) {
+        return false;
+    }
+
+    for (int i = 0; i < a->function.parameter_list->length; i += 1) {
+        if (!types_equal(a->function.parameter_list->parameters[i]->type, b->function.parameter_list->parameters[i]->type)) {
+            return false;
+        }
+    }
+
+    return true;
 }

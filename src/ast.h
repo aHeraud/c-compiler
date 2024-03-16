@@ -223,7 +223,6 @@ typedef struct Statement {
     token_t *terminator;
 } statement_t;
 
-// Very primitive definition for now, add support for parameters, etc. later
 typedef struct FunctionDefinition {
     const type_t *return_type;
     const token_t *identifier;

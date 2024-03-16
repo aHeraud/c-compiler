@@ -1125,6 +1125,12 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
     parameters->parameters = (parameter_declaration_t**) vec.buffer;
     parameters->length = vec.size;
 
+    // Special case: If the parameter type list is `(void)`, then it's an empty parameter list.
+    if (parameters->length == 1 && parameters->parameters[0]->type->kind == TYPE_VOID && parameters->parameters[0]->identifier == NULL) {
+        parameters->parameters = NULL;
+        parameters->length = 0;
+    }
+
     return true;
 }
 

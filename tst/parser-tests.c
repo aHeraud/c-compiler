@@ -351,14 +351,9 @@ void test_parse_unary_sizeof_function_pointer_type() {
             .function = {
                 .return_type = &INT,
                 .parameter_list = &(parameter_type_list_t) {
-                    .length = 1,
+                    .length = 0,
                     .variadic = false,
-                    .parameters = (void*[]) {
-                        &(parameter_declaration_t) {
-                            .type = &VOID,
-                            .identifier = NULL,
-                        },
-                    }
+                    .parameters = NULL
                 },
             },
         })
@@ -863,13 +858,8 @@ void test_parse_function_declaration_with_parameters() {
                         .return_type = &FLOAT,
                         .parameter_list = &(parameter_type_list_t) {
                             .variadic = false,
-                            .length = 1,
-                            .parameters = (parameter_declaration_t*[1]) {
-                                &(parameter_declaration_t) {
-                                    .type = &VOID,
-                                    .identifier = NULL,
-                                },
-                            },
+                            .length = 0,
+                            .parameters = NULL,
                         },
                     },
                 }),
@@ -986,17 +976,10 @@ void test_parse_array_of_functions_declaration() {
     CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
-    parameter_declaration_t **parameters = malloc(sizeof(void*));
-    parameter_declaration_t void_param = {
-            .type = &VOID,
-            .identifier = NULL,
-    };
-    parameters[0] = &void_param;
-
     parameter_type_list_t parameter_list = (parameter_type_list_t) {
             .variadic = false,
-            .parameters = parameters,
-            .length = 1,
+            .parameters = NULL,
+            .length = 0,
     };
 
     type_t fn = {
@@ -1034,19 +1017,6 @@ void test_parse_function_pointer() {
     CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
-    parameter_declaration_t *parameters[] = {
-        &(parameter_declaration_t) {
-            .type = &VOID,
-            .identifier = NULL,
-        }
-    };
-
-    parameter_type_list_t parameter_list = {
-        .variadic = false,
-        .parameters = (parameter_declaration_t**)&parameters,
-        .length = 1,
-    };
-
     type_t expected = {
         .storage_class = STORAGE_CLASS_AUTO,
         .is_volatile = false,
@@ -1063,7 +1033,11 @@ void test_parse_function_pointer() {
                 .kind = TYPE_FUNCTION,
                 .function = {
                     .return_type = &INT,
-                    .parameter_list = &parameter_list,
+                    .parameter_list = &(parameter_type_list_t) {
+                        .variadic = false,
+                        .parameters = NULL,
+                        .length = 0,
+                    },
                 },
             }
         }
@@ -1106,13 +1080,8 @@ void test_parse_complex_declaration() {
                         .function = {
                             .parameter_list = &(parameter_type_list_t) {
                                 .variadic = false,
-                                .parameters = (parameter_declaration_t*[]) {
-                                    &(parameter_declaration_t) {
-                                        .type = &VOID,
-                                        .identifier = NULL,
-                                    },
-                                },
-                                .length = 1,
+                                .parameters = NULL,
+                                .length = 0,
                             },
                             .return_type = ptr_to(&(type_t) {
                                 .storage_class = STORAGE_CLASS_AUTO,
@@ -1155,31 +1124,22 @@ void test_parse_function_prototype_void() {
     CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
-    parameter_declaration_t **parameters = malloc(sizeof(void*));
-    parameter_declaration_t void_param = {
-            .type = &VOID,
-            .identifier = NULL,
-    };
-    parameters[0] = &void_param;
-
-    parameter_type_list_t parameter_list = (parameter_type_list_t) {
-            .variadic = false,
-            .parameters = parameters,
-            .length = 1,
-    };
-
     type_t type = {
-            .kind = TYPE_FUNCTION,
-            .function = {
-                    .return_type = &FLOAT,
-                    .parameter_list = &parameter_list,
+        .kind = TYPE_FUNCTION,
+        .function = {
+            .return_type = &FLOAT,
+            .parameter_list = &(parameter_type_list_t) {
+                .variadic = false,
+                .parameters = NULL,
+                .length = 0,
             },
+        },
     };
 
     declaration_t expected = (declaration_t) {
-            .type = &type,
-            .identifier = token(TK_IDENTIFIER, "foo"),
-            .initializer = NULL,
+        .type = &type,
+        .identifier = token(TK_IDENTIFIER, "foo"),
+        .initializer = NULL,
     };
 
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
@@ -1484,6 +1444,41 @@ void parse_external_declaration_function_definition() {
     CU_ASSERT_TRUE_FATAL(statement_eq(node.function_definition->body, &body))
 }
 
+void parse_external_definition_function_taking_void() {
+    lexer_global_context_t context = create_context();
+    char *input = "int main(void) { return 0; }";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    external_declaration_t node;
+    CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &node))
+    CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_FUNCTION_DEFINITION)
+
+    CU_ASSERT_TRUE_FATAL(types_equal(node.function_definition->return_type, &INT))
+    CU_ASSERT_TRUE_FATAL(strcmp(node.function_definition->identifier->value, "main") == 0)
+
+    // validate the argument list
+    CU_ASSERT_EQUAL_FATAL(node.function_definition->parameter_list->length, 0)
+
+    // validate the body is parsed correctly
+    statement_t *ret = {
+        return_statement(integer_constant("0")),
+    };
+    block_item_t *block_item = block_item_s(ret);
+    statement_t body = {
+        .type = STATEMENT_COMPOUND,
+        .terminator = token(TK_RBRACE, "}"),
+        .compound = {
+            .block_items = {
+                .size = 1,
+                .capacity = 1,
+                .buffer = (void**) &block_item,
+            },
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(statement_eq(node.function_definition->body, &body))
+}
+
 void test_parse_program() {
     lexer_global_context_t context = create_context();
     char* input = "float square(float);\nfloat square(float val) {\n\treturn val * val;\n}\nint main() {\n\treturn square(2.0);\n}";
@@ -1549,6 +1544,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement) ||
         NULL == CU_add_test(pSuite, "external declaration - declaration", parse_external_declaration_declaration) ||
         NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||
+        NULL == CU_add_test(pSuite, "external declaration - function (void) definition", parse_external_definition_function_taking_void) ||
         NULL == CU_add_test(pSuite, "program", test_parse_program)
     ) {
         CU_cleanup_registry();
