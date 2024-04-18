@@ -2,18 +2,36 @@ import os
 import subprocess
 import sys
 import unittest
-from typing import Optional
+from typing import Optional, List
 
 compiler_path = os.path.abspath(sys.path[0] + "/../bin/cc")
 
 
+class NamedTestSuite(unittest.TestSuite):
+    def __init__(self, name: str, tests=()):
+        super().__init__(tests)
+        self.name = name
+
+    def __str__(self):
+        return self.name
+
+
 class ValidationTestCase(unittest.TestCase):
-    def __init__(self, test_dir: str):
+    def __init__(self, test_dir: str, name: Optional[str] = None):
         super().__init__()
+        self.name = name
         self.test_dir = test_dir
 
     def id(self) -> str:
-        return self.test_dir
+        return os.path.basename(self.test_dir)
+
+    def shortDescription(self) -> Optional[str]:
+        return None
+
+    def __str__(self):
+        if self.name is not None:
+            return self.name
+        return self.id()
 
     def setUp(self):
         # Create a temporary build directory for the test
@@ -72,30 +90,50 @@ class ValidationTestCase(unittest.TestCase):
             return f.read()
 
 
-def discover_tests() -> unittest.TestSuite:
-    # This will find all the subdirectories of the validation test root directory that start with 3 numbers (e.g. 001).
+def discover_suites() -> List[NamedTestSuite]:
     script_directory = sys.path[0]
-    test_directories = []
+    test_suites = []
+    # dict of root -> test dir
+    tests = {}
+    # Searches for test directories in the script directory
     for root, dirs, files in os.walk(script_directory):
-        for test_dir in dirs:
-            if test_dir[0:3].isnumeric():
-                test_directories.append(os.path.join(root, test_dir))
-    test_directories.sort()
+        for dir in dirs:
+            # Tests are directories that start with 3+ numbers, e.g. `001-return-0`
+            if dir[0:3].isnumeric():
+                if root not in tests:
+                    tests[root] = []
+                tests[root].append(dir)
 
-    # Build test suite
-    suite = unittest.TestSuite()
-    for test_dir in test_directories:
-        suite.addTest(ValidationTestCase(str(test_dir)))
+    for root in tests:
+        suite_name = str(os.path.relpath(root, script_directory))
+        if suite_name == ".":
+            suite_name = "root"
+        suite = NamedTestSuite(suite_name)
+        for test_dir in tests[root]:
+            suite.addTest(ValidationTestCase(str(os.path.join(root, test_dir))))
+        test_suites.append(suite)
 
-    return suite
+    return test_suites
+
+
+def run():
+    # Discover tests
+    test_suites = discover_suites()
+
+    # Run tests
+    runner = unittest.TextTestRunner(verbosity=2)
+    success = True
+    for suite in test_suites:
+        print(f'Running suite {suite.name}...')
+        tests_result = runner.run(suite)
+        success &= tests_result.wasSuccessful()
+        print('')
+
+    if success:
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 
 if __name__ == '__main__':
-    # Discover tests
-    test_suite = discover_tests()
-
-    # Run tests
-    runner = unittest.TextTestRunner()
-    tests_result = runner.run(test_suite)
-    if not tests_result.wasSuccessful():
-        sys.exit(1)
+    run()
