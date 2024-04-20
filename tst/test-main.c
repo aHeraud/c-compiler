@@ -12,6 +12,7 @@ int main() {
     parser_tests_init_suite();
     hashtable_tests_init_suite();
     types_tests_init_suite();
+    numeric_constants_tests_init_suite();
 
     CU_basic_set_mode(CU_BRM_VERBOSE);
 

@@ -11,6 +11,7 @@
 #include "types.h"
 #include "util/hashtable.h"
 #include "util/strings.h"
+#include "numeric-constants.h"
 
 LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, const type_t *from, const type_t *to);
 LLVMValueRef get_rvalue(codegen_context_t *context, expression_result_t expr);
@@ -911,15 +912,12 @@ expression_result_t visit_constant(codegen_context_t *context, const expression_
             };
         }
         case TK_INTEGER_CONSTANT: {
-            // For details on the sizes of integer constants, see section 6.4.4.1 of the C language specification:
-            // https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf
+            const char *raw_value = expr->primary.token.value;
+            unsigned long long value = 0;
+            const type_t *type;
 
-            // TODO: parse integer sign/size suffix
-            // TODO: handle hex, binary, octal integer constants
-            unsigned long long value = strtoull(expr->primary.token.value, NULL, 0);
-            // TODO: determine integer size based on the suffix and the size of the constant
-            const type_t *type = &INT;
-            LLVMTypeRef llvm_type = LLVMInt32Type();
+            decode_integer_constant(&expr->primary.token, &value, &type);
+            LLVMTypeRef llvm_type = llvm_type_for(type);
             return (expression_result_t) {
                     .type = type,
                     .llvm_value = LLVMConstInt(llvm_type, value, false),
@@ -928,14 +926,13 @@ expression_result_t visit_constant(codegen_context_t *context, const expression_
             };
         }
         case TK_FLOATING_CONSTANT: {
-            // TODO: parse floating point suffix
-            double value = strtod(expr->primary.token.value, NULL);
-            // TODO: determine floating point size based on the suffix
-            const type_t *type = &FLOAT;
-            LLVMTypeRef llvm_type = LLVMFloatType();
+            const type_t *type;
+            long double value;
+            decode_float_constant(&expr->primary.token, &value, &type);
+            LLVMTypeRef llvm_type = llvm_type_for(type);
             return (expression_result_t) {
                     .type = type,
-                    .llvm_value = LLVMConstReal(llvm_type, value),
+                    .llvm_value = LLVMConstReal(llvm_type, (double)value), // loss of precision?
                     .llvm_type = llvm_type,
                     .is_lvalue = false,
             };

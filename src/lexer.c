@@ -12,6 +12,11 @@
 void string_literal(struct Lexer* lexer, struct Token* token);
 void char_literal(struct Lexer* lexer, struct Token* token);
 void numeric_constant(struct Lexer* lexer, struct Token* token);
+void decimal_constant(struct Lexer* lexer, struct Token* token);
+void hexadecimal_constant(struct Lexer* lexer, struct Token* token);
+void octal_constant(lexer_t *lexer, token_t *token);
+void integer_suffix(lexer_t *lexer, char_vector_t *vec);
+void float_suffix(lexer_t *lexer, char_vector_t *vec);
 void identifier_or_reserved_word(struct Lexer* lexer, struct Token* token);
 void comment(struct Lexer* lexer, token_t* token);
 
@@ -216,8 +221,13 @@ token_t lscan(struct Lexer* lexer) {
             string_literal(lexer, &token);
             break;
         case '.':
-            ladvance(lexer);
+            if (isdigit(lpeek(lexer, 2))) {
+                // floating point constant
+                decimal_constant(lexer, &token);
+                break;
+            }
 
+            ladvance(lexer);
             if (lpeek(lexer, 1) == '.' && lpeek(lexer, 2) == '.') {
                 ladvance(lexer);
                 ladvance(lexer);
@@ -225,8 +235,6 @@ token_t lscan(struct Lexer* lexer) {
                 token.value = "...";
                 break;
             }
-
-            // TODO: floating point constants
 
             token.kind = TK_DOT;
             token.value = ".";
@@ -407,9 +415,6 @@ token_t lscan(struct Lexer* lexer) {
                     }
                 }
             } else if (isdigit(c0)) {
-                // TODO: handle floats generally
-                // TODO: handle floating point numbers beginning with '.' (e.g. .5f)
-                // TODO: handle floats in scientific notation (e.g. 1.0e-5f)
                 numeric_constant(lexer, &token);
             } else if (c0 == '\0') {
                 token.kind = TK_EOF;
@@ -496,34 +501,208 @@ void char_literal(struct Lexer* lexer, struct Token* token) {
 }
 
 void numeric_constant(struct Lexer* lexer, struct Token* token) {
+    char c1 = lpeek(lexer, 1);
+    char c2 = lpeek(lexer, 2);
+    assert(isdigit(c1));
+
+    if (c1 == '0' && (c2 == 'x' || c2 == 'X')) {
+        hexadecimal_constant(lexer, token);
+    } else if (c1 == '0' && (c2 == 'b' || c2 == 'B')) {
+        // TODO: support binary literals
+        fprintf(stderr, "Invalid numeric constant at %s:%d:%d, binary literals not supported\n",
+                lexer->input_path, lexer->position.line, lexer->position.column);
+        exit(1);
+    } else if (c1 == '0') {
+        octal_constant(lexer, token);
+    } else {
+        decimal_constant(lexer, token);
+    }
+}
+
+void decimal_constant(struct Lexer* lexer, struct Token* token) {
     struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
-    struct CharVector buffer = {malloc(32), 0, 32};
+    struct CharVector vec = {malloc(32), 0, 32};
 
-    // TODO: handle hex, octal, and binary literals
-    char c = lpeek(lexer, 1);
-    assert(isdigit(c));
+    token->position = match_start;
 
-    do {
-        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
-    } while ((c = lpeek(lexer, 1)) && isdigit(c));
+    char c;
+    while ((c = lpeek(lexer, 1)) && isdigit(c)) {
+        append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+    }
 
-    if (lpeek(lexer, 1) == '.') {
+    c = lpeek(lexer, 1);
+    if (c == '.' || c == 'e' || c == 'E') {
+        // floating point constant
         token->kind = TK_FLOATING_CONSTANT;
+        if (c == '.') {
+            append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            while ((c = lpeek(lexer, 1)) && isdigit(c)) {
+                append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            }
+        }
 
-        ladvance(lexer);
-        append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '.');
+        // optional exponent
+        if (lpeek(lexer, 1) == 'e' || lpeek(lexer, 1) == 'E') {
+            append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            if (lpeek(lexer, 1) == '+' || lpeek(lexer, 1) == '-') {
+                append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            }
 
-        while ((c = lpeek(lexer, 1)) && isdigit(c)) {
-            append_char(&buffer.buffer, &buffer.size, &buffer.capacity, ladvance(lexer));
+            bool has_exponent = false;
+            while ((c = lpeek(lexer, 1)) && isdigit(c)) {
+                has_exponent = true;
+                append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            }
+
+            if (!has_exponent) {
+                // invalid token
+                // TODO: Error reporting/recovery
+                fprintf(stderr, "Invalid floating point constant at %s:%d:%d, invalid exponent\n",
+                        lexer->input_path, lexer->position.line, lexer->position.column);
+                exit(1);
+            }
+        }
+
+        // optional floating point suffix
+        if (lpeek(lexer, 1) == 'f' || lpeek(lexer, 1) == 'F' ||
+            lpeek(lexer, 1) == 'l' || lpeek(lexer, 1) == 'L') {
+            append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
         }
     } else {
         token->kind = TK_INTEGER_CONSTANT;
+
+        // optional integer suffix
+        bool is_unsigned = false;
+        if (lpeek(lexer, 1) == 'u' || lpeek(lexer, 1) == 'U') {
+            is_unsigned = true;
+            append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+        }
+
+        if (lpeek(lexer, 1) == 'l' || lpeek(lexer, 1) == 'L') {
+            append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            if (lpeek(lexer, 1) == 'l' || lpeek(lexer, 1) == 'L') {
+                append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            }
+        }
+
+        // unsigned suffix can come before or after long suffix (but not both)
+        if (!is_unsigned && (lpeek(lexer, 1) == 'u' || lpeek(lexer, 1) == 'U')) {
+            append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+        }
     }
 
-    append_char(&buffer.buffer, &buffer.size, &buffer.capacity, '\0');
+    append_char(&vec.buffer, &vec.size, &vec.capacity, '\0'); // null terminate
+    shrink_char_vector(&vec.buffer, &vec.size, &vec.capacity);
+    token->value = vec.buffer;
+}
 
+void hexadecimal_constant(struct Lexer* lexer, struct Token* token) {
+    struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
+    struct CharVector vec = {malloc(32), 0, 32};
     token->position = match_start;
-    token->value = realloc(buffer.buffer, buffer.size);
+
+    // consume the '0x' or '0X' prefix
+    append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+    append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+
+    char c;
+    while ((c = lpeek(lexer, 1)) && isxdigit(c)) {
+        append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+    }
+
+    if (lpeek(lexer, 1) == '.') {
+        // floating point constant
+        token->kind = TK_FLOATING_CONSTANT;
+        append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+        while ((c = lpeek(lexer, 1)) && isdigit(c)) {
+            append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+        }
+
+        // mandatory exponent
+        if (lpeek(lexer, 1) == 'p' || lpeek(lexer, 1) == 'P') {
+            append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            if (lpeek(lexer, 1) == '+' || lpeek(lexer, 1) == '-') {
+                append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            }
+            bool has_exponent = false;
+            while ((c = lpeek(lexer, 1)) && isdigit(c)) {
+                has_exponent = true;
+                append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+            }
+
+            if (!has_exponent) {
+                // invalid token
+                // TODO: Error reporting/recovery
+                fprintf(stderr, "Invalid floating point constant at %s:%d:%d, invalid exponent\n",
+                        lexer->input_path, lexer->position.line, lexer->position.column);
+                exit(1);
+            }
+
+            // optional floating point suffix
+            float_suffix(lexer, &vec);
+        } else {
+            // invalid token
+            // TODO: Error reporting/recovery
+            fprintf(stderr, "Invalid floating point constant at %s:%d:%d, missing exponent\n",
+                    lexer->input_path, lexer->position.line, lexer->position.column);
+            exit(1);
+        }
+    } else {
+        // integer constant
+        token->kind = TK_INTEGER_CONSTANT;
+
+        // optional integer suffix
+        integer_suffix(lexer, &vec);
+    }
+
+    append_char(&vec.buffer, &vec.size, &vec.capacity, '\0'); // null terminate
+    shrink_char_vector(&vec.buffer, &vec.size, &vec.capacity);
+    token->value = vec.buffer;
+}
+
+void octal_constant(lexer_t *lexer, token_t *token) {
+    struct SourcePosition match_start = {lexer->position.path, lexer->position.line, lexer->position.column};
+    struct CharVector vec = {malloc(32), 0, 32};
+    token->position = match_start;
+    token->kind = TK_INTEGER_CONSTANT;
+
+    char c;
+    while ((c = lpeek(lexer, 1)) && isdigit(c) && c != '8' && c != '9') {
+        append_char(&vec.buffer, &vec.size, &vec.capacity, ladvance(lexer));
+    }
+
+    integer_suffix(lexer, &vec);
+
+    append_char(&vec.buffer, &vec.size, &vec.capacity, '\0'); // null terminate
+    shrink_char_vector(&vec.buffer, &vec.size, &vec.capacity);
+    token->value = vec.buffer;
+}
+
+void integer_suffix(lexer_t *lexer, char_vector_t *vec) {
+    // optional integer suffix
+    bool is_unsigned = false;
+    if (lpeek(lexer, 1) == 'u' || lpeek(lexer, 1) == 'U') {
+        is_unsigned = true;
+        append_char(&vec->buffer, &vec->size, &vec->capacity, ladvance(lexer));
+    }
+    if (lpeek(lexer, 1) == 'l' || lpeek(lexer, 1) == 'L') {
+        append_char(&vec->buffer, &vec->size, &vec->capacity, ladvance(lexer));
+        if (lpeek(lexer, 1) == 'l' || lpeek(lexer, 1) == 'L') {
+            append_char(&vec->buffer, &vec->size, &vec->capacity, ladvance(lexer));
+        }
+    }
+    if (!is_unsigned) {
+        if (lpeek(lexer, 1) == 'u' || lpeek(lexer, 1) == 'U') {
+            append_char(&vec->buffer, &vec->size, &vec->capacity, ladvance(lexer));
+        }
+    }
+}
+
+void float_suffix(lexer_t *lexer, char_vector_t *vec) {
+    if (lpeek(lexer, 1) == 'f' || lpeek(lexer, 1) == 'F' ||
+        lpeek(lexer, 1) == 'l' || lpeek(lexer, 1) == 'L') {
+        append_char(&vec->buffer, &vec->size, &vec->capacity, ladvance(lexer));
+    }
 }
 
 void identifier_or_reserved_word(struct Lexer* lexer, struct Token* token) {

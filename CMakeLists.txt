@@ -42,6 +42,7 @@ add_library(cclib STATIC
         src/util/strings.c src/util/strings.h
         src/codegen.c src/codegen.h
         src/types.c src/types.h
+        src/numeric-constants.c src/numeric-constants.h
 )
 
 add_executable(cc src/main.c)
@@ -64,6 +65,7 @@ add_executable(unit-tests
         tst/test-common.h
         tst/test-common.c
         tst/types-test.c
+        tst/numeric-constants-tests.c
 )
 target_link_libraries(unit-tests PUBLIC cunit)
 target_link_libraries(unit-tests PUBLIC cclib)
