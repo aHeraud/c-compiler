@@ -102,7 +102,7 @@ typedef enum TokenKind {
     TK_STAR, // '*'
     TK_SLASH, // '/'
     TK_EOF,
-    TK_TILDE, // '~'
+    TK_BITWISE_NOT, // '~'
     TK_INCREMENT, // '++'
     TK_DECREMENT, // '--'
     TK_EQUALS, // '=='
@@ -214,7 +214,7 @@ static const char* token_kind_names[] = {
         [TK_STAR] = "TK_STAR",
         [TK_SLASH] = "TK_SLASH",
         [TK_EOF] = "TK_EOF",
-        [TK_TILDE] = "TK_TILDE",
+        [TK_BITWISE_NOT] = "TK_BITWISE_NOT",
         [TK_INCREMENT] = "TK_INCREMENT",
         [TK_DECREMENT] = "TK_DECREMENT",
         [TK_EQUALS] = "TK_EQUALS",
@@ -326,7 +326,7 @@ static const char* token_kind_display_names[] = {
         [TK_STAR] = "*",
         [TK_SLASH] = "/",
         [TK_EOF] = "EOF",
-        [TK_TILDE] = "~",
+        [TK_BITWISE_NOT] = "~",
         [TK_INCREMENT] = "++",
         [TK_DECREMENT] = "--",
         [TK_EQUALS] = "==",

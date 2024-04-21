@@ -349,6 +349,11 @@ token_t lscan(struct Lexer* lexer) {
             token.kind = TK_TERNARY;
             token.value = "?";
             break;
+        case '~':
+            ladvance(lexer);
+            token.kind = TK_BITWISE_NOT;
+            token.value = "~";
+            break;
         case '#':
             if (start_of_line) {
                 // preprocessor directive

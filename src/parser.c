@@ -2267,6 +2267,8 @@ bool parse_cast_expression(parser_t *parser, expression_t *expr) {
                 .expression = operand,
             },
         };
+
+        return true;
     } else {
         return parse_unary_expression(parser, expr);
     }
@@ -2294,7 +2296,7 @@ bool unary_op(parser_t *parser, expression_t* expr, token_t *token) {
         case TK_MINUS:
             operator = UNARY_MINUS;
             break;
-        case TK_TILDE:
+        case TK_BITWISE_NOT:
             operator = UNARY_BITWISE_NOT;
             break;
         case TK_EXCLAMATION:
@@ -2354,7 +2356,7 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
                accept(parser, TK_STAR, &token) ||
                accept(parser, TK_PLUS, &token) ||
                accept(parser, TK_MINUS, &token) ||
-               accept(parser, TK_TILDE, &token) ||
+               accept(parser, TK_BITWISE_NOT, &token) ||
                accept(parser, TK_EXCLAMATION, &token)) {
         return unary_op(parser, expr, token);
     } else if (accept(parser, TK_SIZEOF, &token)) {
