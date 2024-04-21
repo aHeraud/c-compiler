@@ -1820,7 +1820,7 @@ bool parse_inclusive_or_expression(parser_t *parser, expression_t *expr) {
  * @return false if an error occurred, true otherwise
  */
 bool parse_exclusive_or_expression(parser_t *parser, expression_t *expr) {
-    if (!parse_equality_expression(parser, expr)) {
+    if (!parse_and_expression(parser, expr)) {
         return false;
     }
 

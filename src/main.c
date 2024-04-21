@@ -206,6 +206,7 @@ void compile(options_t options, const char* input_file_name) {
         fprintf(stderr, "Failed to parse file: %s\n",input_file_name);
         for (size_t e = 0; e < parser.errors.size; e++) {
             print_parse_error(stderr, &parser.errors.buffer[e]);
+            fprintf(stderr, "\n");
         }
         exit(1);
     }

@@ -568,6 +568,7 @@ void test_parse_and_expression() {
     parser_t parser = pinit(lexer);
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_and_expression(&parser, &node))
+    CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
@@ -585,6 +586,7 @@ void test_parse_xor_expression() {
     parser_t parser = pinit(lexer);
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_exclusive_or_expression(&parser, &node))
+    CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
@@ -602,6 +604,7 @@ void test_parse_inclusive_or_expression() {
     parser_t parser = pinit(lexer);
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_inclusive_or_expression(&parser, &node))
+    CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
@@ -619,6 +622,7 @@ void test_parse_logical_and_expression() {
     parser_t parser = pinit(lexer);
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_logical_and_expression(&parser, &node))
+    CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
     expression_t *expected = binary((binary_expression_t) {
             .left = integer_constant("1"),
             .right = integer_constant("2"),
@@ -740,6 +744,34 @@ void test_parse_simple_declaration() {
         .type = &INT,
         .identifier = token(TK_IDENTIFIER, "a"),
         .initializer = NULL,
+    };
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+}
+
+void test_parse_simple_declaration_with_initializer() {
+    lexer_global_context_t context = create_context();
+    char *input = "int a = 1 & 1;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = {
+            .size = 0,
+            .capacity = 0,
+            .buffer = NULL,
+    };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
+    declaration_t expected = (declaration_t) {
+            .type = &INT,
+            .identifier = token(TK_IDENTIFIER, "a"),
+            .initializer = binary((binary_expression_t) {
+                    .type = BINARY_BITWISE,
+                    .bitwise_operator = BINARY_BITWISE_AND,
+                    .left = integer_constant("1"),
+                    .right = integer_constant("1"),
+                    .operator = token(TK_AMPERSAND, "&"),
+            }),
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
@@ -1556,6 +1588,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "invalid declaration specifiers", test_parse_invalid_declaration_specifiers) ||
         NULL == CU_add_test(pSuite, "declaration - empty", test_parse_empty_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - simple", test_parse_simple_declaration) ||
+        NULL == CU_add_test(pSuite, "declaration - simple with initializer", test_parse_simple_declaration_with_initializer) ||
         NULL == CU_add_test(pSuite, "declaration - pointer", test_parse_pointer_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - compound", test_parse_compound_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - function (no parameters)", test_parse_function_declaration_no_parameters) ||

@@ -203,7 +203,7 @@ static const type_t LONG = {
         .is_const = false,
         .is_volatile = false,
         .integer = {
-                .is_signed = false,
+                .is_signed = true,
                 .size = INTEGER_TYPE_LONG,
         },
 };
@@ -213,7 +213,7 @@ static const type_t LONG_LONG = {
         .is_const = false,
         .is_volatile = false,
         .integer = {
-                .is_signed = false,
+                .is_signed = true,
                 .size = INTEGER_TYPE_INT,
         },
 };

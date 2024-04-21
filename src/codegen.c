@@ -623,7 +623,14 @@ expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, 
     }
 
     // Handle implicit type conversions
-    const type_t *common_type = get_common_type(left.type, right.type);
+    const type_t *common_type;
+    if (expression->binary.bitwise_operator != BINARY_BITWISE_SHIFT_LEFT &&
+        expression->binary.bitwise_operator != BINARY_BITWISE_SHIFT_RIGHT) {
+        common_type = get_common_type(left.type, right.type);
+    } else {
+        // For shift operations, the type of the result is the type of the left operand.
+        common_type = left.type;
+    }
     if (!types_equal(left.type, common_type)) {
         left = (expression_result_t) {
             .expression = left.expression,
@@ -661,7 +668,7 @@ expression_result_t visit_bitwise_binary_expression(codegen_context_t *context, 
             result = LLVMBuildShl(context->llvm_builder, left.llvm_value, right.llvm_value, "shltmp");
             break;
         case BINARY_BITWISE_SHIFT_RIGHT:
-            if (common_type->integer.is_signed) {
+            if (left.type->integer.is_signed) {
                 result = LLVMBuildAShr(context->llvm_builder, left.llvm_value, right.llvm_value, "shrtmp");
             } else {
                 result = LLVMBuildLShr(context->llvm_builder, left.llvm_value, right.llvm_value, "shrtmp");
@@ -778,7 +785,8 @@ expression_result_t visit_assignment_binary_expression(codegen_context_t *contex
 
     // TODO: validate that the types are compatible, and handle implicit type conversion
 
-    LLVMValueRef assignment = LLVMBuildStore(context->llvm_builder, right.llvm_value, left.llvm_value);
+    LLVMValueRef converted_value = convert_to_type(context, right.llvm_value, right.type, left.type);
+    LLVMValueRef assignment = LLVMBuildStore(context->llvm_builder, converted_value, left.llvm_value);
 
     return (expression_result_t) {
         .expression = expression,
@@ -1020,6 +1028,17 @@ expression_result_t visit_call_expression(codegen_context_t *context, const expr
         } else if (is_pointer_type(parameter->type) && is_pointer_type(resolved_argument.type)) {
             // The argument and parameter are both pointer types, so no real conversion is necessary.
             // TODO: validate that the pointer types are compatible (warning)?
+        } else if (is_pointer_type(parameter->type) && is_integer_type(resolved_argument.type)) {
+            // Integer -> pointer conversion
+            // First, we need to convert the integer to an integer of the same size as the pointer.
+            // Then, we need to convert the integer to a pointer.
+            LLVMValueRef arg = convert_to_type(context, resolved_argument.llvm_value, resolved_argument.type, resolved_argument.type->integer.is_signed ? &LONG : &UNSIGNED_LONG);
+            resolved_argument = (expression_result_t) {
+                    .type = parameter->type,
+                    .llvm_value = LLVMBuildIntToPtr(context->llvm_builder, arg, llvm_type_for(parameter->type), parameter->identifier->value),
+                    .llvm_type = llvm_type_for(parameter->type),
+                    .is_lvalue = false,
+            };
         } else {
             // TODO: struct, union, array, enum arguments
             fprintf(stderr, "%s:%d: struct, union, array, and enum arguments not implemented\n",
@@ -1096,9 +1115,9 @@ LLVMValueRef convert_to_type(codegen_context_t *context, LLVMValueRef value, con
     } else if (is_integer_type(from) && is_integer_type(to)) {
         // Both types are integer types, so we just need to extend (sign or zero, depending on the sign value of 'to')
         // or truncate the value.
-        if (INTEGER_TYPE_RANKS[from->integer.size] < INTEGER_TYPE_RANKS[to->integer.size]) {
+        if (INTEGER_TYPE_RANKS[from->integer.size] > INTEGER_TYPE_RANKS[to->integer.size]) {
             return LLVMBuildTrunc(context->llvm_builder, value, llvm_type_for(to), "trunctmp");
-        } else if (INTEGER_TYPE_RANKS[from->integer.size] > INTEGER_TYPE_RANKS[to->integer.size]) {
+        } else if (INTEGER_TYPE_RANKS[from->integer.size] < INTEGER_TYPE_RANKS[to->integer.size]) {
             if (to->integer.is_signed) {
                 return LLVMBuildSExt(context->llvm_builder, value, llvm_type_for(to), "sexttmp");
             } else {
