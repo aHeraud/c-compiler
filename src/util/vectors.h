@@ -27,6 +27,13 @@ do { \
     (vec->buffer)[vec->size++] = elem; \
 } while (0)
 
+#define VEC_SHRINK(vec, type) \
+do { \
+    (vec)->buffer = realloc((vec)->buffer, (vec)->size * sizeof(type)); \
+    (vec)->capacity = (vec)->size; \
+    assert((vec->buffer) != NULL); \
+} while (0)
+
 /**
  * Appends a character to a buffer, growing the buffer if necessary.
  * The pointer to the buffer may change if it is reallocated.

@@ -13,6 +13,8 @@ const char** token_value_array(token_t* tokens, size_t size);
 char* format_string_array(const char** array, size_t size);
 char* format_token_kind_array(const token_kind_t* array, size_t size);
 
+lexer_global_context_t create_lexer_context();
+
 // AST helpers
 source_position_t dummy_position();
 source_span_t dummy_span();

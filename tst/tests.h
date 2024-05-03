@@ -10,5 +10,6 @@ int parser_tests_init_suite();
 int hashtable_tests_init_suite();
 int types_tests_init_suite();
 int numeric_constants_tests_init_suite();
+int ir_gen_tests_init_suite();
 
 #endif //C_COMPILER_TESTS_H

@@ -42,7 +42,13 @@ add_library(cclib STATIC
         src/util/strings.c src/util/strings.h
         src/codegen.c src/codegen.h
         src/types.c src/types.h
-        src/numeric-constants.c src/numeric-constants.h
+        src/numeric-constants.h src/numeric-constants.c
+        src/ir/ir.h src/ir/ir.c
+        src/ir/ir-builder.h src/ir/ir-builder.c
+        src/ir/ir-gen.h src/ir/ir-gen.c
+        src/errors.h
+        src/errors.c
+
 )
 
 add_executable(cc src/main.c)
@@ -66,7 +72,9 @@ add_executable(unit-tests
         tst/test-common.c
         tst/types-test.c
         tst/numeric-constants-tests.c
+        tst/ir/ir-gen-tests.c
 )
+target_compile_definitions(unit-tests PRIVATE C_COMPILER_UNIT_TESTS)
 target_link_libraries(unit-tests PUBLIC cunit)
 target_link_libraries(unit-tests PUBLIC cclib)
 

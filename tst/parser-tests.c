@@ -6,18 +6,6 @@
 #include "types.h"
 #include "test-common.h"
 
-static lexer_global_context_t create_context() {
-    return (lexer_global_context_t) {
-            .user_include_paths = NULL,
-            .system_include_paths = NULL,
-            .macro_definitions = {
-                    .size = 0,
-                    .num_buckets = 10,
-                    .buckets = calloc(10, sizeof(hashtable_entry_t *)),
-            }
-    };
-}
-
 expression_t *make_identifier(char* value) {
     return primary((primary_expression_t) {
             .type = PE_IDENTIFIER,
@@ -119,7 +107,7 @@ const type_t *pointer_to(const type_t *type) {
 }
 
 void test_parse_primary_expression_ident() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "bar";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -137,7 +125,7 @@ void test_parse_primary_expression_ident() {
 }
 
 void test_parse_primary_expression_int() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "42";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -155,7 +143,7 @@ void test_parse_primary_expression_int() {
 }
 
 void test_parse_primary_expression_float() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "42.0";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -173,7 +161,7 @@ void test_parse_primary_expression_float() {
 }
 
 void test_parse_primary_expression_char() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "'a'";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -187,7 +175,7 @@ void test_parse_primary_expression_char() {
 }
 
 void test_parse_primary_expression_parenthesized() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "(42)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -201,7 +189,7 @@ void test_parse_primary_expression_parenthesized() {
 }
 
 void test_parse_postfix_expression_function_call() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "pow(4,2)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -228,7 +216,7 @@ void test_parse_postfix_expression_function_call() {
 }
 
 void test_parse_postfix_expression_array_subscript() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "arr[1 + 1]";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -252,7 +240,7 @@ void test_parse_postfix_expression_array_subscript() {
 }
 
 void test_parse_postfix_expression_2d_array_subscript() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "arr[i][j]";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -277,7 +265,7 @@ void test_parse_postfix_expression_2d_array_subscript() {
 }
 
 void test_parse_postfix_expression_member_access() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "foo.bar";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -304,7 +292,7 @@ void test_parse_postfix_expression_member_access() {
 }
 
 void test_parse_unary_sizeof_constant() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof 1";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -322,7 +310,7 @@ void test_parse_unary_sizeof_constant() {
 }
 
 void test_parse_unary_sizeof_type() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof(int)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -337,7 +325,7 @@ void test_parse_unary_sizeof_type() {
 }
 
 void test_parse_unary_sizeof_function_pointer_type() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof(int (*)(void))";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -362,7 +350,7 @@ void test_parse_unary_sizeof_function_pointer_type() {
 }
 
 void test_parse_unary_sizeof_parenthesized_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof(1+1)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -386,7 +374,7 @@ void test_parse_unary_sizeof_parenthesized_expression() {
 }
 
 void test_parse_cast_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "(float) 14";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -404,7 +392,7 @@ void test_parse_cast_expression() {
 }
 
 void test_parse_multiplicative_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 / 2 * 3 % 4";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -433,7 +421,7 @@ void test_parse_multiplicative_expression() {
 }
 
 void test_parse_additive_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 + 2 - 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -456,7 +444,7 @@ void test_parse_additive_expression() {
 }
 
 void test_parse_additive_expression_2() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 + 2 * 3;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -481,7 +469,7 @@ void test_parse_additive_expression_2() {
 }
 
 void test_parse_shift_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 << 2 >> 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -504,7 +492,7 @@ void test_parse_shift_expression() {
 }
 
 void test_parse_relational_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 < 2 > 3 <= 4 >= 5";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -539,7 +527,7 @@ void test_parse_relational_expression() {
 }
 
 void test_parse_equality_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 == 2 != 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -562,7 +550,7 @@ void test_parse_equality_expression() {
 }
 
 void test_parse_and_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 & 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -580,7 +568,7 @@ void test_parse_and_expression() {
 }
 
 void test_parse_xor_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 ^ 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -598,7 +586,7 @@ void test_parse_xor_expression() {
 }
 
 void test_parse_inclusive_or_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 | 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -616,7 +604,7 @@ void test_parse_inclusive_or_expression() {
 }
 
 void test_parse_logical_and_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 && 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -634,7 +622,7 @@ void test_parse_logical_and_expression() {
 }
 
 void test_parse_logical_or_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 || 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -652,7 +640,7 @@ void test_parse_logical_or_expression() {
 }
 
 void test_parse_conditional_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1 ? 2 : 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -672,7 +660,7 @@ void test_parse_conditional_expression() {
 }
 
 void test_parse_assignment_expression() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "val = 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -690,7 +678,7 @@ void test_parse_assignment_expression() {
 }
 
 void test_parse_int_declaration_specifiers() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -701,7 +689,7 @@ void test_parse_int_declaration_specifiers() {
 }
 
 void test_parse_invalid_declaration_specifiers() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "signed float";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -712,7 +700,7 @@ void test_parse_invalid_declaration_specifiers() {
 }
 
 void test_parse_empty_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -727,7 +715,7 @@ void test_parse_empty_declaration() {
 }
 
 void test_parse_simple_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int a;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -749,7 +737,7 @@ void test_parse_simple_declaration() {
 }
 
 void test_parse_simple_declaration_with_initializer() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int a = 1 & 1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -777,7 +765,7 @@ void test_parse_simple_declaration_with_initializer() {
 }
 
 void test_parse_pointer_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "void *a;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -794,7 +782,7 @@ void test_parse_pointer_declaration() {
 }
 
 void test_parse_compound_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int a, b = 0, c = d + 1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -832,7 +820,7 @@ void test_parse_compound_declaration() {
 }
 
 void test_parse_function_declaration_no_parameters() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int foo();";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -865,7 +853,7 @@ void test_parse_function_declaration_no_parameters() {
 }
 
 void test_parse_function_declaration_with_parameters() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     // combination of abstract declarator and direct declarator parameters
     char *input = "int foo(int a, float (*)(void), ...);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -915,7 +903,7 @@ void test_parse_function_declaration_with_parameters() {
 }
 
 void test_parse_function_declaration_returning_pointer() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int *foo();";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -948,7 +936,7 @@ void test_parse_function_declaration_returning_pointer() {
 }
 
 void test_parse_array_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int foo[10];";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -970,7 +958,7 @@ void test_parse_array_declaration() {
 }
 
 void test_parse_2d_array_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int bar[1][2];";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -999,7 +987,7 @@ void test_parse_2d_array_declaration() {
 }
 
 void test_parse_array_of_functions_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "int foo[](void);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1040,7 +1028,7 @@ void test_parse_array_of_functions_declaration() {
 }
 
 void test_parse_function_pointer() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "int (*foo)(void);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1081,7 +1069,7 @@ void test_parse_function_pointer() {
 }
 
 void test_parse_complex_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "float *(*(*bar[1][2])(void))(int);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1147,7 +1135,7 @@ void test_parse_complex_declaration() {
 }
 
 void test_parse_function_prototype_void() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "float foo(void);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1178,7 +1166,7 @@ void test_parse_function_prototype_void() {
 }
 
 void test_parse_function_prototype() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "double pow(float a, short b);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1223,7 +1211,7 @@ void test_parse_function_prototype() {
 }
 
 void test_parse_empty_statement() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = ";";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1239,7 +1227,7 @@ void test_parse_empty_statement() {
 }
 
 void test_parse_expression_statement() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1256,7 +1244,7 @@ void test_parse_expression_statement() {
 }
 
 void test_parse_compound_statement() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "{ 1; 'a'; 1.0; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1306,7 +1294,7 @@ void test_parse_compound_statement() {
 
 void test_parse_compound_statement_with_error() {
     // The parser should recover, and continue parsing the rest of the statements.
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "{ a-; 1; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1333,7 +1321,7 @@ void test_parse_compound_statement_with_error() {
 }
 
 void test_parse_if_statement() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "if (1) 2;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1354,7 +1342,7 @@ void test_parse_if_statement() {
 }
 
 void test_parse_if_else_statement() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "if (1) 2; else 3;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1375,7 +1363,7 @@ void test_parse_if_else_statement() {
 }
 
 void test_parse_if_else_if_else_statement() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "if (1) 2; else if (3) 4; else 5;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1396,7 +1384,7 @@ void test_parse_if_else_if_else_statement() {
 }
 
 void test_parse_return_statement() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "return 1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1416,7 +1404,7 @@ void test_parse_return_statement() {
 }
 
 void parse_external_declaration_declaration() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int a = 4;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1434,7 +1422,7 @@ void parse_external_declaration_declaration() {
 }
 
 void parse_external_definition_prototype_var_args() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int printf(const char *format, ...);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1468,7 +1456,7 @@ void parse_external_definition_prototype_var_args() {
 }
 
 void parse_external_declaration_function_definition() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "float square(float val) { return val * val; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1511,7 +1499,7 @@ void parse_external_declaration_function_definition() {
 }
 
 void parse_external_definition_function_taking_void() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char *input = "int main(void) { return 0; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
@@ -1546,7 +1534,7 @@ void parse_external_definition_function_taking_void() {
 }
 
 void test_parse_program() {
-    lexer_global_context_t context = create_context();
+    lexer_global_context_t context = create_lexer_context();
     char* input = "float square(float);\nfloat square(float val) {\n\treturn val * val;\n}\nint main() {\n\treturn square(2.0);\n}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
