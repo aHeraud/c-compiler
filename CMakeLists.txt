@@ -40,15 +40,13 @@ add_library(cclib STATIC
         src/ast.h src/ast.c
         src/util/hashtable.c src/util/hashtable.h
         src/util/strings.c src/util/strings.h
-        src/codegen.c src/codegen.h
         src/types.c src/types.h
         src/numeric-constants.h src/numeric-constants.c
         src/ir/ir.h src/ir/ir.c
         src/ir/ir-builder.h src/ir/ir-builder.c
         src/ir/ir-gen.h src/ir/ir-gen.c
-        src/errors.h
-        src/errors.c
-
+        src/errors.h src/errors.c
+        src/ir/cfg.h src/ir/cfg.c
 )
 
 add_executable(cc src/main.c)

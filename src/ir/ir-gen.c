@@ -21,10 +21,10 @@ typedef struct IrGenContext {
     ir_function_builder_t *builder;
     compilation_error_vector_t errors;
     scope_t *current_scope;
-    /**
-     * Counter for generating unique names for local IR values.
-     */
+    // Counter for generating unique local variable names
     int local_id_counter;
+    // Counter for generating unique labels
+    int label_counter;
 } ir_gen_context_t;
 
 typedef struct ExpressionResult {
@@ -54,7 +54,7 @@ typedef struct Symbol {
     const type_t *c_type;
     // The IR type of this symbol.
     const ir_type_t *ir_type;
-    // Pointer to the memory location where this symbol is stored.
+    // Pointer to the memory location where this symbol is stored (variables only).
     ir_var_t ir_ptr;
 } symbol_t;
 
@@ -98,6 +98,9 @@ void declare_symbol(ir_gen_context_t *context, symbol_t *symbol) {
 
 char *temp_name(ir_gen_context_t *context);
 ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type);
+char *gen_label(ir_gen_context_t *context);
+
+const ir_type_t *get_ir_val_type(ir_value_t value);
 
 /**
  * Get the C integer type that is the same width as a pointer.
@@ -109,11 +112,12 @@ const type_t *c_ptr_int_type();
  * Convert an IR value from one type to another.
  * @param context The IR generation context
  * @param value   The value to convert
- * @param c_type  The C type to convert the value to
+ * @param from_type The C type of the value
+ * @param to_type  The C type to convert the value to
  * @param result  Variable to store the result in. If NULL, a temporary variable will be created.
  * @return The resulting ir value and its corresponding c type
  */
-expression_result_t convert_to_type(ir_gen_context_t *context, ir_value_t value, const type_t *c_type, ir_var_t *result);
+expression_result_t convert_to_type(ir_gen_context_t *context, ir_value_t value, const type_t *from_type, const type_t *to_type, ir_var_t *result);
 
 /**
  * Get the IR type that corresponds to a specific C type.
@@ -130,6 +134,8 @@ const ir_type_t* get_ir_type(const type_t *c_type);
 const ir_type_t *get_ir_ptr_type(const ir_type_t *pointee);
 
 ir_value_t ir_value_for_var(ir_var_t var);
+
+expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t res);
 
 void enter_scope(ir_gen_context_t *context) {
     assert(context != NULL);
@@ -152,15 +158,18 @@ void leave_scope(ir_gen_context_t *context) {
 void visit_translation_unit(ir_gen_context_t *context, const translation_unit_t *translation_unit);
 void visit_function(ir_gen_context_t *context, const function_definition_t *function);
 void visit_statement(ir_gen_context_t *context, const statement_t *statement);
+void visit_if_statement(ir_gen_context_t *context, const statement_t *statement);
 void visit_return_statement(ir_gen_context_t *context, const statement_t *statement);
 void visit_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 expression_result_t visit_expression(ir_gen_context_t *context, const expression_t *expression);
 expression_result_t visit_primary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t visit_constant(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t visit_call_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t visit_binary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result);
 expression_result_t visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result);
 expression_result_t visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
+expression_result_t visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     ir_gen_context_t context = {
@@ -216,9 +225,110 @@ void visit_function(ir_gen_context_t *context, const function_definition_t *func
     // TODO: Add the function to the global scope (if not already present)
     //       If the function is already present, check that the signatures match.
 
+    const type_t function_c_type = {
+        .kind = TYPE_FUNCTION,
+        .function = {
+            .return_type = function->return_type,
+            .parameter_list = function->parameter_list,
+        },
+    };
+    const ir_type_t *function_type = get_ir_type(&function_c_type);
+    context->function->type = function_type;
+
+    // Verify that the function was not previously defined with a different signature.
+    symbol_t *entry = lookup_symbol(context, function->identifier->value);
+    if (entry != NULL) {
+        if (entry->kind != SYMBOL_FUNCTION) {
+            // A symbol with the same name exists, but it is not a function.
+            append_compilation_error(&context->errors, (compilation_error_t) {
+                .kind = ERR_REDEFINITION_OF_SYMBOL,
+                .location = function->identifier->position,
+                .redefinition_of_symbol = {
+                    .redefinition = function->identifier,
+                    .previous_definition = entry->identifier,
+                },
+            });
+        } else if (!ir_types_equal(entry->ir_type, function_type)) {
+            // The function was previously declared with a different signature
+            append_compilation_error(&context->errors, (compilation_error_t) {
+                .kind = ERR_REDEFINITION_OF_SYMBOL,
+                .location = function->identifier->position,
+                .redefinition_of_symbol = {
+                    .redefinition = function->identifier,
+                    .previous_definition = entry->identifier,
+                },
+            });
+        }
+
+        // Error if function was defined more than once
+        bool already_defined = false;
+        for (size_t i = 0; i < context->module->functions.size; i += 1) {
+            ir_function_definition_t *existing_function = context->module->functions.buffer[i];
+            if (strcmp(existing_function->name, function->identifier->value) == 0) {
+                already_defined = true;
+                break;
+            }
+        }
+        if (already_defined) {
+            append_compilation_error(&context->errors, (compilation_error_t) {
+                .kind = ERR_REDEFINITION_OF_SYMBOL,
+                .location = function->identifier->position,
+                .redefinition_of_symbol = {
+                    .redefinition = function->identifier,
+                    .previous_definition = entry->identifier,
+                },
+            });
+        }
+    } else {
+        // Insert the function into the symbol table
+        symbol_t *symbol = malloc(sizeof(symbol_t));
+        *symbol = (symbol_t) {
+            .kind = SYMBOL_FUNCTION,
+            .identifier = function->identifier,
+            .name = function->identifier->value,
+            .c_type = &function_c_type,
+            .ir_type = function_type,
+        };
+        declare_symbol(context, symbol);
+    }
+
     enter_scope(context); // Enter the function scope
 
-    // TODO: Add the parameters to the function scope
+    // Declare the function parameters, and add them to the symbol table
+    context->function->num_params = function->parameter_list->length;
+    context->function->params = malloc(sizeof(ir_var_t) * context->function->num_params);
+    context->function->is_variadic = function->parameter_list->variadic;
+    for (size_t i = 0; i < function->parameter_list->length; i += 1) {
+        parameter_declaration_t *param = function->parameter_list->parameters[i];
+        const ir_type_t *ir_param_type = get_ir_type(param->type);
+        ir_var_t ir_param = {
+            .name = param->identifier->value,
+            .type = ir_param_type,
+        };
+        context->function->params[i] = ir_param;
+
+        // Allocate a stack slot for the parameter
+        ir_var_t param_ptr = {
+            .name = temp_name(context),
+            .type = get_ir_ptr_type(ir_param_type),
+        };
+        IrBuildAlloca(context->builder, ir_param_type, param_ptr);
+
+        // Store the parameter in the stack slot
+        IrBuildStore(context->builder, ir_value_for_var(param_ptr), ir_value_for_var(ir_param));
+
+        // Create a symbol for the parameter and add it to the symbol table
+        symbol_t *symbol = malloc(sizeof(symbol_t));
+        *symbol = (symbol_t) {
+            .kind = SYMBOL_LOCAL_VARIABLE,
+            .identifier = param->identifier,
+            .name = param->identifier->value,
+            .c_type = param->type,
+            .ir_type = ir_param_type,
+            .ir_ptr = param_ptr,
+        };
+        declare_symbol(context, symbol);
+    }
 
     visit_statement(context, function->body);
 
@@ -258,7 +368,10 @@ void visit_statement(ir_gen_context_t *context, const statement_t *statement) {
             visit_expression(context, statement->expression);
             break;
         }
-        case STATEMENT_IF:
+        case STATEMENT_IF: {
+            visit_if_statement(context, statement);
+            break;
+        }
         case STATEMENT_RETURN: {
             visit_return_statement(context, statement);
             break;
@@ -267,6 +380,82 @@ void visit_statement(ir_gen_context_t *context, const statement_t *statement) {
             fprintf(stderr, "%s:%d: Invalid statement type\n", __FILE__, __LINE__);
             exit(1);
     }
+}
+
+void visit_if_statement(ir_gen_context_t *context, const statement_t *statement) {
+    assert(context != NULL && "Context must not be NULL");
+    assert(statement != NULL && "Statement must not be NULL");
+    assert(statement->type == STATEMENT_IF);
+
+    // Evaluate the condition
+    expression_result_t condition = visit_expression(context, statement->if_.condition);
+
+    if (condition.is_lvalue) {
+        condition = get_rvalue(context, condition);
+    }
+
+    // The condition must have a scalar type
+    if (!is_scalar_type(condition.c_type)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_IF_CONDITION_TYPE,
+            .location = statement->if_.keyword->position,
+        });
+        return;
+    }
+
+    // Create labels for the false branch and the end of the if statement
+    char *false_label = NULL;
+    if (statement->if_.false_branch != NULL) {
+        false_label = gen_label(context);
+    }
+    char *end_label = gen_label(context);
+
+    // Compare the condition to zero
+    if (is_pointer_type(condition.c_type)) {
+        // Convert to an integer type
+        condition = convert_to_type(context, condition.value, condition.c_type, c_ptr_int_type(), NULL);
+    }
+
+    bool condition_is_floating = is_floating_type(condition.c_type);
+    ir_value_t zero = condition_is_floating ?
+          (ir_value_t) {
+              .kind = IR_VALUE_CONST,
+              .constant = (ir_const_t) {
+                  .kind = IR_CONST_FLOAT,
+                  .type = get_ir_type(condition.c_type),
+                  .f = 0.0,
+              },
+          } :
+          (ir_value_t) {
+              .kind = IR_VALUE_CONST,
+              .constant = (ir_const_t) {
+                  .kind = IR_CONST_INT,
+                  .type = get_ir_type(condition.c_type),
+                  .i = 0,
+              },
+          };
+    ir_var_t condition_var = (ir_var_t) {
+        .name = temp_name(context),
+        .type = &IR_BOOL,
+    };
+    IrBuildEq(context->builder, condition.value, zero, condition_var);
+    IrBuildBrCond(context->builder, ir_value_for_var(condition_var), false_label != NULL ? false_label : end_label);
+
+    // Generate code for the true branch
+    visit_statement(context, statement->if_.true_branch);
+
+    if (statement->if_.false_branch != NULL) {
+        // Jump to the end of the if statement
+        IrBuildBr(context->builder, end_label);
+
+        // Label for the false branch
+        IrBuildNop(context->builder, false_label);
+
+        // Generate code for the false branch
+        visit_statement(context, statement->if_.false_branch);
+    }
+
+    IrBuildNop(context->builder, end_label);
 }
 
 void visit_return_statement(ir_gen_context_t *context, const statement_t *statement) {
@@ -332,7 +521,7 @@ void visit_declaration(ir_gen_context_t *context, const declaration_t *declarati
         }
 
         // Verify that the types are compatible, convert if necessary
-        result = convert_to_type(context, result.value, declaration->type, NULL);
+        result = convert_to_type(context, result.value, result.c_type, declaration->type, NULL);
         if (result.c_type == NULL) {
             // Incompatible types
             return;
@@ -341,13 +530,7 @@ void visit_declaration(ir_gen_context_t *context, const declaration_t *declarati
         // If the initializer is an lvalue, load the value
         // TODO: not sure that this is correct
         if (result.is_lvalue) {
-            ir_var_t temp = temp_var(context, result.value.var.type);
-            ir_var_t ptr = (ir_var_t) {
-                .name = result.value.var.name,
-                .type = get_ir_ptr_type(result.value.var.type),
-            };
-            IrBuildLoad(context->builder, ir_value_for_var(ptr), temp);
-            result.value = ir_value_for_var(temp);
+            result = get_rvalue(context, result);
         }
 
         // Store the result in the allocated storage
@@ -366,7 +549,7 @@ expression_result_t visit_expression(ir_gen_context_t *context, const expression
         case EXPRESSION_BINARY:
             return visit_binary_expression(context, expression);
         case EXPRESSION_CALL: {
-            assert(false && "Function calls not implemented");
+            return visit_call_expression(context, expression);
         }
         case EXPRESSION_CAST: {
             assert(false && "Cast not implemented");
@@ -388,6 +571,12 @@ expression_result_t visit_expression(ir_gen_context_t *context, const expression
     }
 
     // TODO
+    return EXPR_ERR;
+}
+
+expression_result_t visit_call_expression(ir_gen_context_t *context, const expression_t *expr) {
+    // TODO: implement call expression
+    IrBuildNop(context->builder, NULL);
     return EXPR_ERR;
 }
 
@@ -415,7 +604,7 @@ expression_result_t visit_binary_expression(ir_gen_context_t *context, const exp
             }
         }
         case BINARY_ASSIGNMENT: {
-            visit_assignment_binexpr(context, expr, left, right);
+            return visit_assignment_binexpr(context, expr, left, right);
         }
         case BINARY_BITWISE: {
             // TODO
@@ -426,8 +615,7 @@ expression_result_t visit_binary_expression(ir_gen_context_t *context, const exp
             assert(false && "comma operator not implemented");
         }
         case BINARY_COMPARISON: {
-            // TODO
-            assert(false && "comparison operators not implemented");
+            return visit_comparison_binexpr(context, expr, left, right);
         }
         case BINARY_LOGICAL: {
             // TODO
@@ -454,8 +642,8 @@ expression_result_t visit_additive_binexpr(ir_gen_context_t *context, const expr
             *result = temp_var(context, ir_result_type);
         }
 
-        left = convert_to_type(context, left.value, result_type, NULL);
-        right = convert_to_type(context, right.value, result_type, NULL);
+        left = convert_to_type(context, left.value, left.c_type, result_type, NULL);
+        right = convert_to_type(context, right.value, right.c_type, result_type, NULL);
 
         if (ir_types_equal(result->type, ir_result_type)) {
             // Can assign directly to the result variable
@@ -471,7 +659,7 @@ expression_result_t visit_additive_binexpr(ir_gen_context_t *context, const expr
             ir_var_t temp = temp_var(context, ir_result_type);
             is_addition ? IrBuildAdd(context->builder, left.value, right.value, temp)
                         : IrBuildSub(context->builder, left.value, right.value, temp);
-            return convert_to_type(context, ir_value_for_var(temp), result_type, result);
+            return convert_to_type(context, ir_value_for_var(temp), NULL, result_type, result);
         }
     } else if ((is_pointer_type(left.c_type) && is_integer_type(right.c_type)) ||
                (is_integer_type(left.c_type) && is_pointer_type(right.c_type))) {
@@ -503,7 +691,7 @@ expression_result_t visit_additive_binexpr(ir_gen_context_t *context, const expr
         }
 
         // Extend/truncate the integer to the size of a pointer.
-        integer_operand = convert_to_type(context, integer_operand.value, c_ptr_int_type(), NULL);
+        integer_operand = convert_to_type(context, integer_operand.value, integer_operand.c_type, c_ptr_int_type(), NULL);
 
         // Multiply the integer by the size of the pointee type.
         ir_value_t size_constant = (ir_value_t) {
@@ -553,10 +741,8 @@ expression_result_t visit_assignment_binexpr(ir_gen_context_t *context, const ex
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
 
-    // The left operand must be an lvalue.
-    // TODO: refine this, only allow assignment to lvalues
-    //       currently this only catches assignments to constants and const-qualified variables
-    if (left.value.kind != IR_VALUE_VAR || left.c_type->is_const) {
+    // The left operand must be a lvalue.
+    if (!left.is_lvalue || left.c_type->is_const) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_ASSIGNMENT_TARGET,
             .location = expr->binary.operator->position,
@@ -570,20 +756,83 @@ expression_result_t visit_assignment_binexpr(ir_gen_context_t *context, const ex
     }
 
     // Generate an assignment instruction.
-    ir_var_t result = left.value.var;
+    ir_var_t result = (ir_var_t) {
+        .name = temp_name(context),
+        .type = get_ir_type(left.c_type),
+    };
 
     if (!types_equal(left.c_type, right.c_type)) {
         // Convert the right operand to the type of the left operand.
-        right = convert_to_type(context, right.value, left.c_type, &result);
-    } else {
-        IrBuildAssign(context->builder, right.value, result);
+        right = convert_to_type(context, right.value, right.c_type, left.c_type, &result);
+        if (right.c_type == NULL) {
+            return EXPR_ERR;
+        }
     }
 
-    return (expression_result_t) {
-        .c_type = left.c_type,
-        .is_lvalue = true, // assignments can be chained e.g `a = b = c;`
-        .value = ir_value_for_var(result),
-    };
+    IrBuildAssign(context->builder, right.value, result);
+    IrBuildStore(context->builder, left.value, ir_value_for_var(result));
+
+    // assignments can be chained, e.g. `a = b = c;`
+    return left;
+}
+
+expression_result_t visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+    assert(context != NULL && "Context must not be NULL");
+    assert(expr != NULL && "Expression must not be NULL");
+    assert(expr->type == EXPRESSION_BINARY && expr->binary.type == BINARY_COMPARISON);
+
+    if (left.is_lvalue) left = get_rvalue(context, left);
+    if (right.is_lvalue) right = get_rvalue(context, right);
+
+    // One of the following must be true:
+    // 1. both operands have arithmetic type
+    // 2. both operands are pointers to compatible types
+    // 3. both operands are pointers, and one is a pointer to void
+    // 4. one operand is a pointer and the other is a null pointer constant
+
+    // We will lazily relax this to allow comparisons between two arithmetic types, or two pointer types.
+    // TODO: Implement the correct type restrictions for pointer comparisons.
+
+    if (is_arithmetic_type(left.c_type) && is_arithmetic_type(right.c_type)) {
+        const type_t *common_type = get_common_type(left.c_type, right.c_type);
+        left = convert_to_type(context, left.value, left.c_type, common_type, NULL);
+        right = convert_to_type(context, right.value, right.c_type, common_type, NULL);
+        if (left.c_type == NULL || right.c_type == NULL) {
+            return EXPR_ERR;
+        }
+
+        ir_var_t result = temp_var(context, &IR_BOOL);
+
+        binary_comparison_operator_t op = expr->binary.comparison_operator;
+        switch (op) {
+            case BINARY_COMPARISON_EQUAL:
+                IrBuildEq(context->builder, left.value, right.value, result);
+                break;
+            default:
+                // TODO: implement the other comparison operators
+                assert(false && "Comparison operator not implemented");
+        }
+
+        return (expression_result_t) {
+            .c_type = &BOOL,
+            .is_lvalue = false,
+            .value = ir_value_for_var(result),
+        };
+    } else if (is_pointer_type(left.c_type) && is_pointer_type(right.c_type)) {
+        // TODO: Implement pointer comparisons
+        assert(false && "Pointer comparisons not implemented");
+    } else {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
+            .location = expr->binary.operator->position,
+            .invalid_binary_expression_operands = {
+                .operator = expr->binary.operator->value,
+                .left_type = left.c_type,
+                .right_type = right.c_type,
+            },
+        });
+        return EXPR_ERR;
+    }
 }
 
 expression_result_t visit_primary_expression(ir_gen_context_t *context, const expression_t *expr) {
@@ -605,17 +854,12 @@ expression_result_t visit_primary_expression(ir_gen_context_t *context, const ex
                 });
                 return EXPR_ERR;
             }
-
-            // Load the value from memory
-            ir_var_t temp = temp_var(context, symbol->ir_type);
-            IrBuildLoad(context->builder, ir_value_for_var(symbol->ir_ptr), temp);
-
             return (expression_result_t) {
                 .c_type = symbol->c_type,
                 .is_lvalue = true,
                 .value = (ir_value_t) {
                     .kind = IR_VALUE_VAR,
-                    .var = temp,
+                    .var = symbol->ir_ptr,
                 },
             };
         }
@@ -720,6 +964,12 @@ char *temp_name(ir_gen_context_t *context) {
     return strdup(buffer);
 }
 
+char *gen_label(ir_gen_context_t *context) {
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "l%d", context->label_counter++);
+    return strdup(buffer);
+}
+
 ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type) {
     return (ir_var_t) {
         .type = type,
@@ -738,6 +988,8 @@ const ir_type_t* get_ir_type(const type_t *c_type) {
         case TYPE_INTEGER: {
             if (c_type->integer.is_signed) {
                 switch (c_type->integer.size) {
+                    case INTEGER_TYPE_BOOL:
+                        return &IR_BOOL;
                     case INTEGER_TYPE_CHAR:
                         return &IR_I8;
                     case INTEGER_TYPE_SHORT:
@@ -750,6 +1002,8 @@ const ir_type_t* get_ir_type(const type_t *c_type) {
                 }
             } else {
                 switch (c_type->integer.size) {
+                    case INTEGER_TYPE_BOOL:
+                        return &IR_BOOL;
                     case INTEGER_TYPE_CHAR:
                         return &IR_U8;
                     case INTEGER_TYPE_SHORT:
@@ -783,8 +1037,23 @@ const ir_type_t* get_ir_type(const type_t *c_type) {
             return ir_type;
         }
         case TYPE_FUNCTION: {
-            // TODO
-            assert(false && "Unimplemented");
+            const ir_type_t *ir_return_type = get_ir_type(c_type->function.return_type);
+            const ir_type_t **ir_param_types = malloc(c_type->function.parameter_list->length * sizeof(ir_type_t*));
+            for (size_t i = 0; i < c_type->function.parameter_list->length; i++) {
+                const parameter_declaration_t *param = c_type->function.parameter_list->parameters[i];
+                ir_param_types[i] = get_ir_type(param->type);
+            }
+            ir_type_t *ir_type = malloc(sizeof(ir_type_t));
+            *ir_type = (ir_type_t) {
+                .kind = IR_TYPE_FUNCTION,
+                .function = {
+                    .return_type = ir_return_type,
+                    .params = ir_param_types,
+                    .num_params = c_type->function.parameter_list->length,
+                    .is_variadic = c_type->function.parameter_list->variadic
+                },
+            };
+            return ir_type;
         }
         case TYPE_ARRAY: {
             // TODO
@@ -827,8 +1096,14 @@ bool is_ir_float_type(const ir_type_t *type) {
     return type->kind == IR_TYPE_F32 || type->kind == IR_TYPE_F64;
 }
 
-expression_result_t convert_to_type(ir_gen_context_t *context, ir_value_t value, const type_t *c_type, ir_var_t *result) {
-    const ir_type_t *result_type = get_ir_type(c_type);
+expression_result_t convert_to_type(
+        ir_gen_context_t *context,
+        ir_value_t value,
+        const type_t *from_type,
+        const type_t *to_type,
+        ir_var_t *result
+) {
+    const ir_type_t *result_type = get_ir_type(to_type);
     const ir_type_t *source_type;
     if (value.kind == IR_VALUE_CONST) {
         source_type = value.constant.type;
@@ -865,16 +1140,12 @@ expression_result_t convert_to_type(ir_gen_context_t *context, ir_value_t value,
             IrBuildFtoI(context->builder, value, *result);
         } else if (source_type->kind == IR_TYPE_PTR) {
             // ptr -> int
-            // TODO
-            fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
-                    format_ir_type(alloca(256), 256, source_type),
-                    format_ir_type(alloca(256), 256, result_type));
-            return EXPR_ERR;
+            IrBuildPtoI(context->builder, value, *result);
         } else {
             // TODO, other conversions, proper error handling
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
-                    format_ir_type(alloca(256), 256, source_type),
-                    format_ir_type(alloca(256), 256, result_type));
+                    ir_fmt_type(alloca(256), 256, source_type),
+                    ir_fmt_type(alloca(256), 256, result_type));
             return EXPR_ERR;
         }
     } else if (is_ir_float_type(result_type)) {
@@ -896,19 +1167,19 @@ expression_result_t convert_to_type(ir_gen_context_t *context, ir_value_t value,
         } else {
             // TODO: proper error handling
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
-                    format_ir_type(alloca(256), 256, source_type),
-                    format_ir_type(alloca(256), 256, result_type));
+                    ir_fmt_type(alloca(256), 256, source_type),
+                    ir_fmt_type(alloca(256), 256, result_type));
             return EXPR_ERR;
         }
     } else {
         fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
-                format_ir_type(alloca(256), 256, source_type),
-                format_ir_type(alloca(256), 256, result_type));
+                ir_fmt_type(alloca(256), 256, source_type),
+                ir_fmt_type(alloca(256), 256, result_type));
         return EXPR_ERR;
     }
 
     return (expression_result_t) {
-        .c_type = c_type,
+        .c_type = to_type,
         .is_lvalue = false,
         .value = ir_value_for_var(*result),
     };
@@ -918,5 +1189,30 @@ ir_value_t ir_value_for_var(ir_var_t var) {
     return (ir_value_t) {
         .kind = IR_VALUE_VAR,
         .var = var,
+    };
+}
+
+const ir_type_t *get_ir_val_type(const ir_value_t value) {
+    if (value.kind == IR_VALUE_VAR) {
+        return value.var.type;
+    } else {
+        return value.constant.type;
+    }
+}
+
+expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t res) {
+    assert(res.is_lvalue && "Expected lvalue");
+    assert(get_ir_val_type(res.value)->kind == IR_TYPE_PTR && "Expected pointer type");
+
+    ir_var_t temp = temp_var(context, get_ir_val_type(res.value)->ptr.pointee);
+    ir_var_t ptr = (ir_var_t) {
+            .name = res.value.var.name,
+            .type = res.value.var.type,
+    };
+    IrBuildLoad(context->builder, ir_value_for_var(ptr), temp);
+    return (expression_result_t) {
+        .c_type = res.c_type,
+        .is_lvalue = false,
+        .value = ir_value_for_var(temp),
     };
 }

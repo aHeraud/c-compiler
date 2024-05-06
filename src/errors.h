@@ -16,6 +16,7 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_ASSIGNMENT_TARGET,
     ERR_REDEFINITION_OF_SYMBOL,
     ERR_INVALID_INITIALIZER_TYPE,
+    ERR_INVALID_IF_CONDITION_TYPE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {

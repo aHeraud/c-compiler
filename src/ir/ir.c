@@ -72,7 +72,7 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b) {
     }
 }
 
-const char* format_ir_type(char *buffer, size_t size, const ir_type_t *type) {
+const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type) {
     switch (type->kind) {
         case IR_TYPE_VOID:
             snprintf(buffer, size, "void");
@@ -111,11 +111,11 @@ const char* format_ir_type(char *buffer, size_t size, const ir_type_t *type) {
             snprintf(buffer, size, "f64");
             break;
         case IR_TYPE_PTR:
-            snprintf(buffer, size, "*%s", format_ir_type(alloca(256), 256, type->ptr.pointee));
+            snprintf(buffer, size, "*%s", ir_fmt_type(alloca(256), 256, type->ptr.pointee));
             break;
         case IR_TYPE_ARRAY: {
             char element[256];
-            format_ir_type(element, sizeof(element), type->array.element);
+            ir_fmt_type(element, sizeof(element), type->array.element);
             snprintf(buffer, size, "[%s;%lu] ", element, (unsigned long) type->array.length);
             break;
         }
@@ -123,48 +123,57 @@ const char* format_ir_type(char *buffer, size_t size, const ir_type_t *type) {
             // TODO
             assert(false && "Unimplemented");
             exit(1);
-        case IR_TYPE_FUNCTION:
-            // TODO
-            assert(false && "Unimplemented");
-            exit(1);
+        case IR_TYPE_FUNCTION: {
+            char param_list[512];
+            char *curr = param_list;
+            for (size_t i = 0; i < type->function.num_params; i++) {
+                const ir_type_t *param = type->function.params[i];
+                curr += snprintf(curr, param_list + sizeof(param_list) - curr, "%s", ir_fmt_type(alloca(256), 256, param));
+                if (i < type->function.num_params - 1) {
+                    curr += snprintf(curr, param_list + sizeof(param_list) - curr, ", ");
+                }
+            }
+            snprintf(buffer, size, "(%s) -> %s", param_list, ir_fmt_type(alloca(256), 256, type->function.return_type));
+            break;
+        }
     }
     return buffer;
 }
 
-const char* format_ir_constant(char *buffer, size_t size, const ir_const_t constant) {
+const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
     switch (constant.kind) {
         case IR_CONST_INT:
-            snprintf(buffer, size, "%s %llu", format_ir_type(alloca(256), 256, constant.type), constant.i);
+            snprintf(buffer, size, "%s %llu", ir_fmt_type(alloca(256), 256, constant.type), constant.i);
             break;
         case IR_CONST_FLOAT:
-            snprintf(buffer, size, "%s %Lf", format_ir_type(alloca(256), 256, constant.type), constant.f);
+            snprintf(buffer, size, "%s %Lf", ir_fmt_type(alloca(256), 256, constant.type), constant.f);
             break;
         case IR_CONST_STRING:
-            snprintf(buffer, size, "%s \"%s\"", format_ir_type(alloca(256), 256, constant.type), constant.s);
+            snprintf(buffer, size, "%s \"%s\"", ir_fmt_type(alloca(256), 256, constant.type), constant.s);
             break;
     }
     return buffer;
 }
 
-const char* format_ir_variable(char *buffer, size_t size, const ir_var_t var) {
-    snprintf(buffer, size, "%s %s", format_ir_type(alloca(256), 256, var.type), var.name);
+const char* ir_fmt_var(char *buffer, size_t size, const ir_var_t var) {
+    snprintf(buffer, size, "%s %s", ir_fmt_type(alloca(256), 256, var.type), var.name);
     return buffer;
 }
 
-const char* format_ir_value(char *buffer, size_t size, const ir_value_t value) {
+const char* ir_fmt_val(char *buffer, size_t size, const ir_value_t value) {
     switch (value.kind) {
         case IR_VALUE_CONST:
-            return format_ir_constant(buffer, size, value.constant);
+            return ir_fmt_const(buffer, size, value.constant);
         case IR_VALUE_VAR:
-            return format_ir_variable(buffer, size, value.var);
+            return ir_fmt_var(buffer, size, value.var);
     }
 }
 
-#define FMT_VAL(val) format_ir_value(alloca(256), 256, val)
-#define FMT_VAR(var) format_ir_variable(alloca(256), 256, var)
-#define FMT_TYPE(type) format_ir_type(alloca(256), 256, type)
+#define FMT_VAL(val) ir_fmt_val(alloca(256), 256, val)
+#define FMT_VAR(var) ir_fmt_var(alloca(256), 256, var)
+#define FMT_TYPE(type) ir_fmt_type(alloca(256), 256, type)
 
-const char* format_ir_instruction(char *buffer, size_t size, const ir_instruction_t *instr) {
+const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *instr) {
     const char* start = buffer;
     if (instr->label != NULL) {
         snprintf(buffer, size, "%s: ", instr->label);
@@ -172,6 +181,9 @@ const char* format_ir_instruction(char *buffer, size_t size, const ir_instructio
     }
 
     switch (instr->opcode) {
+        case IR_NOP:
+            snprintf(buffer, size, "nop");
+            break;
         case IR_ADD:
             snprintf(buffer, size, "%s = add %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
@@ -191,28 +203,40 @@ const char* format_ir_instruction(char *buffer, size_t size, const ir_instructio
             snprintf(buffer, size, "%s = %s", FMT_VAR(instr->assign.result), FMT_VAL(instr->assign.value));
             break;
         case IR_AND:
+            snprintf(buffer, size, "%s = and %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_OR:
+            snprintf(buffer, size, "%s = or %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_SHL:
+            snprintf(buffer, size, "%s = shl %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_SHR:
+            snprintf(buffer, size, "%s = shr %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_XOR:
+            snprintf(buffer, size, "%s = xor %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_NOT:
+            snprintf(buffer, size, "%s = not %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left));
             break;
         case IR_EQ:
+            snprintf(buffer, size, "%s = eq %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_NE:
+            snprintf(buffer, size, "%s = ne %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_LT:
+            snprintf(buffer, size, "%s = lt %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_LE:
+            snprintf(buffer, size, "%s = le %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_GT:
+            snprintf(buffer, size, "%s = gt %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_GE:
+            snprintf(buffer, size, "%s = ge %s, %s", FMT_VAR(instr->add.result), FMT_VAL(instr->add.left), FMT_VAL(instr->add.right));
             break;
         case IR_BR:
             snprintf(buffer, size, "br %s", instr->br.label);
@@ -251,9 +275,29 @@ const char* format_ir_instruction(char *buffer, size_t size, const ir_instructio
         case IR_ITOF:
             snprintf(buffer, size, "%s = itof %s", FMT_VAR(instr->itof.result), FMT_VAL(instr->itof.value));
             break;
+        case IR_ITOP:
+            snprintf(buffer, size, "%s = itop %s", FMT_VAR(instr->itop.result), FMT_VAL(instr->itop.value));
+            break;
+        case IR_PTOI:
+            snprintf(buffer, size, "%s = ptoi %s", FMT_VAR(instr->ptoi.result), FMT_VAL(instr->ptoi.value));
+            break;
         case IR_BITCAST:
             break;
     }
 
     return start;
+}
+
+void ir_print_module(FILE *file, const ir_module_t *module) {
+    for (size_t i = 0; i < module->functions.size; i++) {
+        ir_function_definition_t *function = module->functions.buffer[i];
+        fprintf(file, "function %s %s", function->name, FMT_TYPE(function->type));
+        fprintf(file, " {\n");
+        char buffer[512];
+        for (size_t j = 0; j < function->num_instructions; j++) {
+            ir_instruction_t instr = function->instructions[j];
+            fprintf(file, "    %s\n", ir_fmt_instr(buffer, sizeof(buffer), &instr));
+        }
+        fprintf(file, "}\n");
+    }
 }

@@ -32,6 +32,14 @@ void IrBuildAssign(ir_function_builder_t *builder, ir_value_t value, ir_var_t re
     append_ir_instruction(&builder->instructions, instruction);
 }
 
+void IrBuildNop(ir_function_builder_t *builder, const char* label) {
+    ir_instruction_t instruction = {
+        .opcode = IR_NOP,
+        .label = label,
+    };
+    append_ir_instruction(&builder->instructions, instruction);
+}
+
 void IrBuildAdd(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
             .opcode = IR_ADD,
@@ -157,6 +165,18 @@ void IrBuildNot(ir_function_builder_t *builder, ir_value_t value, ir_var_t resul
         .opcode = IR_NOT,
         .not = {
             .value = value,
+            .result = result,
+        }
+    };
+    append_ir_instruction(&builder->instructions, instruction);
+}
+
+void IrBuildEq(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_EQ,
+        .eq = {
+            .left = left,
+            .right = right,
             .result = result,
         }
     };
@@ -293,12 +313,34 @@ void IrBuildItoF(ir_function_builder_t *builder, ir_value_t value, ir_var_t resu
     append_ir_instruction(&builder->instructions, instruction);
 }
 
-void IrBuildBitCast(ir_function_builder_t *builder, ir_value_t value, const ir_type_t *type) {
+void IrBuildItoP(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_ITOP,
+        .itop = {
+            .value = value,
+            .result = result,
+        }
+    };
+    append_ir_instruction(&builder->instructions, instruction);
+}
+
+void IrBuildPtoI(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_PTOI,
+        .ptoi = {
+            .value = value,
+            .result = result,
+        }
+    };
+    append_ir_instruction(&builder->instructions, instruction);
+}
+
+void IrBuildBitCast(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
 ir_instruction_t instruction = {
         .opcode = IR_BITCAST,
         .bitcast = {
             .value = value,
-            .type = type,
+            .result = result,
         }
     };
     append_ir_instruction(&builder->instructions, instruction);

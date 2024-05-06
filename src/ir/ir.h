@@ -89,7 +89,7 @@
 ///    + a must have the same type as the function return type
 ///
 /// ### Memory
-/// - alloca: Allocate memory on the stack for a value of type a `b = alloca a`
+/// - alloca: Allocate memory on the stack for a value of type a `*i32 b = alloca i32 a`
 ///    + a must be a non-void type
 ///    + b will be a pointer to the allocated memory
 /// - load: Load the value from a pointer a into b `b = *a`
@@ -101,18 +101,22 @@
 ///
 /// ### Type Conversion
 ///
-/// - trunc a, type - Truncate a to the specified type `b = trunc a to type`
-///    + a and type can either be both integer types or both floating point types
+/// - trunc a, b - Truncate a to the specified size `i8 b = trunc i32 a`
+///    + a and b can either be both integer types or both floating point types
 ///    + The result type must be smaller than the type of a
-/// - ext a, type - Extend a to the specified type `b = ext a to type`
-///     + a and type can either be both integer types or both floating point types
+/// - ext a, b - Extend a to the specified size `i32 b = ext i16 a`
+///     + a and b can either be both integer types or both floating point types
 ///     + The result type must be larger than the type of a
 ///     + If a is signed, the sign bit is extended, otherwise the new bits are filled with 0
-/// - ftoi a, type - Convert a floating point value to an integer `b = (type) a`
-/// - itof a, type - Convert an integer value to a floating point `b = (type) a`
+/// - ftoi a, b - Convert a floating point value to an integer `i32 b = ftoi f32 a`
+/// - itof a, b - Convert an integer value to a floating point `f32 b = itof i32 a`
+/// - ptoi a, b - Convert a pointer to an integer `i64 b = ptoi *i32 a`
+/// - itop a, b - Convert an integer to a pointer `*i32 b = itop i64 a`
 /// - bitcast a, type - Bitcast a to the specified type `b = (type) a`
 ///     + a and type must have the same size
 ///     + b will have the same bit pattern as a
+
+#include <stdio.h>
 
 #include "types.h"
 
@@ -178,6 +182,8 @@ static const ir_type_t IR_F64 = { .kind = IR_TYPE_F64 };
 static const ir_type_t IR_PTR_CHAR = { .kind = IR_TYPE_PTR, .ptr = { .pointee = &IR_I8 } };
 
 typedef enum IrOpcode {
+    IR_NOP,
+
     /* Arithmetic */
     IR_ADD,
     IR_SUB,
@@ -220,6 +226,8 @@ typedef enum IrOpcode {
     IR_EXT,
     IR_FTOI,
     IR_ITOF,
+    IR_PTOI,
+    IR_ITOP,
     IR_BITCAST
 } ir_opcode_t;
 
@@ -318,6 +326,11 @@ typedef struct IrInstruction {
             ir_var_t result;
         } not;
         struct {
+            ir_value_t left;
+            ir_value_t right;
+            ir_var_t result;
+        } eq;
+        struct {
             const char* label;
         } br;
         struct {
@@ -364,7 +377,15 @@ typedef struct IrInstruction {
         } itof;
         struct {
             ir_value_t value;
-            const ir_type_t *type;
+            ir_var_t result;
+        } ptoi;
+        struct {
+            ir_value_t value;
+            ir_var_t result;
+        } itop;
+        struct {
+            ir_value_t value;
+            ir_var_t result;
         } bitcast;
     };
 } ir_instruction_t;
@@ -372,6 +393,9 @@ typedef struct IrInstruction {
 typedef struct IrFunctionDefinition {
     const char* name;
     const ir_type_t *type;
+    ir_var_t *params;
+    size_t num_params;
+    bool is_variadic;
     ir_instruction_t *instructions;
     size_t num_instructions;
 } ir_function_definition_t;
@@ -381,6 +405,12 @@ typedef struct IrInstructionVector {
     size_t size;
     size_t capacity;
 } ir_instruction_vector_t;
+
+typedef struct IrInstructionPtrVector {
+    ir_instruction_t **buffer;
+    size_t size;
+    size_t capacity;
+} ir_instruction_ptr_vector_t;
 
 typedef struct IrFunctionPtrVector {
     ir_function_definition_t **buffer;
@@ -404,10 +434,12 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b);
  */
 size_t size_of_type(const ir_type_t *type);
 
-const char* format_ir_type(char *buffer, size_t size, const ir_type_t *type);
-const char* format_ir_constant(char *buffer, size_t size, ir_const_t constant);
-const char* format_ir_variable(char *buffer, size_t size, ir_var_t var);
-const char* format_ir_value(char *buffer, size_t size, ir_value_t value);
-const char* format_ir_instruction(char *buffer, size_t size, const ir_instruction_t *instruction);
+const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type);
+const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant);
+const char* ir_fmt_var(char *buffer, size_t size, ir_var_t var);
+const char* ir_fmt_val(char *buffer, size_t size, ir_value_t value);
+const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *instruction);
+
+void ir_print_module(FILE *file, const ir_module_t *module);
 
 #endif //C_COMPILER_IR_H

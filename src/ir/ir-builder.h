@@ -8,6 +8,8 @@ typedef struct IrFunctionBuilder ir_function_builder_t;
 ir_function_builder_t *IrCreateFunctionBuilder();
 void IrFinalizeFunctionBuilder(ir_function_builder_t *builder, ir_function_definition_t *function);
 
+void IrBuildNop(ir_function_builder_t *builder, const char* label);
+
 /* Arithmetic */
 void IrBuildAdd(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result);
 void IrBuildSub(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result);
@@ -51,6 +53,8 @@ void IrBuildTrunc(ir_function_builder_t *builder, ir_value_t value, ir_var_t res
 void IrBuildExt(ir_function_builder_t *builder, ir_value_t a, ir_var_t result);
 void IrBuildFtoI(ir_function_builder_t *builder, ir_value_t a, ir_var_t result);
 void IrBuildItoF(ir_function_builder_t *builder, ir_value_t a, ir_var_t result);
-void IrBuildBitCast(ir_function_builder_t *builder, ir_value_t a, const ir_type_t *type);
+void IrBuildItoP(ir_function_builder_t *builder, ir_value_t a, ir_var_t result);
+void IrBuildPtoI(ir_function_builder_t *builder, ir_value_t a, ir_var_t result);
+void IrBuildBitCast(ir_function_builder_t *builder, ir_value_t value, ir_var_t result);
 
 #endif //C_COMPILER_IR_BUILDER_H

@@ -1,12 +1,11 @@
 #include <stdio.h>
-#include <stdbool.h>
 #include <string.h>
-#include <malloc.h>
 #include <stdlib.h>
 #include "util/vectors.h"
 #include "lexer.h"
 #include "parser.h"
-#include "codegen.h"
+#include "ir/ir-gen.h"
+#include "ir/cfg.h"
 
 // TODO: Set based on current platform
 char* DEFAULT_SYSTEM_INCLUDE_DIRECTORIES[2] = {
@@ -32,6 +31,12 @@ typedef struct Options {
       */
      const char* output_file;
 
+     /**
+      * --emit-ir
+      * Write generated IR to file (default: <input>.ir)
+      */
+     bool emit_ir;
+
      string_vector_t input_files;
 } options_t;
 
@@ -52,6 +57,7 @@ options_t parse_and_validate_options(int argc, char** argv) {
             .additional_include_directories = {NULL, 0, 0},
             .additional_system_include_directories = {NULL, 0, 0},
             .output_file = NULL,
+            .emit_ir = false,
             .input_files = {NULL, 0, 0},
     };
 
@@ -168,6 +174,8 @@ options_t parse_and_validate_options(int argc, char** argv) {
     return options;
 }
 
+void get_output_path(const char *path, const char *extension, char *output, size_t output_size);
+
 void compile(options_t options, const char* input_file_name) {
     FILE* file = fopen(input_file_name, "r");
     if (file == NULL) {
@@ -211,22 +219,47 @@ void compile(options_t options, const char* input_file_name) {
         exit(1);
     }
 
+    // TODO: add flag print IR module
+    ir_gen_result_t result = generate_ir(translation_unit);
+    if (result.errors.size > 0) {
+        fprintf(stderr, "Failed to generate IR for file: %s\n", input_file_name);
+        // TODO: print errors
+        exit(1);
+    }
+
+    ir_module_t *ir_module = result.module;
+    if (options.emit_ir) {
+        // TODO: write to file (currently just prints to stdout)
+        //char output_path[1024];
+        //get_output_path(input_file_name, "ir", output_path, sizeof(output_path));
+        ir_print_module(stdout, ir_module);
+    }
+
+    for (size_t i = 0; i < ir_module->functions.size; i+= 1) {
+        ir_function_definition_t *function = ir_module->functions.buffer[i];
+        ir_control_flow_graph_t cfg = ir_create_control_flow_graph(function);
+        ir_print_control_flow_graph(stdout, &cfg, 1);
+    }
+
     const char *output_file_name;
     if (options.output_file == NULL) {
         size_t file_name_len = strlen(input_file_name);
-        char *tmp = malloc(file_name_len + 3 + 1);
-        strcpy(tmp, input_file_name);
-        if (file_name_len > 2 && strcmp(input_file_name + file_name_len - 2, ".c") == 0) {
-            strcpy(tmp + file_name_len - 2, ".ll");
-        } else {
-            strcpy(tmp + file_name_len, ".ll");
-        }
+        char *tmp = malloc(file_name_len + 4);
+        get_output_path(input_file_name, "ll", tmp, file_name_len + 4);
         output_file_name = tmp;
     } else {
         output_file_name = options.output_file;
     }
+}
 
-    codegen_context_t *codegen_ctx = codegen_init(input_file_name);
-    visit_translation_unit(codegen_ctx, translation_unit);
-    codegen_finalize(codegen_ctx, output_file_name);
+void get_output_path(const char *path, const char *extension, char *output, size_t output_size) {
+    const char *extension_start = strrchr(path, '.');
+    if (extension_start == NULL || extension_start <= path || extension_start[-1] == '/' || extension_start[-1] == '\\') {
+        // No extension found, append the new extension
+        snprintf(output, output_size, "%s.%s", path, extension);
+    } else {
+        size_t bytes = extension_start - path;
+        memcpy(output, path, bytes <= output_size ? bytes : output_size);
+        snprintf(output + bytes, output_size - bytes, ".%s", extension);
+    }
 }

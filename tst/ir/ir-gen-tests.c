@@ -16,7 +16,7 @@
 do { \
     CU_ASSERT_EQUAL_FATAL(function->num_instructions, sizeof(body)/sizeof(body[0])) \
     for (int i = 0; i < function->num_instructions; i += 1) { \
-        const char *instruction = format_ir_instruction(alloca(512), 512, &function->instructions[i]); \
+        const char *instruction = ir_fmt_instr(alloca(512), 512, &function->instructions[i]); \
         if (strcmp(body[i], instruction) != 0) { \
             fprintf(stderr, "Expected (at index %u): %s, Actual: %s\n", i, body[i], instruction); \
             CU_FAIL("Instructions do not match") \
