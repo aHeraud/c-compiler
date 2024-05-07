@@ -64,9 +64,8 @@ bool fall_through(const ir_instruction_t *instr) {
 const char* jump_target(const ir_instruction_t *instr) {
     switch (instr->opcode) {
         case IR_BR:
-            return instr->br.label;
         case IR_BR_COND:
-            return instr->br_cond.label;
+            return instr->branch.label;
         default:
             return NULL;
     }

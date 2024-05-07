@@ -42,60 +42,60 @@ void IrBuildNop(ir_function_builder_t *builder, const char* label) {
 
 void IrBuildAdd(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
-            .opcode = IR_ADD,
-            .add = {
-                    .left = left,
-                    .right = right,
-                    .result = result,
-            }
+        .opcode = IR_ADD,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
     };
     append_ir_instruction(&builder->instructions, instruction);
 }
 
 void IrBuildSub(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
-            .opcode = IR_SUB,
-            .sub = {
-                    .left = left,
-                    .right = right,
-                    .result = result,
-            }
+        .opcode = IR_SUB,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
     };
     append_ir_instruction(&builder->instructions, instruction);
 }
 
 void IrBuildMul(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
-            .opcode = IR_MUL,
-            .mul = {
-                    .left = left,
-                    .right = right,
-                    .result = result,
-            }
+        .opcode = IR_MUL,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
     };
     append_ir_instruction(&builder->instructions, instruction);
 }
 
 void IrBuildDiv(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
-            .opcode = IR_DIV,
-            .div = {
-                    .left = left,
-                    .right = right,
-                    .result = result,
-            }
+        .opcode = IR_DIV,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
     };
     append_ir_instruction(&builder->instructions, instruction);
 }
 
 void IrBuildMod(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
-            .opcode = IR_MOD,
-            .mod = {
-                    .left = left,
-                    .right = right,
-                    .result = result,
-            }
+        .opcode = IR_MOD,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
     };
     append_ir_instruction(&builder->instructions, instruction);
 }
@@ -103,7 +103,7 @@ void IrBuildMod(ir_function_builder_t *builder, ir_value_t left, ir_value_t righ
 void IrBuildAnd(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_AND,
-        .and = {
+        .binary_op = {
             .left = left,
             .right = right,
             .result = result,
@@ -115,7 +115,7 @@ void IrBuildAnd(ir_function_builder_t *builder, ir_value_t left, ir_value_t righ
 void IrBuildOr(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_OR,
-        .or = {
+        .binary_op = {
             .left = left,
             .right = right,
             .result = result,
@@ -127,7 +127,7 @@ void IrBuildOr(ir_function_builder_t *builder, ir_value_t left, ir_value_t right
 void IrBuildShl(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_SHL,
-        .shl = {
+        .binary_op = {
             .left = left,
             .right = right,
             .result = result,
@@ -139,7 +139,7 @@ void IrBuildShl(ir_function_builder_t *builder, ir_value_t left, ir_value_t righ
 void IrBuildShr(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_SHR,
-        .shr = {
+        .binary_op = {
             .left = left,
             .right = right,
             .result = result,
@@ -151,7 +151,7 @@ void IrBuildShr(ir_function_builder_t *builder, ir_value_t left, ir_value_t righ
 void IrBuildXor(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_XOR,
-        .xor = {
+        .binary_op = {
             .left = left,
             .right = right,
             .result = result,
@@ -163,8 +163,8 @@ void IrBuildXor(ir_function_builder_t *builder, ir_value_t left, ir_value_t righ
 void IrBuildNot(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_NOT,
-        .not = {
-            .value = value,
+        .unary_op = {
+            .operand = value,
             .result = result,
         }
     };
@@ -174,7 +174,7 @@ void IrBuildNot(ir_function_builder_t *builder, ir_value_t value, ir_var_t resul
 void IrBuildEq(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_EQ,
-        .eq = {
+        .binary_op = {
             .left = left,
             .right = right,
             .result = result,
@@ -186,8 +186,9 @@ void IrBuildEq(ir_function_builder_t *builder, ir_value_t left, ir_value_t right
 void IrBuildBr(ir_function_builder_t *builder, const char *label) {
     ir_instruction_t instruction = {
             .opcode = IR_BR,
-            .br = {
-                    .label = label,
+            .branch = {
+                .label = label,
+                .has_cond = false,
             }
     };
     append_ir_instruction(&builder->instructions, instruction);
@@ -195,11 +196,12 @@ void IrBuildBr(ir_function_builder_t *builder, const char *label) {
 
 void IrBuildBrCond(ir_function_builder_t *builder, ir_value_t cond, const char *label) {
     ir_instruction_t instruction = {
-            .opcode = IR_BR_COND,
-            .br_cond = {
-                    .cond = cond,
-                    .label = label,
-            }
+        .opcode = IR_BR_COND,
+        .branch = {
+            .cond = cond,
+            .has_cond = true,
+            .label = label,
+        }
     };
     append_ir_instruction(&builder->instructions, instruction);
 }
@@ -243,12 +245,11 @@ void IrBuildAlloca(ir_function_builder_t *builder, const ir_type_t *type, ir_var
 void IrBuildLoad(ir_function_builder_t *builder, ir_value_t ptr, ir_var_t result) {
     if (ptr.kind == IR_VALUE_CONST) assert(ptr.constant.type->kind == IR_TYPE_PTR && "Load pointer must be a pointer");
     if (ptr.kind == IR_VALUE_VAR) assert(ptr.var.type->kind == IR_TYPE_PTR && "Load pointer must be a pointer");
-    // TODO: the result type must be the element type of the pointer
 
     ir_instruction_t instruction = {
         .opcode = IR_LOAD,
-        .load = {
-            .ptr = ptr,
+        .unary_op = {
+            .operand = ptr,
             .result = result,
         }
     };
@@ -258,7 +259,6 @@ void IrBuildLoad(ir_function_builder_t *builder, ir_value_t ptr, ir_var_t result
 void IrBuildStore(ir_function_builder_t *builder, ir_value_t ptr, ir_value_t value) {
     if (ptr.kind == IR_VALUE_CONST) assert(ptr.constant.type->kind == IR_TYPE_PTR && "Store pointer must be a pointer");
     if (ptr.kind == IR_VALUE_VAR) assert(ptr.var.type->kind == IR_TYPE_PTR && "Store pointer must be a pointer");
-    // TODO: the value type must be the element type of the pointer
 
     ir_instruction_t instruction = {
         .opcode = IR_STORE,
@@ -273,8 +273,8 @@ void IrBuildStore(ir_function_builder_t *builder, ir_value_t ptr, ir_value_t val
 void IrBuildTrunc(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_TRUNC,
-        .trunc = {
-            .value = value,
+        .unary_op = {
+            .operand = value,
             .result = result,
         }
     };
@@ -284,8 +284,8 @@ void IrBuildTrunc(ir_function_builder_t *builder, ir_value_t value, ir_var_t res
 void IrBuildExt(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_EXT,
-        .ext = {
-            .value = value,
+        .unary_op = {
+            .operand = value,
             .result = result,
         }
     };
@@ -295,8 +295,8 @@ void IrBuildExt(ir_function_builder_t *builder, ir_value_t value, ir_var_t resul
 void IrBuildFtoI(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_FTOI,
-        .ftoi = {
-            .value = value,
+        .unary_op = {
+            .operand = value,
             .result = result,
         }
     };
@@ -305,8 +305,8 @@ void IrBuildFtoI(ir_function_builder_t *builder, ir_value_t value, ir_var_t resu
 void IrBuildItoF(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_ITOF,
-        .itof = {
-            .value = value,
+        .unary_op = {
+            .operand = value,
             .result = result,
         }
     };
@@ -316,8 +316,8 @@ void IrBuildItoF(ir_function_builder_t *builder, ir_value_t value, ir_var_t resu
 void IrBuildItoP(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_ITOP,
-        .itop = {
-            .value = value,
+        .unary_op = {
+            .operand = value,
             .result = result,
         }
     };
@@ -327,8 +327,8 @@ void IrBuildItoP(ir_function_builder_t *builder, ir_value_t value, ir_var_t resu
 void IrBuildPtoI(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_PTOI,
-        .ptoi = {
-            .value = value,
+        .unary_op = {
+            .operand = value,
             .result = result,
         }
     };
@@ -338,8 +338,8 @@ void IrBuildPtoI(ir_function_builder_t *builder, ir_value_t value, ir_var_t resu
 void IrBuildBitCast(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
 ir_instruction_t instruction = {
         .opcode = IR_BITCAST,
-        .bitcast = {
-            .value = value,
+        .unary_op = {
+            .operand = value,
             .result = result,
         }
     };

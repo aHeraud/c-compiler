@@ -23,6 +23,7 @@ typedef struct HashTable {
 } hash_table_t;
 
 hash_table_t hash_table_create(size_t num_buckets);
+void hash_table_destroy(hash_table_t* table);
 bool hash_table_insert(hash_table_t* table, const char* key, void* value);
 bool hash_table_lookup(const hash_table_t* table, const char* key, void** value);
 bool hash_table_remove(hash_table_t* table, const char* key, void** value);

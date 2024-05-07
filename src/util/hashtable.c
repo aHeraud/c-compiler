@@ -21,6 +21,21 @@ hash_table_t hash_table_create(size_t num_buckets) {
     };
 }
 
+void hash_table_destroy(hash_table_t* table) {
+    for (size_t i = 0; i < table->num_buckets; i++) {
+        hashtable_entry_t* entry = table->buckets[i];
+        while (entry != NULL) {
+            hashtable_entry_t* next = entry->next;
+            free(entry);
+            entry = next;
+        }
+    }
+    free(table->buckets);
+    table->buckets = NULL;
+    table->num_buckets = 0;
+    table->size = 0;
+}
+
 /**
  * Insert a key-value pair into a hashtable.
  * If the key already exists, the value is not changed, and the function returns false.

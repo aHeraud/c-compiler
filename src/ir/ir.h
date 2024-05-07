@@ -271,72 +271,35 @@ typedef struct IrInstruction {
             ir_value_t value;
             ir_var_t result;
         } assign;
+        /**
+         * Inputs/outputs for all binary operations that produce a result
+         * Those are:
+         * - arithmetic: add, sub, mul, div, mod
+         * - logical: and, or, shl, shr, xor
+         * - comparison: eq, ne, lt, le, gt, ge
+         */
         struct {
             ir_value_t left;
             ir_value_t right;
             ir_var_t result;
-        } add;
+        } binary_op;
+        /**
+         * Inputs/outputs for all unary operations that produce a result
+         * Those are:
+         * - bitwise: not
+         * - type conversion: trunc, ext, ftoi, itof, ptoi, itop, bitcast
+         * - memory: load
+         *
+         */
         struct {
-            ir_value_t left;
-            ir_value_t right;
+            ir_value_t operand;
             ir_var_t result;
-        } sub;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } mul;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } div;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } mod;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } and;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } or;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } shl;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } shr;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } xor;
-        struct {
-            ir_value_t value;
-            ir_var_t result;
-        } not;
-        struct {
-            ir_value_t left;
-            ir_value_t right;
-            ir_var_t result;
-        } eq;
+        } unary_op;
         struct {
             const char* label;
-        } br;
-        struct {
+            bool has_cond;
             ir_value_t cond;
-            const char* label;
-        } br_cond;
+        } branch;
         struct {
             ir_value_t f;
             ir_value_t *args;
@@ -353,40 +316,8 @@ typedef struct IrInstruction {
         } alloca;
         struct {
             ir_value_t ptr;
-            ir_var_t result;
-        } load;
-        struct {
-            ir_value_t ptr;
             ir_value_t value;
         } store;
-        struct {
-            ir_value_t value;
-            ir_var_t result;
-        } trunc;
-        struct {
-            ir_value_t value;
-            ir_var_t result;
-        } ext;
-        struct {
-            ir_value_t value;
-            ir_var_t result;
-        } ftoi;
-        struct {
-            ir_value_t value;
-            ir_var_t result;
-        } itof;
-        struct {
-            ir_value_t value;
-            ir_var_t result;
-        } ptoi;
-        struct {
-            ir_value_t value;
-            ir_var_t result;
-        } itop;
-        struct {
-            ir_value_t value;
-            ir_var_t result;
-        } bitcast;
     };
 } ir_instruction_t;
 
@@ -433,6 +364,23 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b);
  * @return size in bytes
  */
 size_t size_of_type(const ir_type_t *type);
+
+const ir_type_t *ir_get_type_of_value(ir_value_t value);
+bool ir_is_integer_type(const ir_type_t *type);
+bool ir_is_float_type(const ir_type_t *type);
+
+typedef struct IrValidationError {
+    const struct IrInstruction *instruction;
+    const char *message;
+} ir_validation_error_t;
+
+typedef struct IrValidationErrorVector {
+    ir_validation_error_t *buffer;
+    size_t size;
+    size_t capacity;
+} ir_validation_error_vector_t;
+
+ir_validation_error_vector_t ir_validate_function(const ir_function_definition_t *function);
 
 const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type);
 const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant);

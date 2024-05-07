@@ -100,7 +100,7 @@ char *temp_name(ir_gen_context_t *context);
 ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type);
 char *gen_label(ir_gen_context_t *context);
 
-const ir_type_t *get_ir_val_type(ir_value_t value);
+const ir_type_t *ir_get_type_of_value(const ir_value_t value);
 
 /**
  * Get the C integer type that is the same width as a pointer.
@@ -337,6 +337,22 @@ void visit_function(ir_gen_context_t *context, const function_definition_t *func
     IrFinalizeFunctionBuilder(context->builder, context->function);
     ir_function_ptr_vector_t *functions = &context->module->functions;
     VEC_APPEND(functions, context->function);
+
+    if (context->errors.size == 0) {
+        // There were no semantic errors, so the generated IR should be valid.
+        // Validate the IR to catch any bugs in the compiler.
+        ir_validation_error_vector_t errors = ir_validate_function(context->function);
+        if (errors.size > 0) {
+            // We will just print the first error and exit for now.
+            const char* error_message = errors.buffer[0].message;
+            const char *instruction = ir_fmt_instr(alloca(512), 512, errors.buffer[0].instruction);
+            const char *function_type_str = ir_fmt_type(alloca(512), 512, context->function->type);
+            fprintf(stderr, "IR validation error in function %s %s\n", function->identifier->value, function_type_str);
+            fprintf(stderr, "At instruction: %s\n", instruction);
+            fprintf(stderr, "%s\n", error_message);
+            exit(1);
+        }
+    }
 }
 
 void visit_statement(ir_gen_context_t *context, const statement_t *statement) {
@@ -466,6 +482,9 @@ void visit_return_statement(ir_gen_context_t *context, const statement_t *statem
     // TODO: Verify that the return type matches the function signature
     if (statement->return_.expression != NULL) {
         expression_result_t value = visit_expression(context, statement->return_.expression);
+        if (value.is_lvalue) {
+            value = get_rvalue(context, value);
+        }
         // TODO: apply implicit conversion to the return type
         IrBuildReturnValue(context->builder, value.value);
     } else {
@@ -1076,26 +1095,6 @@ const ir_type_t *get_ir_ptr_type(const ir_type_t *pointee) {
     return ir_type;
 }
 
-bool is_ir_integer_type(const ir_type_t *type) {
-    switch (type->kind) {
-        case IR_TYPE_I8:
-        case IR_TYPE_I16:
-        case IR_TYPE_I32:
-        case IR_TYPE_I64:
-        case IR_TYPE_U8:
-        case IR_TYPE_U16:
-        case IR_TYPE_U32:
-        case IR_TYPE_U64:
-            return true;
-        default:
-            return false;
-    }
-}
-
-bool is_ir_float_type(const ir_type_t *type) {
-    return type->kind == IR_TYPE_F32 || type->kind == IR_TYPE_F64;
-}
-
 expression_result_t convert_to_type(
         ir_gen_context_t *context,
         ir_value_t value,
@@ -1122,8 +1121,8 @@ expression_result_t convert_to_type(
         assert(ir_types_equal(result->type, result_type));
     }
 
-    if (is_ir_integer_type(result_type)) {
-        if (is_ir_integer_type(source_type)) {
+    if (ir_is_integer_type(result_type)) {
+        if (ir_is_integer_type(source_type)) {
             // int -> int conversion
             if (size_of_type(source_type) > size_of_type(result_type)) {
                 // Truncate
@@ -1135,7 +1134,7 @@ expression_result_t convert_to_type(
                 // No conversion necessary
                 IrBuildAssign(context->builder, value, *result);
             }
-        } else if (is_ir_float_type(source_type)) {
+        } else if (ir_is_float_type(source_type)) {
             // float -> int
             IrBuildFtoI(context->builder, value, *result);
         } else if (source_type->kind == IR_TYPE_PTR) {
@@ -1148,8 +1147,8 @@ expression_result_t convert_to_type(
                     ir_fmt_type(alloca(256), 256, result_type));
             return EXPR_ERR;
         }
-    } else if (is_ir_float_type(result_type)) {
-        if (is_ir_float_type(source_type)) {
+    } else if (ir_is_float_type(result_type)) {
+        if (ir_is_float_type(source_type)) {
             // float -> float conversion
             if (size_of_type(source_type) > size_of_type(result_type)) {
                 // Truncate
@@ -1161,7 +1160,7 @@ expression_result_t convert_to_type(
                 // No conversion necessary
                 IrBuildAssign(context->builder, value, *result);
             }
-        } else if (is_ir_integer_type(source_type)) {
+        } else if (ir_is_integer_type(source_type)) {
             // int -> float
             IrBuildItoF(context->builder, value, *result);
         } else {
@@ -1192,19 +1191,11 @@ ir_value_t ir_value_for_var(ir_var_t var) {
     };
 }
 
-const ir_type_t *get_ir_val_type(const ir_value_t value) {
-    if (value.kind == IR_VALUE_VAR) {
-        return value.var.type;
-    } else {
-        return value.constant.type;
-    }
-}
-
 expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t res) {
     assert(res.is_lvalue && "Expected lvalue");
-    assert(get_ir_val_type(res.value)->kind == IR_TYPE_PTR && "Expected pointer type");
+    assert(ir_get_type_of_value(res.value)->kind == IR_TYPE_PTR && "Expected pointer type");
 
-    ir_var_t temp = temp_var(context, get_ir_val_type(res.value)->ptr.pointee);
+    ir_var_t temp = temp_var(context, ir_get_type_of_value(res.value)->ptr.pointee);
     ir_var_t ptr = (ir_var_t) {
             .name = res.value.var.name,
             .type = res.value.var.type,
