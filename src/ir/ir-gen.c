@@ -18,6 +18,7 @@ typedef struct Symbol symbol_t;
 typedef struct IrGenContext {
     ir_module_t *module;
     ir_function_definition_t *function;
+    const function_definition_t *c_function;
     ir_function_builder_t *builder;
     compilation_error_vector_t errors;
     scope_t *current_scope;
@@ -155,21 +156,21 @@ void leave_scope(ir_gen_context_t *context) {
     free(scope);
 }
 
-void visit_translation_unit(ir_gen_context_t *context, const translation_unit_t *translation_unit);
-void visit_function(ir_gen_context_t *context, const function_definition_t *function);
-void visit_statement(ir_gen_context_t *context, const statement_t *statement);
-void visit_if_statement(ir_gen_context_t *context, const statement_t *statement);
-void visit_return_statement(ir_gen_context_t *context, const statement_t *statement);
-void visit_declaration(ir_gen_context_t *context, const declaration_t *declaration);
-expression_result_t visit_expression(ir_gen_context_t *context, const expression_t *expression);
-expression_result_t visit_primary_expression(ir_gen_context_t *context, const expression_t *expr);
-expression_result_t visit_constant(ir_gen_context_t *context, const expression_t *expr);
-expression_result_t visit_call_expression(ir_gen_context_t *context, const expression_t *expr);
-expression_result_t visit_binary_expression(ir_gen_context_t *context, const expression_t *expr);
-expression_result_t visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result);
-expression_result_t visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result);
-expression_result_t visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
-expression_result_t visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
+void ir_visit_translation_unit(ir_gen_context_t *context, const translation_unit_t *translation_unit);
+void ir_visit_function(ir_gen_context_t *context, const function_definition_t *function);
+void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration);
+expression_result_t ir_visit_expression(ir_gen_context_t *context, const expression_t *expression);
+expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_constant(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result);
+expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result);
+expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
+expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     ir_gen_context_t context = {
@@ -185,7 +186,7 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
         .functions = (ir_function_ptr_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },
     };
 
-    visit_translation_unit(&context, translation_unit);
+    ir_visit_translation_unit(&context, translation_unit);
 
     ir_gen_result_t result = {
         .module = context.module,
@@ -194,14 +195,14 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     return result;
 }
 
-void visit_translation_unit(ir_gen_context_t *context, const translation_unit_t *translation_unit) {
+void ir_visit_translation_unit(ir_gen_context_t *context, const translation_unit_t *translation_unit) {
     enter_scope(context);
 
     for (size_t i = 0; i < translation_unit->length; i++) {
         external_declaration_t *external_declaration = (external_declaration_t*) translation_unit->external_declarations[i];
         switch (external_declaration->type) {
             case EXTERNAL_DECLARATION_FUNCTION_DEFINITION: {
-                visit_function(context, external_declaration->function_definition);
+                ir_visit_function(context, external_declaration->function_definition);
                 break;
             }
             case EXTERNAL_DECLARATION_DECLARATION: {
@@ -215,15 +216,13 @@ void visit_translation_unit(ir_gen_context_t *context, const translation_unit_t 
     leave_scope(context);
 }
 
-void visit_function(ir_gen_context_t *context, const function_definition_t *function) {
+void ir_visit_function(ir_gen_context_t *context, const function_definition_t *function) {
     context->function = malloc(sizeof(ir_function_definition_t));
     *context->function = (ir_function_definition_t) {
         .name = function->identifier->value,
     };
+    context->c_function = function;
     context->builder = IrCreateFunctionBuilder();
-
-    // TODO: Add the function to the global scope (if not already present)
-    //       If the function is already present, check that the signatures match.
 
     const type_t function_c_type = {
         .kind = TYPE_FUNCTION,
@@ -330,7 +329,7 @@ void visit_function(ir_gen_context_t *context, const function_definition_t *func
         declare_symbol(context, symbol);
     }
 
-    visit_statement(context, function->body);
+    ir_visit_statement(context, function->body);
 
     leave_scope(context);
 
@@ -355,7 +354,7 @@ void visit_function(ir_gen_context_t *context, const function_definition_t *func
     }
 }
 
-void visit_statement(ir_gen_context_t *context, const statement_t *statement) {
+void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement) {
     assert(context != NULL && "Context must not be NULL");
     assert(statement != NULL && "Statement must not be NULL");
 
@@ -366,11 +365,11 @@ void visit_statement(ir_gen_context_t *context, const statement_t *statement) {
                 block_item_t *block_item = (block_item_t*) statement->compound.block_items.buffer[i];
                 switch (block_item->type) {
                     case BLOCK_ITEM_STATEMENT: {
-                        visit_statement(context, block_item->statement);
+                        ir_visit_statement(context, block_item->statement);
                         break;
                     }
                     case BLOCK_ITEM_DECLARATION: {
-                        visit_declaration(context, block_item->declaration);
+                        ir_visit_declaration(context, block_item->declaration);
                     }
                 }
             }
@@ -381,15 +380,15 @@ void visit_statement(ir_gen_context_t *context, const statement_t *statement) {
             break;
         }
         case STATEMENT_EXPRESSION: {
-            visit_expression(context, statement->expression);
+            ir_visit_expression(context, statement->expression);
             break;
         }
         case STATEMENT_IF: {
-            visit_if_statement(context, statement);
+            ir_visit_if_statement(context, statement);
             break;
         }
         case STATEMENT_RETURN: {
-            visit_return_statement(context, statement);
+            ir_visit_return_statement(context, statement);
             break;
         }
         default:
@@ -398,13 +397,13 @@ void visit_statement(ir_gen_context_t *context, const statement_t *statement) {
     }
 }
 
-void visit_if_statement(ir_gen_context_t *context, const statement_t *statement) {
+void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *statement) {
     assert(context != NULL && "Context must not be NULL");
     assert(statement != NULL && "Statement must not be NULL");
     assert(statement->type == STATEMENT_IF);
 
     // Evaluate the condition
-    expression_result_t condition = visit_expression(context, statement->if_.condition);
+    expression_result_t condition = ir_visit_expression(context, statement->if_.condition);
 
     if (condition.is_lvalue) {
         condition = get_rvalue(context, condition);
@@ -458,7 +457,7 @@ void visit_if_statement(ir_gen_context_t *context, const statement_t *statement)
     IrBuildBrCond(context->builder, ir_value_for_var(condition_var), false_label != NULL ? false_label : end_label);
 
     // Generate code for the true branch
-    visit_statement(context, statement->if_.true_branch);
+    ir_visit_statement(context, statement->if_.true_branch);
 
     if (statement->if_.false_branch != NULL) {
         // Jump to the end of the if statement
@@ -468,31 +467,52 @@ void visit_if_statement(ir_gen_context_t *context, const statement_t *statement)
         IrBuildNop(context->builder, false_label);
 
         // Generate code for the false branch
-        visit_statement(context, statement->if_.false_branch);
+        ir_visit_statement(context, statement->if_.false_branch);
     }
 
     IrBuildNop(context->builder, end_label);
 }
 
-void visit_return_statement(ir_gen_context_t *context, const statement_t *statement) {
+void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *statement) {
     assert(context != NULL && "Context must not be NULL");
     assert(statement != NULL && "Statement must not be NULL");
     assert(statement->type == STATEMENT_RETURN);
 
-    // TODO: Verify that the return type matches the function signature
+    const ir_type_t *return_type = context->function->type->function.return_type;
+    const type_t *c_return_type = context->c_function->return_type;
+
     if (statement->return_.expression != NULL) {
-        expression_result_t value = visit_expression(context, statement->return_.expression);
+        expression_result_t value = ir_visit_expression(context, statement->return_.expression);
+        if (value.c_type == NULL) {
+            // Error occurred while evaluating the return value
+            return;
+        }
+
         if (value.is_lvalue) {
             value = get_rvalue(context, value);
         }
-        // TODO: apply implicit conversion to the return type
+
+        // Implicit conversion to the return type
+        if (!ir_types_equal(ir_get_type_of_value(value.value), return_type)) {
+            value = convert_to_type(context, value.value, value.c_type, c_return_type, NULL);
+            if (value.c_type == NULL) {
+                // Error occurred while converting the return value
+                return;
+            }
+        }
+
         IrBuildReturnValue(context->builder, value.value);
     } else {
+        if (return_type->kind != TYPE_VOID) {
+            append_compilation_error(&context->errors, (compilation_error_t) {
+                // TODO
+            });
+        }
         IrBuildReturnVoid(context->builder);
     }
 }
 
-void visit_declaration(ir_gen_context_t *context, const declaration_t *declaration) {
+void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration) {
     assert(context != NULL && "Context must not be NULL");
     assert(declaration != NULL && "Declaration must not be NULL");
 
@@ -533,7 +553,7 @@ void visit_declaration(ir_gen_context_t *context, const declaration_t *declarati
 
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
-        expression_result_t result = visit_expression(context, declaration->initializer);
+        expression_result_t result = ir_visit_expression(context, declaration->initializer);
         if (result.c_type == NULL) {
             // Error occurred while evaluating the initializer
             return;
@@ -557,7 +577,7 @@ void visit_declaration(ir_gen_context_t *context, const declaration_t *declarati
     }
 }
 
-expression_result_t visit_expression(ir_gen_context_t *context, const expression_t *expression) {
+expression_result_t ir_visit_expression(ir_gen_context_t *context, const expression_t *expression) {
     assert(context != NULL && "Context must not be NULL");
     assert(expression != NULL && "Expression must not be NULL");
 
@@ -566,9 +586,9 @@ expression_result_t visit_expression(ir_gen_context_t *context, const expression
             assert(false && "Array subscript not implemented");
         }
         case EXPRESSION_BINARY:
-            return visit_binary_expression(context, expression);
+            return ir_visit_binary_expression(context, expression);
         case EXPRESSION_CALL: {
-            return visit_call_expression(context, expression);
+            return ir_visit_call_expression(context, expression);
         }
         case EXPRESSION_CAST: {
             assert(false && "Cast not implemented");
@@ -577,7 +597,7 @@ expression_result_t visit_expression(ir_gen_context_t *context, const expression
             assert(false && "Member access not implemented");
         }
         case EXPRESSION_PRIMARY:
-            return visit_primary_expression(context, expression);
+            return ir_visit_primary_expression(context, expression);
         case EXPRESSION_SIZEOF: {
             assert(false && "sizeof operator not implemented");
         }
@@ -593,20 +613,20 @@ expression_result_t visit_expression(ir_gen_context_t *context, const expression
     return EXPR_ERR;
 }
 
-expression_result_t visit_call_expression(ir_gen_context_t *context, const expression_t *expr) {
+expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr) {
     // TODO: implement call expression
     IrBuildNop(context->builder, NULL);
     return EXPR_ERR;
 }
 
-expression_result_t visit_binary_expression(ir_gen_context_t *context, const expression_t *expr) {
+expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
     assert(expr->type == EXPRESSION_BINARY);
 
     // Evaluate the left and right operands.
-    expression_result_t left = visit_expression(context, expr->binary.left);
-    expression_result_t right = visit_expression(context, expr->binary.right);
+    expression_result_t left = ir_visit_expression(context, expr->binary.left);
+    expression_result_t right = ir_visit_expression(context, expr->binary.right);
 
     // Bubble up errors if the operands are invalid.
     if (left.c_type == NULL || right.c_type == NULL) {
@@ -617,13 +637,13 @@ expression_result_t visit_binary_expression(ir_gen_context_t *context, const exp
         case BINARY_ARITHMETIC: {
             if (expr->binary.arithmetic_operator == BINARY_ARITHMETIC_ADD ||
                 expr->binary.arithmetic_operator == BINARY_ARITHMETIC_SUBTRACT) {
-                return visit_additive_binexpr(context, expr, left, right, NULL);
+                return ir_visit_additive_binexpr(context, expr, left, right, NULL);
             } else {
-                return visit_multiplicative_binexpr(context, expr, left, right, NULL);
+                return ir_visit_multiplicative_binexpr(context, expr, left, right, NULL);
             }
         }
         case BINARY_ASSIGNMENT: {
-            return visit_assignment_binexpr(context, expr, left, right);
+            return ir_visit_assignment_binexpr(context, expr, left, right);
         }
         case BINARY_BITWISE: {
             // TODO
@@ -634,7 +654,7 @@ expression_result_t visit_binary_expression(ir_gen_context_t *context, const exp
             assert(false && "comma operator not implemented");
         }
         case BINARY_COMPARISON: {
-            return visit_comparison_binexpr(context, expr, left, right);
+            return ir_visit_comparison_binexpr(context, expr, left, right);
         }
         case BINARY_LOGICAL: {
             // TODO
@@ -643,7 +663,7 @@ expression_result_t visit_binary_expression(ir_gen_context_t *context, const exp
     }
 }
 
-expression_result_t visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result) {
+expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result) {
     const type_t *result_type;
     const ir_type_t *ir_result_type;
 
@@ -751,12 +771,12 @@ expression_result_t visit_additive_binexpr(ir_gen_context_t *context, const expr
     }
 }
 
-expression_result_t visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result) {
+expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right, ir_var_t *result) {
     assert(false && "Multiplicative binary expressions not implemented");
     return EXPR_ERR;
 }
 
-expression_result_t visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
 
@@ -795,7 +815,7 @@ expression_result_t visit_assignment_binexpr(ir_gen_context_t *context, const ex
     return left;
 }
 
-expression_result_t visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
     assert(expr->type == EXPRESSION_BINARY && expr->binary.type == BINARY_COMPARISON);
@@ -854,7 +874,7 @@ expression_result_t visit_comparison_binexpr(ir_gen_context_t *context, const ex
     }
 }
 
-expression_result_t visit_primary_expression(ir_gen_context_t *context, const expression_t *expr) {
+expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Primary expression must not be NULL");
     assert(expr->type == EXPRESSION_PRIMARY);
@@ -883,7 +903,7 @@ expression_result_t visit_primary_expression(ir_gen_context_t *context, const ex
             };
         }
         case PE_CONSTANT: {
-            return visit_constant(context, expr);
+            return ir_visit_constant(context, expr);
         }
         case PE_STRING_LITERAL: {
             char *literal = replace_escape_sequences(expr->primary.token.value);
@@ -901,7 +921,7 @@ expression_result_t visit_primary_expression(ir_gen_context_t *context, const ex
             };
         }
         case PE_EXPRESSION: {
-            return visit_expression(context, expr->primary.expression);
+            return ir_visit_expression(context, expr->primary.expression);
         }
         default: {
             // Unreachable
@@ -911,7 +931,7 @@ expression_result_t visit_primary_expression(ir_gen_context_t *context, const ex
     }
 }
 
-expression_result_t visit_constant(ir_gen_context_t *context, const expression_t *expr) {
+expression_result_t ir_visit_constant(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
     assert(expr->type == EXPRESSION_PRIMARY && expr->primary.type == PE_CONSTANT);

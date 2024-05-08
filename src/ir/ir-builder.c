@@ -300,6 +300,7 @@ void IrBuildFtoI(ir_function_builder_t *builder, ir_value_t value, ir_var_t resu
             .result = result,
         }
     };
+    append_ir_instruction(&builder->instructions, instruction);
 }
 
 void IrBuildItoF(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
