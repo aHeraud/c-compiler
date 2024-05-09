@@ -206,6 +206,19 @@ void IrBuildBrCond(ir_function_builder_t *builder, ir_value_t cond, const char *
     append_ir_instruction(&builder->instructions, instruction);
 }
 
+void IrBuildCall(ir_function_builder_t *builder, ir_var_t function, ir_value_t *args, size_t num_args, ir_var_t *result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_CALL,
+        .call = {
+            .function = function,
+            .args = args,
+            .num_args = num_args,
+            .result = result,
+        }
+    };
+    append_ir_instruction(&builder->instructions, instruction);
+}
+
 void IrBuildReturnValue(ir_function_builder_t *builder, ir_value_t value) {
     ir_instruction_t instruction = {
         .opcode = IR_RET,

@@ -17,12 +17,24 @@ typedef struct Symbol symbol_t;
 
 typedef struct IrGenContext {
     ir_module_t *module;
+
+    hash_table_t global_map;
+    hash_table_t function_definition_map;
+
+    // State for the current function being visited
     ir_function_definition_t *function;
     const function_definition_t *c_function;
     ir_function_builder_t *builder;
+
+    // List of compilation errors encountered during semantic analysis
     compilation_error_vector_t errors;
+    // The current lexical scope
     scope_t *current_scope;
+    // Counter for generating unique global variable names
+    // These should be unique over the entire module
+    int global_id_counter;
     // Counter for generating unique local variable names
+    // These are only unique within the current function
     int local_id_counter;
     // Counter for generating unique labels
     int label_counter;
@@ -97,6 +109,7 @@ void declare_symbol(ir_gen_context_t *context, symbol_t *symbol) {
     assert(inserted);
 }
 
+char *global_name(ir_gen_context_t *context);
 char *temp_name(ir_gen_context_t *context);
 ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type);
 char *gen_label(ir_gen_context_t *context);
@@ -156,11 +169,24 @@ void leave_scope(ir_gen_context_t *context) {
     free(scope);
 }
 
+void ir_append_function_ptr(ir_function_ptr_vector_t *vec, ir_function_definition_t *function) {
+    assert(vec != NULL);
+    assert(function != NULL);
+    VEC_APPEND(vec, function);
+}
+
+void ir_append_global_ptr(ir_global_ptr_vector_t *vec, ir_global_t *global) {
+    assert(vec != NULL);
+    assert(global != NULL);
+    VEC_APPEND(vec, global);
+}
+
 void ir_visit_translation_unit(ir_gen_context_t *context, const translation_unit_t *translation_unit);
 void ir_visit_function(ir_gen_context_t *context, const function_definition_t *function);
 void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 expression_result_t ir_visit_expression(ir_gen_context_t *context, const expression_t *expression);
 expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr);
@@ -175,18 +201,27 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     ir_gen_context_t context = {
         .module = malloc(sizeof(ir_module_t)),
+        .global_map = hash_table_create(256),
+        .function_definition_map = hash_table_create(256),
         .function = NULL,
         .builder = NULL,
         .errors = (compilation_error_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },
         .current_scope = NULL,
+        .global_id_counter = 0,
         .local_id_counter = 0,
     };
 
     *context.module = (ir_module_t) {
+        .name = "module", // TODO: get the name of the input file?
         .functions = (ir_function_ptr_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },
+        .globals = (ir_global_ptr_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },
     };
 
     ir_visit_translation_unit(&context, translation_unit);
+
+    // Cleanup
+    hash_table_destroy(&context.global_map);
+    hash_table_destroy(&context.function_definition_map);
 
     ir_gen_result_t result = {
         .module = context.module,
@@ -206,8 +241,10 @@ void ir_visit_translation_unit(ir_gen_context_t *context, const translation_unit
                 break;
             }
             case EXTERNAL_DECLARATION_DECLARATION: {
-                // TODO: handle global/static variables
-                // visit_declaration(context, external_declaration->declaration);
+                // A single declaration may declare multiple variables.
+                for (int j = 0; j < external_declaration->declaration.length; j += 1) {
+                    ir_visit_global_declaration(context, external_declaration->declaration.declarations[j]);
+                }
                 break;
             }
         }
@@ -260,14 +297,8 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
         }
 
         // Error if function was defined more than once
-        bool already_defined = false;
-        for (size_t i = 0; i < context->module->functions.size; i += 1) {
-            ir_function_definition_t *existing_function = context->module->functions.buffer[i];
-            if (strcmp(existing_function->name, function->identifier->value) == 0) {
-                already_defined = true;
-                break;
-            }
-        }
+        bool already_defined =
+            hash_table_lookup(&context->function_definition_map, function->identifier->value, NULL);
         if (already_defined) {
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_REDEFINITION_OF_SYMBOL,
@@ -334,8 +365,8 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     leave_scope(context);
 
     IrFinalizeFunctionBuilder(context->builder, context->function);
-    ir_function_ptr_vector_t *functions = &context->module->functions;
-    VEC_APPEND(functions, context->function);
+    hash_table_insert(&context->function_definition_map, function->identifier->value, context->function);
+    ir_append_function_ptr(&context->module->functions, context->function);
 
     if (context->errors.size == 0) {
         // There were no semantic errors, so the generated IR should be valid.
@@ -512,6 +543,114 @@ void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *sta
     }
 }
 
+void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t *declaration) {
+    assert(context != NULL && "Context must not be NULL");
+    assert(declaration != NULL && "Declaration must not be NULL");
+
+    symbol_t *symbol = lookup_symbol_in_current_scope(context, declaration->identifier->value);
+    if (symbol != NULL) {
+        // Global scope is a bit special. Re-declarations are allowed if the types match, however if
+        // the global was previously given a value (e.g. has an initializer or is a function definition),
+        // then it is a re-definition error.
+
+        if (declaration->type->kind == TYPE_FUNCTION) {
+            // Check if we've already processed a function definition with the same name
+            if (hash_table_lookup(&context->function_definition_map, declaration->identifier->value, NULL)) {
+                append_compilation_error(&context->errors, (compilation_error_t) {
+                    .location = declaration->identifier->position,
+                    .kind = ERR_REDEFINITION_OF_SYMBOL,
+                    .redefinition_of_symbol = {
+                        .redefinition = declaration->identifier,
+                        .previous_definition = symbol->identifier,
+                    },
+                });
+            }
+            // Check if the types match. Re-declaration is allowed if the types match.
+            if (!ir_types_equal(symbol->ir_type, get_ir_type(declaration->type))) {
+                append_compilation_error(&context->errors, (compilation_error_t) {
+                    .location = declaration->identifier->position,
+                    .kind = ERR_REDEFINITION_OF_SYMBOL,
+                    .redefinition_of_symbol = {
+                        .redefinition = declaration->identifier,
+                        .previous_definition = symbol->identifier,
+                    },
+                });
+            }
+            return;
+        } else {
+            // Look up the global in the module's global list.
+            ir_global_t *global = NULL;
+            assert(hash_table_lookup(&context->global_map, declaration->identifier->value, (void**) &global));
+            assert(global != NULL);
+            // If the types are not equal, or the global has already been initialized, it is a redefinition error.
+            if (!ir_types_equal(global->type, get_ir_type(declaration->type)) || global->initialized) {
+                append_compilation_error(&context->errors, (compilation_error_t) {
+                    .location = declaration->identifier->position,
+                    .kind = ERR_REDEFINITION_OF_SYMBOL,
+                    .redefinition_of_symbol = {
+                        .redefinition = declaration->identifier,
+                        .previous_definition = symbol->identifier,
+                    },
+                });
+                return;
+            }
+            // Visit the initializer if present
+            if (declaration->initializer != NULL) {
+                // TODO: global variable initializers
+                fprintf(stderr, "Error: %s:%d:%d: Global variable initializers not implemented\n",
+                        declaration->initializer->span.start.path,
+                        declaration->initializer->span.start.line,
+                        declaration->initializer->span.start.column);
+                exit(1);
+            }
+        }
+    } else {
+        // Create a new global symbol
+        symbol = malloc(sizeof(symbol_t));
+
+        char* name;
+        if (declaration->type->kind == TYPE_FUNCTION) {
+            size_t len = strlen(declaration->identifier->value) + 2;
+            name = malloc(len);
+            snprintf(name, len, "@%s", declaration->identifier->value);
+        } else {
+            name = global_name(context);
+        }
+
+        *symbol = (symbol_t) {
+            .kind = SYMBOL_GLOBAL_VARIABLE,
+            .identifier = declaration->identifier,
+            .name = declaration->identifier->value,
+            .c_type = declaration->type,
+            .ir_type = get_ir_type(declaration->type),
+            .ir_ptr = (ir_var_t) {
+                .name = name,
+                .type = get_ir_ptr_type(get_ir_type(declaration->type)),
+            },
+        };
+        declare_symbol(context, symbol);
+
+        // Add the global to the module's global list
+        ir_global_t *global = malloc(sizeof(ir_global_t));
+        *global = (ir_global_t) {
+            .name = symbol->ir_ptr.name,
+            .type = symbol->ir_ptr.type,
+            .initialized = declaration->initializer != NULL,
+        };
+        hash_table_insert(&context->global_map, symbol->name, global);
+        ir_append_global_ptr(&context->module->globals, global);
+
+        if (declaration->initializer != NULL) {
+            // TODO: global variable initializers
+            fprintf(stderr, "Error: %s:%d:%d: Global variable initializers not implemented\n",
+                    declaration->initializer->span.start.path,
+                    declaration->initializer->span.start.line,
+                    declaration->initializer->span.start.column);
+            exit(1);
+        }
+    }
+}
+
 void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration) {
     assert(context != NULL && "Context must not be NULL");
     assert(declaration != NULL && "Declaration must not be NULL");
@@ -614,9 +753,89 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
 }
 
 expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr) {
-    // TODO: implement call expression
-    IrBuildNop(context->builder, NULL);
-    return EXPR_ERR;
+    expression_result_t function = ir_visit_expression(context, expr->call.callee);
+    ptr_vector_t arguments = (ptr_vector_t) {
+        .size = 0,
+        .capacity = 0,
+        .buffer = NULL,
+    };
+
+    if (function.c_type == NULL) {
+        return EXPR_ERR;
+    }
+
+    // Function can be a function, or a pointer to a function
+    // TODO: handle function pointers
+    if (function.c_type->kind != TYPE_FUNCTION) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_TARGET_NOT_FUNCTION,
+            .location = expr->call.callee->span.start,
+            .call_target_not_function = {
+                .type = function.c_type,
+            }
+        });
+        return EXPR_ERR;
+    }
+
+    // Check that the number of arguments matches function arity
+    size_t expected_args_count = function.c_type->function.parameter_list->length;
+    bool variadic = function.c_type->function.parameter_list->variadic;
+    size_t actual_args_count = expr->call.arguments.size;
+    if ((variadic && actual_args_count < expected_args_count) || (!variadic && actual_args_count != expected_args_count)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_COUNT_MISMATCH,
+            .location = expr->call.callee->span.start,
+            .call_argument_count_mismatch = {
+                .expected = expected_args_count,
+                .actual = actual_args_count,
+            }
+        });
+        return EXPR_ERR;
+    }
+
+    // Evaluate the arguments
+    ir_value_t *args = malloc(sizeof(ir_value_t) * actual_args_count);
+    for (size_t i = 0; i < actual_args_count; i += 1) {
+        expression_result_t arg = ir_visit_expression(context, expr->call.arguments.buffer[i]);
+        if (arg.c_type == NULL) {
+            // Error occurred while evaluating the argument
+            return EXPR_ERR;
+        }
+
+        // Implicit conversion to the parameter type
+        const type_t *param_type = function.c_type->function.parameter_list->parameters[i]->type;
+        arg = convert_to_type(context, arg.value, arg.c_type, param_type, NULL);
+        if (arg.c_type == NULL) {
+            // Conversion was invalid
+            return EXPR_ERR;
+        }
+
+        args[i] = arg.value;
+    }
+
+    // Emit the call instruction
+    ir_var_t *result = NULL;
+    if (function.c_type->function.return_type->kind != TYPE_VOID) {
+        result = (ir_var_t*) alloca(sizeof(ir_var_t));
+        *result = temp_var(context, get_ir_type(function.c_type->function.return_type));
+    }
+    assert(function.value.kind == IR_VALUE_VAR); // TODO: is it possible to directly call a constant?
+    IrBuildCall(context->builder, function.value.var, args, actual_args_count, result);
+
+    ir_value_t result_value = result != NULL ?
+        ir_value_for_var(*result) : (ir_value_t) {
+        .kind = IR_VALUE_CONST,
+        .constant = (ir_const_t) {
+            .kind = IR_CONST_INT,
+            .type = &IR_VOID,
+        },
+    };
+
+    return (expression_result_t) {
+        .c_type = function.c_type->function.return_type,
+        .is_lvalue = false,
+        .value = result_value,
+    };
 }
 
 expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const expression_t *expr) {
@@ -997,9 +1216,15 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
     }
 }
 
+char *global_name(ir_gen_context_t *context) {
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "@%d", context->global_id_counter++);
+    return strdup(buffer);
+}
+
 char *temp_name(ir_gen_context_t *context) {
     char buffer[32];
-    snprintf(buffer, sizeof(buffer), "t%d", context->local_id_counter++);
+    snprintf(buffer, sizeof(buffer), "%%%d", context->local_id_counter++);
     return strdup(buffer);
 }
 

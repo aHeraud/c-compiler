@@ -176,8 +176,9 @@ const char* ir_fmt_val(char *buffer, size_t size, const ir_value_t value) {
 const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *instr) {
     const char* start = buffer;
     if (instr->label != NULL) {
-        snprintf(buffer, size, "%s: ", instr->label);
-        buffer += strlen(buffer);
+        size_t len = snprintf(buffer, size, "%s: ", instr->label);
+        buffer += len;
+        size -= len;
     }
 
     switch (instr->opcode) {
@@ -244,10 +245,28 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
         case IR_BR_COND:
             snprintf(buffer, size, "br %s, %s", FMT_VAL(instr->branch.cond), instr->branch.label);
             break;
-        case IR_CALL:
-            // TODO
-            snprintf(buffer, size, "call");
+        case IR_CALL: {
+            if (instr->call.result != NULL) {
+                size_t offset = snprintf(buffer, size, "%s = ", FMT_VAR(*instr->call.result));
+                buffer += offset;
+                size -= offset;
+            }
+            size_t offset = snprintf(buffer, size, "call %s(", instr->call.function.name);
+            buffer += offset;
+            size -= offset;
+            for (size_t i = 0; i < instr->call.num_args; i += 1) {
+                offset = snprintf(buffer, size, "%s", FMT_VAL(instr->call.args[i]));
+                buffer += offset;
+                size -= offset;
+                if (i < instr->call.num_args - 1) {
+                    offset = snprintf(buffer, size, ", ");
+                    buffer += offset;
+                    size -= offset;
+                }
+            }
+            snprintf(buffer, size, ")");
             break;
+        }
         case IR_RET: {
             if (instr->ret.has_value) {
                 snprintf(buffer, size, "ret %s", FMT_VAL(instr->ret.value));

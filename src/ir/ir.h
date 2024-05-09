@@ -26,6 +26,16 @@
 /// - struct(fields): struct with named fields of various types
 /// - function(return_type, args): function with return type and argument types
 ///
+/// ## IR Values
+///
+/// There are two kinds of IR values, constants and variables. Both have an associated IR type, constants have a value
+/// and variables have a name. Local variable names start with `%` and global variable names start with `@`.
+///
+/// Examples:
+/// - Constant integer: `i32 42`
+/// - Local variable: f64`%1`
+/// - Global variable: i32 `@foo`
+///
 /// ## IR Operations
 ///
 /// ### Assignment
@@ -263,6 +273,13 @@ typedef struct IrValue {
     };
 } ir_value_t;
 
+typedef struct IrGlobal {
+    const char* name;
+    const ir_type_t *type;
+    bool initialized;
+    ir_const_t value;
+} ir_global_t;
+
 typedef struct IrInstruction {
     ir_opcode_t opcode;
     const char* label;
@@ -301,10 +318,10 @@ typedef struct IrInstruction {
             ir_value_t cond;
         } branch;
         struct {
-            ir_value_t f;
+            ir_var_t function;
             ir_value_t *args;
             size_t num_args;
-            ir_value_t ret;
+            ir_var_t *result; // optional
         } call;
         struct {
             bool has_value;
@@ -349,10 +366,17 @@ typedef struct IrFunctionPtrVector {
     size_t capacity;
 } ir_function_ptr_vector_t;
 
+typedef struct IrGlobalPtrVector {
+    ir_global_t **buffer;
+    size_t size;
+    size_t capacity;
+} ir_global_ptr_vector_t;
+
 void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t instruction);
 
 typedef struct IrModule {
     const char* name;
+    ir_global_ptr_vector_t globals;
     ir_function_ptr_vector_t functions;
 } ir_module_t;
 

@@ -39,7 +39,7 @@ void IrBuildGe(ir_function_builder_t *builder, ir_value_t left, ir_value_t right
 /* Control Flow */
 void IrBuildBr(ir_function_builder_t *builder, const char *label);
 void IrBuildBrCond(ir_function_builder_t *builder, ir_value_t cond, const char *label);
-//void IrBuildCall(ir_function_builder_t *builder, ?);
+void IrBuildCall(ir_function_builder_t *builder, ir_var_t function, ir_value_t *args, size_t num_args, ir_var_t *result);
 void IrBuildReturnValue(ir_function_builder_t *builder, ir_value_t a);
 void IrBuildReturnVoid(ir_function_builder_t *builder);
 

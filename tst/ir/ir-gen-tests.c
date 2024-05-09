@@ -24,6 +24,7 @@ do { \
                 body_equals = false;                                            \
                 fprintf(stderr, "Expected (at index %u): %s, Actual: %s\n",     \
                     i, body[i], instruction);                                   \
+                break;                                                          \
             }                                                                   \
         }                                                                       \
     }                                                                           \
@@ -67,10 +68,10 @@ void test_ir_gen_add_simple() {
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "f32 t1 = f32 1.000000",
-        "f32 t2 = f32 2.000000",
-        "f32 t0 = add f32 t1, f32 t2",
-        "ret f32 t0"
+        "f32 %1 = f32 1.000000",
+        "f32 %2 = f32 2.000000",
+        "f32 %0 = add f32 %1, f32 %2",
+        "ret f32 %0"
     }));
 }
 
@@ -84,11 +85,11 @@ void test_ir_gen_add_i32_f32() {
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "f32 t1 = itof i32 1",
-        "f32 t2 = f32 2.000000",
-        "f32 t0 = add f32 t1, f32 t2",
-        "i32 t3 = ftoi f32 t0",
-        "ret i32 t3"
+        "f32 %1 = itof i32 1",
+        "f32 %2 = f32 2.000000",
+        "f32 %0 = add f32 %1, f32 %2",
+        "i32 %3 = ftoi f32 %0",
+        "ret i32 %3"
     }));
 }
 
@@ -109,21 +110,41 @@ void test_ir_gen_if_else_statement() {
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "*i32 t0 = alloca i32",
-        "store i32 a, *i32 t0",
-        "*i32 t1 = alloca i32",
-        "i32 t2 = load *i32 t0",
-        "bool t3 = eq i32 t2, i32 0",
-        "br bool t3, l0",
-        "i32 t4 = i32 1",
-        "store i32 t4, *i32 t1",
+        "*i32 %0 = alloca i32",
+        "store i32 a, *i32 %0",
+        "*i32 %1 = alloca i32",
+        "i32 %2 = load *i32 %0",
+        "bool %3 = eq i32 %2, i32 0",
+        "br bool %3, l0",
+        "i32 %4 = i32 1",
+        "store i32 %4, *i32 %1",
         "br l1",
         "l0: nop",
-        "i32 t5 = i32 2",
-        "store i32 t5, *i32 t1",
+        "i32 %5 = i32 2",
+        "store i32 %5, *i32 %1",
         "l1: nop",
-        "i32 t6 = load *i32 t1",
-        "ret i32 t6"
+        "i32 %6 = load *i32 %1",
+        "ret i32 %6"
+    }));
+}
+
+void test_ir_gen_call_expr_returns_void() {
+    const char* input =
+        "void foo(int a);\n"
+        "int main() {\n"
+        "    foo(1);\n"
+        "    return 0;\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "i32 %0 = i32 1",
+        "call @foo(i32 %0)",
+        "ret i32 0"
     }));
 }
 
@@ -137,6 +158,7 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "add simple", test_ir_gen_add_simple);
     CU_add_test(suite, "add i32 + f32", test_ir_gen_add_i32_f32);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
+    CU_add_test(suite, "call expr", test_ir_gen_call_expr_returns_void);
 
     return CUE_SUCCESS;
 }

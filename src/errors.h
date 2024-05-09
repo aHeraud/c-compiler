@@ -1,6 +1,7 @@
 #ifndef C_COMPILER_ERRORS_H
 #define C_COMPILER_ERRORS_H
 
+#include "ast.h"
 #include "lexer.h"
 #include "types.h"
 
@@ -16,7 +17,10 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_ASSIGNMENT_TARGET,
     ERR_REDEFINITION_OF_SYMBOL,
     ERR_INVALID_INITIALIZER_TYPE,
+    ERR_GLOBAL_INITIALIZER_NOT_CONSTANT,
     ERR_INVALID_IF_CONDITION_TYPE,
+    ERR_CALL_TARGET_NOT_FUNCTION,
+    ERR_CALL_ARGUMENT_COUNT_MISMATCH,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -44,6 +48,17 @@ typedef struct CompilationError {
             const type_t *lhs_type;
             const type_t *rhs_type;
         } invalid_initializer_type;
+        struct {
+            const declaration_t *declaration;
+        } global_initializer_not_constant;
+        struct {
+            const type_t *type;
+        } call_target_not_function;
+        struct {
+            // TODO: could also include the prototype/definition of the function
+            size_t expected;
+            size_t actual;
+        } call_argument_count_mismatch;
     };
 } compilation_error_t;
 
