@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "ir/ir-gen.h"
 #include "ir/cfg.h"
+#include "llvm/llvm-gen.h"
 
 // TODO: Set based on current platform
 char* DEFAULT_SYSTEM_INCLUDE_DIRECTORIES[2] = {
@@ -133,6 +134,8 @@ options_t parse_and_validate_options(int argc, char** argv) {
                 fprintf(stderr, "Missing argument for -o\n");
                 exit(1);
             }
+        } else if (strcmp(argv[argi], "--emit-ir") == 0) {
+            options.emit_ir = true;
         } else if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
             printf("Usage: %s [options] <input files>\n", argv[0]);
             printf("Options:\n");
@@ -143,6 +146,7 @@ options_t parse_and_validate_options(int argc, char** argv) {
             printf("  -isystem<dir>, --system-include-directory=<dir>\n");
             printf("                  Add directory to the system include search path.\n");
             printf("  -o <file>       Write output to <file>\n");
+            printf("  --emit-ir       Write generated IR to file\n");
             exit(0);
         } else {
             append_ptr((void***) &options.input_files.buffer,
@@ -250,6 +254,8 @@ void compile(options_t options, const char* input_file_name) {
     } else {
         output_file_name = options.output_file;
     }
+
+    llvm_gen_module(ir_module, output_file_name);
 }
 
 void get_output_path(const char *path, const char *extension, char *output, size_t output_size) {

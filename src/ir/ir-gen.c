@@ -43,6 +43,7 @@ typedef struct IrGenContext {
 typedef struct ExpressionResult {
     ir_value_t value;
     bool is_lvalue;
+    bool is_string_literal;
     const type_t *c_type;
 } expression_result_t;
 
@@ -74,6 +75,7 @@ typedef struct Symbol {
 const expression_result_t EXPR_ERR = {
     .c_type = NULL,
     .is_lvalue = false,
+    .is_string_literal = false,
     .value = {
         .kind = IR_VALUE_VAR,
         .var = {
@@ -113,6 +115,8 @@ char *global_name(ir_gen_context_t *context);
 char *temp_name(ir_gen_context_t *context);
 ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type);
 char *gen_label(ir_gen_context_t *context);
+
+ir_value_t ir_get_default_value(const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(const ir_value_t value);
 
@@ -219,7 +223,7 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
 
     ir_visit_translation_unit(&context, translation_unit);
 
-    // Cleanup
+    // Cleanup (note that this doesn't free the pointers stored in the hash tables).
     hash_table_destroy(&context.global_map);
     hash_table_destroy(&context.function_definition_map);
 
@@ -311,13 +315,20 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
         }
     } else {
         // Insert the function into the symbol table
+        type_t *c_type = malloc(sizeof(type_t));
+        *c_type = function_c_type;
         symbol_t *symbol = malloc(sizeof(symbol_t));
         *symbol = (symbol_t) {
             .kind = SYMBOL_FUNCTION,
             .identifier = function->identifier,
             .name = function->identifier->value,
-            .c_type = &function_c_type,
+            .c_type = c_type,
             .ir_type = function_type,
+            // Not actually a pointer, but we use the ir_ptr field to store the function name
+            .ir_ptr = (ir_var_t) {
+                .name = function->identifier->value,
+                .type = function_type,
+            },
         };
         declare_symbol(context, symbol);
     }
@@ -361,6 +372,14 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     }
 
     ir_visit_statement(context, function->body);
+
+    // Add a fall-through return statement
+    // TODO: this results in un-reachable code, could possibly be optimized out before codegen
+    if (function->return_type->kind != TYPE_VOID) {
+        IrBuildReturnValue(context->builder, ir_get_default_value(context->function->type->function.return_type));
+    } else {
+        IrBuildReturnVoid(context->builder);
+    }
 
     leave_scope(context);
 
@@ -608,37 +627,47 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
         // Create a new global symbol
         symbol = malloc(sizeof(symbol_t));
 
+        bool is_function = declaration->type->kind == TYPE_FUNCTION;
+
         char* name;
-        if (declaration->type->kind == TYPE_FUNCTION) {
+        if (is_function) {
             size_t len = strlen(declaration->identifier->value) + 2;
             name = malloc(len);
-            snprintf(name, len, "@%s", declaration->identifier->value);
+            snprintf(name, len, "%s", declaration->identifier->value);
         } else {
             name = global_name(context);
         }
 
+        const ir_type_t *ir_type = get_ir_type(declaration->type);
         *symbol = (symbol_t) {
-            .kind = SYMBOL_GLOBAL_VARIABLE,
+            .kind = is_function ? SYMBOL_FUNCTION : SYMBOL_GLOBAL_VARIABLE,
             .identifier = declaration->identifier,
             .name = declaration->identifier->value,
             .c_type = declaration->type,
             .ir_type = get_ir_type(declaration->type),
             .ir_ptr = (ir_var_t) {
                 .name = name,
-                .type = get_ir_ptr_type(get_ir_type(declaration->type)),
+                .type = is_function ? ir_type : get_ir_ptr_type(ir_type),
             },
         };
         declare_symbol(context, symbol);
 
         // Add the global to the module's global list
-        ir_global_t *global = malloc(sizeof(ir_global_t));
-        *global = (ir_global_t) {
-            .name = symbol->ir_ptr.name,
-            .type = symbol->ir_ptr.type,
-            .initialized = declaration->initializer != NULL,
-        };
-        hash_table_insert(&context->global_map, symbol->name, global);
-        ir_append_global_ptr(&context->module->globals, global);
+        // *Function declarations are not IR globals*
+        if (declaration->type->kind != TYPE_FUNCTION) {
+            ir_global_t *global = malloc(sizeof(ir_global_t));
+            *global = (ir_global_t) {
+                .name = symbol->ir_ptr.name,
+                .type = symbol->ir_ptr.type,
+                .initialized = declaration->initializer != NULL,
+            };
+
+            // Default value for global
+            // TODO
+
+            hash_table_insert(&context->global_map, symbol->name, global);
+            ir_append_global_ptr(&context->module->globals, global);
+        }
 
         if (declaration->initializer != NULL) {
             // TODO: global variable initializers
@@ -803,7 +832,9 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         }
 
         // Implicit conversion to the parameter type
-        const type_t *param_type = function.c_type->function.parameter_list->parameters[i]->type;
+        const type_t *param_type = i < function.c_type->function.parameter_list->length ?
+            function.c_type->function.parameter_list->parameters[i]->type :
+            function.c_type->function.parameter_list->parameters[function.c_type->function.parameter_list->length - 1]->type;
         arg = convert_to_type(context, arg.value, arg.c_type, param_type, NULL);
         if (arg.c_type == NULL) {
             // Conversion was invalid
@@ -816,7 +847,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     // Emit the call instruction
     ir_var_t *result = NULL;
     if (function.c_type->function.return_type->kind != TYPE_VOID) {
-        result = (ir_var_t*) alloca(sizeof(ir_var_t));
+        result = (ir_var_t*) malloc(sizeof(ir_var_t));
         *result = temp_var(context, get_ir_type(function.c_type->function.return_type));
     }
     assert(function.value.kind == IR_VALUE_VAR); // TODO: is it possible to directly call a constant?
@@ -834,6 +865,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     return (expression_result_t) {
         .c_type = function.c_type->function.return_type,
         .is_lvalue = false,
+        .is_string_literal = false,
         .value = result_value,
     };
 }
@@ -910,6 +942,7 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
             return (expression_result_t) {
                 .c_type = result_type,
                 .is_lvalue = false,
+                .is_string_literal = false,
                 .value = ir_value_for_var(*result),
             };
         } else {
@@ -970,6 +1003,7 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
         return (expression_result_t) {
             .c_type = result_type,
             .is_lvalue = false,
+            .is_string_literal = false,
             .value = (ir_value_t) {
                 .kind = IR_VALUE_VAR,
                 .var = *result,
@@ -1074,6 +1108,7 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
         return (expression_result_t) {
             .c_type = &BOOL,
             .is_lvalue = false,
+            .is_string_literal = false,
             .value = ir_value_for_var(result),
         };
     } else if (is_pointer_type(left.c_type) && is_pointer_type(right.c_type)) {
@@ -1115,6 +1150,7 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
             return (expression_result_t) {
                 .c_type = symbol->c_type,
                 .is_lvalue = true,
+                .is_string_literal = false,
                 .value = (ir_value_t) {
                     .kind = IR_VALUE_VAR,
                     .var = symbol->ir_ptr,
@@ -1125,18 +1161,52 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
             return ir_visit_constant(context, expr);
         }
         case PE_STRING_LITERAL: {
+            // String literal semantics:
+            // - A string literal is an array of characters with static storage duration.
+            // - Whether identical string literals are distinct or share a single storage location
+            //   is implementation-defined.
+            // - Modifying a string literal results in undefined behavior.
+
+            // First we need to replace escape sequences in the string literal
             char *literal = replace_escape_sequences(expr->primary.token.value);
+
+            // Maybe there should be a special expression node type for static lengths?
+            expression_t *array_length_expr = malloc(sizeof(expression_t));
+            *array_length_expr = (expression_t) {
+                .type = EXPRESSION_PRIMARY,
+                .primary = {
+                    .type = PE_CONSTANT,
+                    .token = {
+                        .kind = TK_INTEGER_CONSTANT,
+                        .value = malloc(32),
+                        .position = expr->primary.token.position,
+                    },
+                },
+            };
+            snprintf(array_length_expr->primary.token.value, 32, "%zu", strlen(literal) + 1);
+
+            // The C type is an array of characters
+            type_t *c_type = malloc(sizeof(type_t));
+            *c_type = (type_t) {
+                .kind = TYPE_ARRAY,
+                .array = {
+                    .element_type = &CHAR,
+                    .size = array_length_expr,
+                },
+            };
+
             return (expression_result_t) {
-                .c_type = &CONST_CHAR_PTR,
-                .is_lvalue = false,
+                .c_type = c_type,
+                .is_lvalue = true,
+                .is_string_literal = true,
                 .value = (ir_value_t) {
                     .kind = IR_VALUE_CONST,
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_STRING,
-                        .type = &IR_PTR_CHAR,
+                        .type = get_ir_type(c_type),
                         .s = literal,
-                    }
-                }
+                    },
+                },
             };
         }
         case PE_EXPRESSION: {
@@ -1340,6 +1410,41 @@ const ir_type_t *get_ir_ptr_type(const ir_type_t *pointee) {
     return ir_type;
 }
 
+ir_value_t ir_get_default_value(const ir_type_t *type) {
+    if (ir_is_integer_type(type)) {
+        return (ir_value_t) {
+            .kind = IR_VALUE_CONST,
+            .constant = (ir_const_t) {
+                .kind = IR_CONST_INT,
+                .type = type,
+                .i = 0,
+            }
+        };
+    } else if (ir_is_float_type(type)) {
+        return (ir_value_t) {
+            .kind = IR_VALUE_CONST,
+            .constant = (ir_const_t) {
+                .kind = IR_CONST_FLOAT,
+                .type = type,
+                .f = 0.0,
+            }
+        };
+    } else if (type->kind == IR_TYPE_PTR) {
+        return (ir_value_t) {
+            .kind = IR_VALUE_CONST,
+            .constant = (ir_const_t) {
+                .kind = IR_CONST_INT,
+                .type = type,
+                .i = 0,
+            }
+        };
+    } else {
+        // TODO: struct, arrays, etc.
+        fprintf(stderr, "Unimplemented default value for type %s\n", ir_fmt_type(alloca(256), 256, type));
+        exit(1);
+    }
+}
+
 expression_result_t convert_to_type(
         ir_gen_context_t *context,
         ir_value_t value,
@@ -1364,6 +1469,16 @@ expression_result_t convert_to_type(
     } else {
         // Ensure that the result variable has the correct type
         assert(ir_types_equal(result->type, result_type));
+    }
+
+    if (ir_types_equal(source_type, result_type)) {
+        // No conversion necessary
+        IrBuildAssign(context->builder, value, *result);
+        return (expression_result_t) {
+            .c_type = to_type,
+            .is_lvalue = false,
+            .value = ir_value_for_var(*result),
+        };
     }
 
     if (ir_is_integer_type(result_type)) {
@@ -1410,6 +1525,20 @@ expression_result_t convert_to_type(
             IrBuildItoF(context->builder, value, *result);
         } else {
             // TODO: proper error handling
+            fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
+                    ir_fmt_type(alloca(256), 256, source_type),
+                    ir_fmt_type(alloca(256), 256, result_type));
+            return EXPR_ERR;
+        }
+    } else if (result_type->kind == IR_TYPE_PTR) {
+        if (source_type->kind == IR_TYPE_PTR) {
+            // ptr -> ptr conversion
+            IrBuildBitCast(context->builder, value, *result);
+        } else if (ir_is_integer_type(source_type)) {
+            // int -> ptr
+            IrBuildItoP(context->builder, value, *result);
+        } else if (source_type->kind == IR_TYPE_ARRAY) {
+            // TODO
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
                     ir_fmt_type(alloca(256), 256, source_type),
                     ir_fmt_type(alloca(256), 256, result_type));

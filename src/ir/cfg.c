@@ -75,6 +75,8 @@ ir_basic_block_t create_basic_block() {
     static int id = 0;
     ir_basic_block_t bb = {
         .id = id++,
+        .label = NULL,
+        .fall_through = NULL,
         .predecessors = (ir_basic_block_ptr_vector_t) { .buffer = NULL, .size = 0, .capacity = 0 },
         .successors = (ir_basic_block_ptr_vector_t) { .buffer = NULL, .size = 0, .capacity = 0 },
         .instructions = (ir_instruction_ptr_vector_t) { .buffer = NULL, .size = 0, .capacity = 0 }
@@ -82,7 +84,7 @@ ir_basic_block_t create_basic_block() {
     return bb;
 }
 
-ir_control_flow_graph_t ir_create_control_flow_graph(ir_function_definition_t *function) {
+ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definition_t *function) {
     ir_control_flow_graph_t cfg = (ir_control_flow_graph_t) {
         .function = function,
         .entry = NULL,
@@ -105,30 +107,25 @@ ir_control_flow_graph_t ir_create_control_flow_graph(ir_function_definition_t *f
     for (size_t i = 0; i < function->num_instructions; i += 1) {
         ir_instruction_t *instr = &function->instructions[i];
 
-        if (split_block_before(instr)) {
-            // Split the current block before this instruction
-            ir_basic_block_t *new_block = malloc(sizeof(ir_basic_block_t));
-            *new_block = create_basic_block();
-            cfg_append_basic_block(&cfg, new_block);
-            bb_append_predecessor(new_block, current_block);
-            bb_append_successor(current_block, new_block);
-            current_block = new_block;
-        }
-
         if (instr->label != NULL) {
             hash_table_insert(&label_to_block, instr->label, current_block);
+            current_block->label = instr->label;
         }
 
         // Append the instruction to the current block
         bb_append_instr(current_block, instr);
 
-        if (split_block_after(instr)) {
+        bool split_block = split_block_after(instr) ||
+            (i + 1 < function->num_instructions && split_block_before(&function->instructions[i + 1]));
+
+        if (split_block) {
             ir_basic_block_t *new_block = malloc(sizeof(ir_basic_block_t));
             *new_block = create_basic_block();
             cfg_append_basic_block(&cfg, new_block);
             if (fall_through(instr)) {
                 bb_append_predecessor(new_block, current_block);
                 bb_append_successor(current_block, new_block);
+                current_block->fall_through = new_block;
             }
             current_block = new_block;
         }
@@ -172,6 +169,8 @@ ir_control_flow_graph_t ir_create_control_flow_graph(ir_function_definition_t *f
             }
         }
     }
+
+    cfg.label_to_block_map = label_to_block;
 
     return cfg;
 }

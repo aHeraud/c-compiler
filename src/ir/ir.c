@@ -58,7 +58,18 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b) {
         }
         case IR_TYPE_FUNCTION: {
             // TODO
-            assert(false && "Unimplemented");
+            if (!ir_types_equal(a->function.return_type, b->function.return_type)) {
+                return false;
+            }
+            if (a->function.num_params != b->function.num_params) {
+                return false;
+            }
+            for (size_t i = 0; i < a->function.num_params; i++) {
+                if (!ir_types_equal(a->function.params[i], b->function.params[i])) {
+                    return false;
+                }
+            }
+            return true;
         }
         case IR_TYPE_PTR: {
             return ir_types_equal(a->ptr.pointee, b->ptr.pointee);
@@ -284,6 +295,9 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
         case IR_STORE:
             snprintf(buffer, size, "store %s, %s", FMT_VAL(instr->store.value), FMT_VAL(instr->store.ptr));
             break;
+        case IR_MEMCPY:
+            snprintf(buffer, size, "memcpy %s, %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            break;
         case IR_TRUNC:
             snprintf(buffer, size, "%s = trunc %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
             break;
@@ -341,6 +355,18 @@ bool ir_is_integer_type(const ir_type_t *type) {
         case IR_TYPE_U16:
         case IR_TYPE_U32:
         case IR_TYPE_U64:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool ir_is_signed_integer_type(const ir_type_t *type) {
+    switch (type->kind) {
+        case IR_TYPE_I8:
+        case IR_TYPE_I16:
+        case IR_TYPE_I32:
+        case IR_TYPE_I64:
             return true;
         default:
             return false;
@@ -553,6 +579,21 @@ void ir_validate_visit_instruction(
                 }
             }
             break;
+        case IR_MEMCPY: {
+            ir_validate_visit_variable(variables, errors, instruction, instruction->unary_op.result);
+            ir_validate_visit_value(variables, errors, instruction, instruction->unary_op.operand);
+            // Result must be an array, struct, or pointer
+            if (instruction->unary_op.result.type->kind != IR_TYPE_PTR &&
+                instruction->unary_op.result.type->kind != IR_TYPE_ARRAY &&
+                instruction->unary_op.result.type->kind != IR_TYPE_STRUCT
+            ) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                        .instruction = instruction,
+                        .message = "memcpy result must be an array, pointer, or struct"
+                });
+            }
+            break;
+        }
         case IR_TRUNC: {
             // The result type must be smaller than the value being truncated
             // Both the result and the value must be integers, or both must be floating point numbers

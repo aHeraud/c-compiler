@@ -108,7 +108,9 @@
 /// - store: Store the value b into the pointer a `*a = b`
 ///    + a must be a pointer type
 ///    + b must be the same type as the pointer target
-///
+/// - memcpy: Copy intrinsic, copy the value from a to b `memcpy dest, src`
+///    + If src and dest are different sizes, the smaller size is used.
+///    + dest must be a pointer, array, or struct type
 /// ### Type Conversion
 ///
 /// - trunc a, b - Truncate a to the specified size `i8 b = trunc i32 a`
@@ -201,7 +203,7 @@ typedef enum IrOpcode {
     IR_DIV,
     IR_MOD,
 
-    /* */
+    /* Assignment */
     IR_ASSIGN,
 
     /* Bitwise */
@@ -230,6 +232,7 @@ typedef enum IrOpcode {
     IR_ALLOCA,
     IR_LOAD,
     IR_STORE,
+    IR_MEMCPY,
 
     /* Type Conversion */
     IR_TRUNC,
@@ -305,7 +308,7 @@ typedef struct IrInstruction {
          * Those are:
          * - bitwise: not
          * - type conversion: trunc, ext, ftoi, itof, ptoi, itop, bitcast
-         * - memory: load
+         * - memory: load, memcpy
          *
          */
         struct {
@@ -391,6 +394,7 @@ size_t size_of_type(const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(ir_value_t value);
 bool ir_is_integer_type(const ir_type_t *type);
+bool ir_is_signed_integer_type(const ir_type_t *type);
 bool ir_is_float_type(const ir_type_t *type);
 
 typedef struct IrValidationError {
