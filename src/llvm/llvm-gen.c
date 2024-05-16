@@ -173,38 +173,95 @@ void llvm_gen_visit_instruction(
             hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
         }
-        case IR_MUL:
-            assert(false && "Not implemented");
+        case IR_MUL: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_float_type(instr->binary_op.result.type)) {
+                result = LLVMBuildFMul(context->llvm_builder, lhs, rhs, "");
+            } else {
+                result = LLVMBuildMul(context->llvm_builder, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_DIV:
-            assert(false && "Not implemented");
+        }
+        case IR_DIV: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_float_type(instr->binary_op.result.type)) {
+                result = LLVMBuildFDiv(context->llvm_builder, lhs, rhs, "");
+            } else if (ir_is_signed_integer_type(instr->binary_op.result.type)) {
+                result = LLVMBuildSDiv(context->llvm_builder, lhs, rhs, "");
+            } else {
+                result = LLVMBuildUDiv(context->llvm_builder, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_MOD:
-            assert(false && "Not implemented");
+        }
+        case IR_MOD: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_float_type(instr->binary_op.result.type)) {
+                result = LLVMBuildFRem(context->llvm_builder, lhs, rhs, "");
+            } else {
+                result = LLVMBuildSRem(context->llvm_builder, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
+        }
         case IR_ASSIGN: {
             LLVMValueRef value = ir_to_llvm_value(context, &instr->assign.value);
             hash_table_insert(&context->local_var_map, instr->assign.result.name, value);
             break;
         }
-        case IR_AND:
-            assert(false && "Not implemented");
+        case IR_AND: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result = LLVMBuildAnd(context->llvm_builder, lhs, rhs, "");
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_OR:
-            assert(false && "Not implemented");
+        }
+        case IR_OR: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result = LLVMBuildOr(context->llvm_builder, lhs, rhs, "");
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_SHL:
-            assert(false && "Not implemented");
+        }
+        case IR_SHL: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result = LLVMBuildShl(context->llvm_builder, lhs, rhs, "");
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_SHR:
-            assert(false && "Not implemented");
+        }
+        case IR_SHR: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildAShr(context->llvm_builder, lhs, rhs, "");
+            } else {
+                result = LLVMBuildLShr(context->llvm_builder, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_XOR:
-            assert(false && "Not implemented");
+        }
+        case IR_XOR: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result = LLVMBuildXor(context->llvm_builder, lhs, rhs, "");
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_NOT:
-            assert(false && "Not implemented");
+        }
+        case IR_NOT: {
+            LLVMValueRef operand = ir_to_llvm_value(context, &instr->unary_op.operand);
+            LLVMValueRef result = LLVMBuildNot(context->llvm_builder, operand, "");
+            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
+        }
         case IR_EQ: {
             LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
             LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
@@ -217,24 +274,82 @@ void llvm_gen_visit_instruction(
             hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
         }
-        case IR_NE:
-            assert(false && "Not implemented");
+        case IR_NE: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildFCmp(context->llvm_builder, LLVMRealONE, lhs, rhs, "");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntNE, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_LT:
-            assert(false && "Not implemented");
+        }
+        case IR_LT: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOLT, lhs, rhs, "");
+            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSLT, lhs, rhs, "");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntULT, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_LE:
-            assert(false && "Not implemented");
+        }
+        case IR_LE: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOLE, lhs, rhs, "");
+            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSLE, lhs, rhs, "");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntULE, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_GT:
-            assert(false && "Not implemented");
+        }
+        case IR_GT: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOGT, lhs, rhs, "");
+            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSGT, lhs, rhs, "");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntUGT, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_GE:
-            assert(false && "Not implemented");
+        }
+        case IR_GE: {
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef result;
+            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOGE, lhs, rhs, "");
+            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntSGE, lhs, rhs, "");
+            } else {
+                result = LLVMBuildICmp(context->llvm_builder, LLVMIntUGE, lhs, rhs, "");
+            }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
-        case IR_BR:
-            assert(false && "Not implemented");
+        }
+        case IR_BR: {
+            const char* label = instr->branch.label;
+            const ir_basic_block_t *target_block;
+            assert(hash_table_lookup(&context->ir_cfg.label_to_block_map, label, (void**)&target_block));
+            LLVMBasicBlockRef llvm_block = llvm_get_or_create_basic_block(context, target_block);
+            LLVMBuildBr(context->llvm_builder, llvm_block);
             break;
+        }
         case IR_BR_COND: {
             const char* label = instr->branch.label;
             const ir_basic_block_t *ir_true_block;
@@ -334,12 +449,28 @@ void llvm_gen_visit_instruction(
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
         }
-        case IR_FTOI:
-            assert(false && "Not implemented");
+        case IR_FTOI: {
+            LLVMValueRef operand = ir_to_llvm_value(context, &instr->unary_op.operand);
+            LLVMValueRef result;
+            if (ir_is_signed_integer_type(instr->unary_op.result.type)) {
+                result = LLVMBuildFPToSI(context->llvm_builder, operand, ir_to_llvm_type(instr->unary_op.result.type), "");
+            } else {
+                result = LLVMBuildFPToUI(context->llvm_builder, operand, ir_to_llvm_type(instr->unary_op.result.type), "");
+            }
+            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
-        case IR_ITOF:
-            assert(false && "Not implemented");
+        }
+        case IR_ITOF: {
+            LLVMValueRef operand = ir_to_llvm_value(context, &instr->unary_op.operand);
+            LLVMValueRef result;
+            if (ir_is_signed_integer_type(ir_get_type_of_value(instr->unary_op.operand))) {
+                result = LLVMBuildSIToFP(context->llvm_builder, operand, ir_to_llvm_type(instr->unary_op.result.type), "");
+            } else {
+                result = LLVMBuildUIToFP(context->llvm_builder, operand, ir_to_llvm_type(instr->unary_op.result.type), "");
+            }
+            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
+        }
         case IR_PTOI: {
             LLVMValueRef result = LLVMBuildPtrToInt(context->llvm_builder,
                 ir_to_llvm_value(context, &instr->unary_op.operand),
@@ -364,6 +495,8 @@ void llvm_gen_visit_instruction(
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
         }
+        default:
+            assert(false && "Unrecognized opcode");
     }
 
     if (is_last_instr_in_block && !is_terminator) {

@@ -598,10 +598,10 @@ void ir_validate_visit_instruction(
         case IR_TRUNC: {
             // The result type must be smaller than the value being truncated
             // Both the result and the value must be integers, or both must be floating point numbers
-            ir_validate_visit_variable(variables, errors, instruction, instruction->binary_op.result);
-            ir_validate_visit_value(variables, errors, instruction, instruction->binary_op.left);
-            const ir_type_t *result_type = instruction->binary_op.result.type;
-            const ir_type_t *value_type = ir_get_type_of_value(instruction->binary_op.left);
+            ir_validate_visit_variable(variables, errors, instruction, instruction->unary_op.result);
+            ir_validate_visit_value(variables, errors, instruction, instruction->unary_op.operand);
+            const ir_type_t *result_type = instruction->unary_op.result.type;
+            const ir_type_t *value_type = ir_get_type_of_value(instruction->unary_op.operand);
             if (ir_is_integer_type(result_type) && !ir_is_integer_type(value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
@@ -629,10 +629,10 @@ void ir_validate_visit_instruction(
         case IR_EXT:
             // The result type must be larger than the value being extended
             // Both the result and the value must be integers, or both must be floating point numbers
-            ir_validate_visit_variable(variables, errors, instruction, instruction->binary_op.result);
-            ir_validate_visit_value(variables, errors, instruction, instruction->binary_op.left);
-            const ir_type_t *result_type = instruction->binary_op.result.type;
-            const ir_type_t *value_type = ir_get_type_of_value(instruction->binary_op.left);
+            ir_validate_visit_variable(variables, errors, instruction, instruction->unary_op.result);
+            ir_validate_visit_value(variables, errors, instruction, instruction->unary_op.operand);
+            const ir_type_t *result_type = instruction->unary_op.result.type;
+            const ir_type_t *value_type = ir_get_type_of_value(instruction->unary_op.operand);
             if (ir_is_integer_type(result_type) && !ir_is_integer_type(value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
