@@ -99,7 +99,7 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
 void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_definition_t *function) {
     // Create the function
     context->llvm_function =
-        LLVMAddFunction(context->llvm_module, function->name, ir_to_llvm_type(function->type));
+        llvm_get_or_add_function(context, function->name, ir_to_llvm_type(function->type));
     LLVMSetLinkage(context->llvm_function, LLVMExternalLinkage);
 
     context->local_var_map = hash_table_create(128);
