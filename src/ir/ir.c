@@ -317,6 +317,7 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
             snprintf(buffer, size, "%s = ptoi %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
             break;
         case IR_BITCAST:
+            snprintf(buffer, size, "%s = bitcast %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
             break;
     }
 

@@ -1,4 +1,5 @@
 #include <string.h>
+#include <ctype.h>
 #include "llvm-c/Core.h"
 #include "llvm-c/Analysis.h"
 
@@ -12,6 +13,9 @@ typedef struct LLVMGenContext {
     LLVMBasicBlockRef llvm_block;
     LLVMBuilderRef llvm_builder;
 
+    // Mapping of IR function names to LLVM values
+    hash_table_t llvm_function_map;
+    // Mapping of IR global variables to LLVM values
     hash_table_t global_var_map;
     // Mapping of IR variables to LLVM values
     hash_table_t local_var_map;
@@ -23,6 +27,8 @@ typedef struct LLVMGenContext {
 
 LLVMTypeRef ir_to_llvm_type(const ir_type_t *type);
 LLVMValueRef ir_to_llvm_value(const llvm_gen_context_t *context, const ir_value_t *value);
+LLVMValueRef llvm_get_or_add_function(llvm_gen_context_t *context, const char* name, LLVMTypeRef fn_type);
+
 void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_definition_t *function);
 void llvm_gen_visit_basic_block(llvm_gen_context_t *context, const ir_basic_block_t *block);
 void llvm_gen_visit_instruction(llvm_gen_context_t *context, const ir_instruction_t *instr, const ir_basic_block_t *ir_block);
@@ -46,14 +52,30 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
     llvm_gen_context_t context = {
         .llvm_module = LLVMModuleCreateWithName(module->name),
         .llvm_builder = LLVMCreateBuilder(),
+        .llvm_function_map = hash_table_create(128),
         .global_var_map = hash_table_create(128),
     };
 
     // global variables
     for (size_t i = 0; i < module->globals.size; i += 1) {
         const ir_global_t *global = module->globals.buffer[i];
-        assert(false && "Global variables not implemented");
-        //hash_table_insert(&context.global_var_map, global->name, llvm_global);
+        // Get the actual type. The globals IR type is a pointer to the actual type.
+        assert(global->type->kind == IR_TYPE_PTR);
+        const ir_type_t *ir_type = global->type->ptr.pointee;
+        char *name = global->name;
+        if (name[0] == '@') {
+            if (isdigit(name[1])) {
+                // Anonymous global variable (e.g. string literal)
+                name = "";
+            } else {
+                name += 1;
+            }
+        }
+        LLVMValueRef llvm_global = LLVMAddGlobal(context.llvm_module, ir_to_llvm_type(ir_type), name);
+        if (global->value.kind == IR_CONST_STRING) {
+            LLVMSetInitializer(llvm_global, LLVMConstString(global->value.s, strlen(global->value.s), false));
+        }
+        hash_table_insert(&context.global_var_map, global->name, llvm_global);
     }
 
     // codegen
@@ -67,6 +89,11 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
     LLVMDisposeMessage(message);
     LLVMPrintModuleToFile(context.llvm_module, output_filename, &message);
     LLVMDisposeModule(context.llvm_module);
+
+    // Cleanup
+    LLVMDisposeBuilder(context.llvm_builder);
+    hash_table_destroy(&context.llvm_function_map);
+    hash_table_destroy(&context.global_var_map);
 }
 
 void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_definition_t *function) {
@@ -223,7 +250,7 @@ void llvm_gen_visit_instruction(
         }
         case IR_CALL: {
             LLVMTypeRef fn_type = ir_to_llvm_type(instr->call.function.type);
-            LLVMValueRef fn = LLVMGetNamedFunction(context->llvm_module, instr->call.function.name);
+            LLVMValueRef fn = llvm_get_or_add_function(context, instr->call.function.name, fn_type);
             LLVMValueRef *args = malloc(instr->call.num_args * sizeof(LLVMValueRef));
             for (int i = 0; i < instr->call.num_args; i += 1) {
                 args[i] = ir_to_llvm_value(context, &instr->call.args[i]);
@@ -321,9 +348,14 @@ void llvm_gen_visit_instruction(
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
         }
-        case IR_ITOP:
-            assert(false && "Not implemented");
+        case IR_ITOP: {
+            LLVMValueRef result = LLVMBuildIntToPtr(context->llvm_builder,
+                ir_to_llvm_value(context, &instr->unary_op.operand),
+                ir_to_llvm_type(instr->unary_op.result.type),
+                "");
+            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
+        }
         case IR_BITCAST: {
             LLVMValueRef result = LLVMBuildBitCast(context->llvm_builder,
                 ir_to_llvm_value(context, &instr->unary_op.operand),
@@ -405,5 +437,19 @@ LLVMValueRef ir_to_llvm_value(const llvm_gen_context_t *context, const ir_value_
             }
             return llvm_value;
         }
+    }
+}
+
+LLVMValueRef llvm_get_or_add_function(llvm_gen_context_t *context, const char* name, LLVMTypeRef fn_type) {
+    LLVMValueRef fn;
+
+    if (hash_table_lookup(&context->llvm_function_map, name, (void**)&fn)) {
+        // We've already added this function to the module
+        return fn;
+    } else {
+        // Add the function to the module
+        fn = LLVMAddFunction(context->llvm_module, name, fn_type);
+        assert(hash_table_insert(&context->llvm_function_map, name, fn));
+        return fn;
     }
 }

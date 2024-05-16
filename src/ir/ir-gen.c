@@ -1,6 +1,5 @@
 /// A module for performing semantic analysis and IR generation from an input AST. Semantic analysis and IR generation
 /// are combined into a single traversal of the AST.
-///
 
 #include <stdio.h>
 #include <string.h>
@@ -831,6 +830,10 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
             return EXPR_ERR;
         }
 
+        if (arg.is_lvalue) {
+            arg = get_rvalue(context, arg);
+        }
+
         // Implicit conversion to the parameter type
         const type_t *param_type = i < function.c_type->function.parameter_list->length ?
             function.c_type->function.parameter_list->parameters[i]->type :
@@ -920,6 +923,9 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
 
     bool is_addition = expr->binary.operator->kind == TK_PLUS
                      || expr->binary.operator->kind == TK_PLUS_ASSIGN;
+
+    if (left.is_lvalue) left = get_rvalue(context, left);
+    if (right.is_lvalue) right = get_rvalue(context, right);
 
     // Both operands must have arithmetic type, or one operand must be a pointer and the other an integer.
     if (is_arithmetic_type(left.c_type) && is_arithmetic_type(right.c_type)) {
@@ -1195,18 +1201,36 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
                 },
             };
 
+            ir_type_t *ir_type = malloc(sizeof(ir_type_t));
+            *ir_type = (ir_type_t) {
+                .kind = IR_TYPE_ARRAY,
+                .array = {
+                    .element = &IR_I8,
+                    .length = strlen(literal) + 1,
+                },
+            };
+
+            ir_global_t *global = malloc(sizeof(ir_global_t));
+            *global = (ir_global_t) {
+                .name = global_name(context),
+                .type = get_ir_ptr_type(ir_type),
+                .initialized = true,
+                .value = (ir_const_t) {
+                    .type = ir_type,
+                    .kind = IR_CONST_STRING,
+                    .s = literal,
+                },
+            };
+            ir_append_global_ptr(&context->module->globals, global);
+
             return (expression_result_t) {
                 .c_type = c_type,
-                .is_lvalue = true,
+                .is_lvalue = false,
                 .is_string_literal = true,
-                .value = (ir_value_t) {
-                    .kind = IR_VALUE_CONST,
-                    .constant = (ir_const_t) {
-                        .kind = IR_CONST_STRING,
-                        .type = get_ir_type(c_type),
-                        .s = literal,
-                    },
-                },
+                .value = ir_value_for_var((ir_var_t) {
+                    .type = get_ir_ptr_type(ir_type),
+                    .name = global->name,
+                })
             };
         }
         case PE_EXPRESSION: {
