@@ -143,8 +143,72 @@ void test_ir_gen_call_expr_returns_void() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "i32 %0 = i32 1",
-        "call @foo(i32 %0)",
+        "call foo(i32 %0)",
         "ret i32 0"
+    }));
+}
+
+void test_ir_gen_conditional_expr_void() {
+    const char *input =
+        "void foo();\n"
+        "void bar();\n"
+        "int main(int argc) {\n"
+        "    argc ? foo() : bar();\n"
+        "    return 0;\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 argc, *i32 %0",
+        "i32 %1 = load *i32 %0",
+        "bool %2 = eq i32 %1, i32 0",
+        "br bool %2, l0",
+        "call foo()",
+        "l0: nop",
+        "call bar()",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_conditional_expr_returning_int() {
+    const char *input =
+        "int main(int argc) {\n"
+        "    int a = 1;"
+        "    short b = 1;"
+        "    return argc ? a : b;\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 argc, *i32 %0",
+        "*i32 %1 = alloca i32",
+        "i32 %2 = i32 1",
+        "store i32 %2, *i32 %1",
+        "*i16 %3 = alloca i16",
+        "i16 %4 = trunc i32 1",
+        "store i16 %4, *i16 %3",
+        "i32 %5 = load *i32 %0",
+        "bool %6 = eq i32 %5, i32 0",
+        "br bool %6, l0",
+        "i32 %7 = load *i32 %1",
+        "i32 %9 = i32 %7",
+        "br l1",
+        "l0: nop",
+        "i16 %8 = load *i16 %3",
+        "i32 %10 = ext i16 %8",
+        "i32 %9 = i32 %10",
+        "l1: nop",
+        "ret i32 %9"
     }));
 }
 
@@ -158,7 +222,8 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "add simple", test_ir_gen_add_simple);
     CU_add_test(suite, "add i32 + f32", test_ir_gen_add_i32_f32);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
-    CU_add_test(suite, "call expr", test_ir_gen_call_expr_returns_void);
-
+    CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
+    CU_add_test(suite, "conditional expr (void)", test_ir_gen_conditional_expr_void);
+    CU_add_test(suite, "conditional expr", test_ir_gen_conditional_expr_returning_int);
     return CUE_SUCCESS;
 }

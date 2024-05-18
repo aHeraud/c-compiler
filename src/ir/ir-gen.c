@@ -115,7 +115,7 @@ char *temp_name(ir_gen_context_t *context);
 ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type);
 char *gen_label(ir_gen_context_t *context);
 
-ir_value_t ir_get_default_value(const ir_type_t *type);
+ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(const ir_value_t value);
 
@@ -201,6 +201,7 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
 expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
 expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
 expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
+expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     ir_gen_context_t context = {
@@ -263,7 +264,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
         .name = function->identifier->value,
     };
     context->c_function = function;
-    context->builder = IrCreateFunctionBuilder();
+    context->builder = ir_builder_create();
 
     const type_t function_c_type = {
         .kind = TYPE_FUNCTION,
@@ -353,10 +354,10 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
             .name = temp_name(context),
             .type = get_ir_ptr_type(ir_param_type),
         };
-        IrBuildAlloca(context->builder, ir_param_type, param_ptr);
+        ir_build_alloca(context->builder, ir_param_type, param_ptr);
 
         // Store the parameter in the stack slot
-        IrBuildStore(context->builder, ir_value_for_var(param_ptr), ir_value_for_var(ir_param));
+        ir_build_store(context->builder, ir_value_for_var(param_ptr), ir_value_for_var(ir_param));
 
         // Create a symbol for the parameter and add it to the symbol table
         symbol_t *symbol = malloc(sizeof(symbol_t));
@@ -373,17 +374,17 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
 
     ir_visit_statement(context, function->body);
 
-    // Add a fall-through return statement
+    // TODO: Add a fall-through return statement
     // TODO: this results in un-reachable code, could possibly be optimized out before codegen
-    if (function->return_type->kind != TYPE_VOID) {
-        IrBuildReturnValue(context->builder, ir_get_default_value(context->function->type->function.return_type));
-    } else {
-        IrBuildReturnVoid(context->builder);
-    }
+//    if (function->return_type->kind != TYPE_VOID) {
+//        ir_build_ret(context->builder, ir_get_zero_value(context, context->function->type->function.return_type));
+//    } else {
+//        ir_build_ret_void(context->builder);
+//    }
 
     leave_scope(context);
 
-    IrFinalizeFunctionBuilder(context->builder, context->function);
+    ir_builder_finalize(context->builder, context->function);
     hash_table_insert(&context->function_definition_map, function->identifier->value, context->function);
     ir_append_function_ptr(&context->module->functions, context->function);
 
@@ -503,24 +504,24 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
         .name = temp_name(context),
         .type = &IR_BOOL,
     };
-    IrBuildEq(context->builder, condition.value, zero, condition_var);
-    IrBuildBrCond(context->builder, ir_value_for_var(condition_var), false_label != NULL ? false_label : end_label);
+    ir_build_eq(context->builder, condition.value, zero, condition_var);
+    ir_build_br_cond(context->builder, ir_value_for_var(condition_var), false_label != NULL ? false_label : end_label);
 
     // Generate code for the true branch
     ir_visit_statement(context, statement->if_.true_branch);
 
     if (statement->if_.false_branch != NULL) {
         // Jump to the end of the if statement
-        IrBuildBr(context->builder, end_label);
+        ir_build_br(context->builder, end_label);
 
         // Label for the false branch
-        IrBuildNop(context->builder, false_label);
+        ir_build_nop(context->builder, false_label);
 
         // Generate code for the false branch
         ir_visit_statement(context, statement->if_.false_branch);
     }
 
-    IrBuildNop(context->builder, end_label);
+    ir_build_nop(context->builder, end_label);
 }
 
 void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *statement) {
@@ -551,14 +552,14 @@ void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *sta
             }
         }
 
-        IrBuildReturnValue(context->builder, value.value);
+        ir_build_ret(context->builder, value.value);
     } else {
         if (return_type->kind != TYPE_VOID) {
             append_compilation_error(&context->errors, (compilation_error_t) {
                 // TODO
             });
         }
-        IrBuildReturnVoid(context->builder);
+        ir_build_ret_void(context->builder);
     }
 }
 
@@ -717,7 +718,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
     declare_symbol(context, symbol);
 
     // Allocate storage space for the variable
-    IrBuildAlloca(context->builder, get_ir_type(declaration->type), symbol->ir_ptr);
+    ir_build_alloca(context->builder, get_ir_type(declaration->type), symbol->ir_ptr);
 
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
@@ -741,7 +742,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         }
 
         // Store the result in the allocated storage
-        IrBuildStore(context->builder, ir_value_for_var(symbol->ir_ptr), result.value);
+        ir_build_store(context->builder, ir_value_for_var(symbol->ir_ptr), result.value);
     }
 }
 
@@ -770,7 +771,7 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
             assert(false && "sizeof operator not implemented");
         }
         case EXPRESSION_TERNARY: {
-            assert(false && "Ternary operator not implemented");
+            return ir_visit_ternary_expression(context, expression);
         }
         case EXPRESSION_UNARY: {
             assert(false && "Unary operators not implemented");
@@ -855,7 +856,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         *result = temp_var(context, get_ir_type(function.c_type->function.return_type));
     }
     assert(function.value.kind == IR_VALUE_VAR); // TODO: is it possible to directly call a constant?
-    IrBuildCall(context->builder, function.value.var, args, actual_args_count, result);
+    ir_build_call(context->builder, function.value.var, args, actual_args_count, result);
 
     ir_value_t result_value = result != NULL ?
         ir_value_for_var(*result) : (ir_value_t) {
@@ -940,8 +941,8 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
         left = convert_to_type(context, left.value, left.c_type, result_type, NULL);
         right = convert_to_type(context, right.value, right.c_type, result_type, NULL);
 
-        is_addition ? IrBuildAdd(context->builder, left.value, right.value, result)
-                    : IrBuildSub(context->builder, left.value, right.value, result);
+        is_addition ? ir_build_add(context->builder, left.value, right.value, result)
+                    : ir_build_sub(context->builder, left.value, right.value, result);
         return (expression_result_t) {
             .c_type = result_type,
             .is_lvalue = false,
@@ -987,11 +988,11 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
             }
         };
         ir_var_t temp = temp_var(context, get_ir_type(c_ptr_int_type()));
-        IrBuildMul(context->builder, integer_operand.value, size_constant, temp);
+        ir_build_mul(context->builder, integer_operand.value, size_constant, temp);
         ir_value_t temp_val = (ir_value_t) { .kind = IR_VALUE_VAR, .var = temp };
         // Add/sub the operands
-        is_addition ? IrBuildAdd(context->builder, pointer_operand.value, temp_val, result)
-                    : IrBuildSub(context->builder, pointer_operand.value, temp_val, result);
+        is_addition ? ir_build_add(context->builder, pointer_operand.value, temp_val, result)
+                    : ir_build_sub(context->builder, pointer_operand.value, temp_val, result);
 
         return (expression_result_t) {
             .c_type = result_type,
@@ -1052,11 +1053,11 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
     ir_var_t result = temp_var(context, ir_result_type);
 
     if (is_modulo) {
-        IrBuildMod(context->builder, left.value, right.value, result);
+        ir_build_mod(context->builder, left.value, right.value, result);
     } else if (is_division) {
-        IrBuildDiv(context->builder, left.value, right.value, result);
+        ir_build_div(context->builder, left.value, right.value, result);
     } else {
-        IrBuildMul(context->builder, left.value, right.value, result);
+        ir_build_mul(context->builder, left.value, right.value, result);
     }
 
     return (expression_result_t) {
@@ -1099,16 +1100,16 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
     ir_var_t result = temp_var(context, result_type);
     if (is_shift) {
         if (expr->binary.operator->kind == TK_LSHIFT) {
-            IrBuildShl(context->builder, left.value, right.value, result);
+            ir_build_shl(context->builder, left.value, right.value, result);
         } else {
-            IrBuildShr(context->builder, left.value, right.value, result);
+            ir_build_shr(context->builder, left.value, right.value, result);
         }
     } else if (is_and) {
-        IrBuildAnd(context->builder, left.value, right.value, result);
+        ir_build_and(context->builder, left.value, right.value, result);
     } else if (is_or) {
-        IrBuildOr(context->builder, left.value, right.value, result);
+        ir_build_or(context->builder, left.value, right.value, result);
     } else {
-        IrBuildXor(context->builder, left.value, right.value, result);
+        ir_build_xor(context->builder, left.value, right.value, result);
     }
 
     return (expression_result_t) {
@@ -1151,8 +1152,8 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
         }
     }
 
-    IrBuildAssign(context->builder, right.value, result);
-    IrBuildStore(context->builder, left.value, ir_value_for_var(result));
+    ir_build_assign(context->builder, right.value, result);
+    ir_build_store(context->builder, left.value, ir_value_for_var(result));
 
     // assignments can be chained, e.g. `a = b = c;`
     return left;
@@ -1188,7 +1189,7 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
         binary_comparison_operator_t op = expr->binary.comparison_operator;
         switch (op) {
             case BINARY_COMPARISON_EQUAL:
-                IrBuildEq(context->builder, left.value, right.value, result);
+                ir_build_eq(context->builder, left.value, right.value, result);
                 break;
             default:
                 // TODO: implement the other comparison operators
@@ -1216,6 +1217,138 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
         });
         return EXPR_ERR;
     }
+}
+
+expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr) {
+    assert(context != NULL && "Context must not be NULL");
+    assert(expr != NULL && "Expression must not be NULL");
+    assert(expr->type == EXPRESSION_TERNARY);
+
+    expression_result_t condition = ir_visit_expression(context, expr->ternary.condition);
+    if (condition.c_type == NULL) {
+        return EXPR_ERR;
+    }
+
+    if (condition.is_lvalue) condition = get_rvalue(context, condition);
+
+    // The condition must have scalar type
+    if (!is_scalar_type(condition.c_type)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_TERNARY_CONDITION_TYPE,
+            .location = expr->ternary.condition->span.start,
+            .invalid_ternary_condition_type = {
+                .type = condition.c_type,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    const char* false_label = gen_label(context);
+    const char* merge_label = gen_label(context);
+
+    // Compare the condition to zero
+    ir_value_t zero = ir_get_zero_value(context, get_ir_type(condition.c_type));
+    ir_var_t bool_condition = temp_var(context, &IR_BOOL);
+    ir_build_eq(context->builder, condition.value, zero, bool_condition);
+
+    // Branch based on the condition, falls through to the true branch
+    ir_build_br_cond(context->builder, ir_value_for_var(bool_condition), false_label);
+
+    // True branch
+    expression_result_t true_result = ir_visit_expression(context, expr->ternary.true_expression);
+    if (true_result.c_type == NULL) {
+        return EXPR_ERR;
+    }
+    if (true_result.is_lvalue) true_result = get_rvalue(context, true_result);
+    ir_instruction_node_t *true_branch_end = ir_builder_get_position(context->builder);
+
+    // False branch
+    ir_build_nop(context->builder, false_label);
+    expression_result_t false_result = ir_visit_expression(context, expr->ternary.false_expression);
+    if (false_result.c_type == NULL) {
+        return EXPR_ERR;
+    }
+    if (false_result.is_lvalue) false_result = get_rvalue(context, false_result);
+    ir_instruction_node_t *false_branch_end = ir_builder_get_position(context->builder);
+
+    // One of the following must be true of the true and false operands:
+    // 1. both have arithmetic type
+    // 2. both have the same structure or union type (TODO)
+    // 3. both operands have void type
+    // 4. both operands are pointers to compatible types
+    // 5. one operand is a pointer and the other is a null pointer constant
+    // 6. one operand is a pointer to void, and the other is a pointer
+
+    // This is a bit awkward, because we don't know the expected result type until after
+    // generating code for the true and false branches.
+    // After we know the result type, we have to generate conversion code (if necessarry), then add an
+    // assignment to the result variable in both branches (the IR is not in SSA form, so no phi node/block arguments).
+
+    const type_t *result_type;
+    const ir_type_t *ir_result_type;
+
+    if (is_arithmetic_type(true_result.c_type) && is_arithmetic_type(false_result.c_type)) {
+        result_type = get_common_type(true_result.c_type, false_result.c_type);
+        ir_result_type = get_ir_type(result_type);
+    } else if (true_result.c_type->kind == TYPE_VOID && false_result.c_type->kind == TYPE_VOID) {
+        return (expression_result_t) {
+            .c_type = &VOID,
+            .is_lvalue = false,
+            .is_string_literal = false,
+            .value = (ir_value_t) {
+                .kind = IR_VALUE_CONST,
+                .constant = (ir_const_t) {
+                    .kind = IR_CONST_INT,
+                    .type = &IR_VOID,
+                    .i = 0,
+                },
+            }
+        };
+    } else if (is_pointer_type(true_result.c_type) && is_pointer_type(false_result.c_type)) {
+        // TODO: pointer compatibility checks
+        // For now, we will just use the type of the first non void* pointer branch
+        result_type = true_result.c_type->pointer.base->kind == TYPE_VOID ? false_result.c_type : true_result.c_type;
+        ir_result_type = get_ir_type(result_type);
+    } else {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_TERNARY_EXPRESSION_OPERANDS,
+            .location = expr->ternary.condition->span.start, // TODO: use the '?' token position
+            .invalid_ternary_expression_operands = {
+                .true_type = true_result.c_type,
+                .false_type = false_result.c_type,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    ir_var_t result = temp_var(context, ir_result_type);
+    ir_builder_position_after(context->builder, true_branch_end);
+    if (!types_equal(true_result.c_type, result_type)) {
+        true_result = convert_to_type(context, true_result.value, true_result.c_type, result_type, NULL);
+        ir_build_assign(context->builder, true_result.value, result);
+    } else {
+        ir_build_assign(context->builder, true_result.value, result);
+    }
+    ir_build_br(context->builder, merge_label);
+
+    ir_builder_position_after(context->builder, false_branch_end);
+    if (!types_equal(false_result.c_type, result_type)) {
+        false_result = convert_to_type(context, false_result.value, false_result.c_type, result_type, NULL);
+        ir_build_assign(context->builder, false_result.value, result);
+    } else {
+        ir_build_assign(context->builder, false_result.value, result);
+    }
+
+
+    // Merge block
+    ir_build_nop(context->builder, merge_label);
+
+    return (expression_result_t) {
+        .c_type = result_type,
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .value = ir_value_for_var(result),
+    };
 }
 
 expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr) {
@@ -1518,7 +1651,7 @@ const ir_type_t *get_ir_ptr_type(const ir_type_t *pointee) {
     return ir_type;
 }
 
-ir_value_t ir_get_default_value(const ir_type_t *type) {
+ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
     if (ir_is_integer_type(type)) {
         return (ir_value_t) {
             .kind = IR_VALUE_CONST,
@@ -1538,16 +1671,12 @@ ir_value_t ir_get_default_value(const ir_type_t *type) {
             }
         };
     } else if (type->kind == IR_TYPE_PTR) {
-        return (ir_value_t) {
-            .kind = IR_VALUE_CONST,
-            .constant = (ir_const_t) {
-                .kind = IR_CONST_INT,
-                .type = type,
-                .i = 0,
-            }
-        };
+        ir_value_t zero = ir_get_zero_value(context, get_ir_type(c_ptr_int_type()));
+        ir_var_t result = temp_var(context, type);
+        ir_build_ptoi(context->builder, zero, result);
+        return ir_value_for_var(result);
     } else {
-        // TODO: struct, arrays, etc.
+        // TODO: struct, arrays, enums, etc...
         fprintf(stderr, "Unimplemented default value for type %s\n", ir_fmt_type(alloca(256), 256, type));
         exit(1);
     }
@@ -1581,7 +1710,7 @@ expression_result_t convert_to_type(
 
     if (ir_types_equal(source_type, result_type)) {
         // No conversion necessary
-        IrBuildAssign(context->builder, value, *result);
+        ir_build_assign(context->builder, value, *result);
         return (expression_result_t) {
             .c_type = to_type,
             .is_lvalue = false,
@@ -1594,20 +1723,20 @@ expression_result_t convert_to_type(
             // int -> int conversion
             if (size_of_type(source_type) > size_of_type(result_type)) {
                 // Truncate
-                IrBuildTrunc(context->builder, value, *result);
+                ir_build_trunc(context->builder, value, *result);
             } else if (size_of_type(source_type) < size_of_type(result_type)) {
                 // Extend
-                IrBuildExt(context->builder, value, *result);
+                ir_build_ext(context->builder, value, *result);
             } else {
                 // No conversion necessary
-                IrBuildAssign(context->builder, value, *result);
+                ir_build_assign(context->builder, value, *result);
             }
         } else if (ir_is_float_type(source_type)) {
             // float -> int
-            IrBuildFtoI(context->builder, value, *result);
+            ir_build_ftoi(context->builder, value, *result);
         } else if (source_type->kind == IR_TYPE_PTR) {
             // ptr -> int
-            IrBuildPtoI(context->builder, value, *result);
+            ir_build_ptoi(context->builder, value, *result);
         } else {
             // TODO, other conversions, proper error handling
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
@@ -1620,17 +1749,17 @@ expression_result_t convert_to_type(
             // float -> float conversion
             if (size_of_type(source_type) > size_of_type(result_type)) {
                 // Truncate
-                IrBuildTrunc(context->builder, value, *result);
+                ir_build_trunc(context->builder, value, *result);
             } else if (size_of_type(source_type) < size_of_type(result_type)) {
                 // Extend
-                IrBuildExt(context->builder, value, *result);
+                ir_build_ext(context->builder, value, *result);
             } else {
                 // No conversion necessary
-                IrBuildAssign(context->builder, value, *result);
+                ir_build_assign(context->builder, value, *result);
             }
         } else if (ir_is_integer_type(source_type)) {
             // int -> float
-            IrBuildItoF(context->builder, value, *result);
+            ir_build_itof(context->builder, value, *result);
         } else {
             // TODO: proper error handling
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
@@ -1641,16 +1770,16 @@ expression_result_t convert_to_type(
     } else if (result_type->kind == IR_TYPE_PTR) {
         if (source_type->kind == IR_TYPE_PTR) {
             // ptr -> ptr conversion
-            IrBuildBitCast(context->builder, value, *result);
+            ir_build_bitcast(context->builder, value, *result);
         } else if (ir_is_integer_type(source_type)) {
             // int -> ptr
             // If the source is smaller than the target, we need to extend it
             if (size_of_type(source_type) < size_of_type(get_ir_type(c_ptr_int_type()))) {
                 ir_var_t temp = temp_var(context, get_ir_type(c_ptr_int_type()));
-                IrBuildExt(context->builder, value, temp);
+                ir_build_ext(context->builder, value, temp);
                 value = ir_value_for_var(temp);
             }
-            IrBuildItoP(context->builder, value, *result);
+            ir_build_itop(context->builder, value, *result);
         } else if (source_type->kind == IR_TYPE_ARRAY) {
             // TODO
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
@@ -1688,7 +1817,7 @@ expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t re
             .name = res.value.var.name,
             .type = res.value.var.type,
     };
-    IrBuildLoad(context->builder, ir_value_for_var(ptr), temp);
+    ir_build_load(context->builder, ir_value_for_var(ptr), temp);
     return (expression_result_t) {
         .c_type = res.c_type,
         .is_lvalue = false,

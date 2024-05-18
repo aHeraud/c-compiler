@@ -19,6 +19,8 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_INITIALIZER_TYPE,
     ERR_GLOBAL_INITIALIZER_NOT_CONSTANT,
     ERR_INVALID_IF_CONDITION_TYPE,
+    ERR_INVALID_TERNARY_CONDITION_TYPE,
+    ERR_INVALID_TERNARY_EXPRESSION_OPERANDS,
     ERR_CALL_TARGET_NOT_FUNCTION,
     ERR_CALL_ARGUMENT_COUNT_MISMATCH,
 } compilation_error_kind_t;
@@ -59,6 +61,13 @@ typedef struct CompilationError {
             size_t expected;
             size_t actual;
         } call_argument_count_mismatch;
+        struct {
+            const type_t *type;
+        } invalid_ternary_condition_type;
+        struct {
+            const type_t *true_type;
+            const type_t *false_type;
+        } invalid_ternary_expression_operands;
     };
 } compilation_error_t;
 
