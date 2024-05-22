@@ -19,19 +19,30 @@ VEC_DEFINE(PtrVector, ptr_vector_t, void*)
 // Append a single element to a vector, growing the vector if necessary.
 #define VEC_APPEND(vec, elem) \
 do { \
-    if (vec->size + 1 >= vec->capacity) { \
-        vec->capacity > 0 ? (vec->capacity *= 2) : (vec->capacity = 1); \
-        vec->buffer = realloc(vec->buffer, vec->capacity * sizeof(elem)); \
-        assert(vec->buffer != NULL); \
+    if ((vec)->size + 1 >= (vec)->capacity) { \
+        (vec)->capacity > 0 ? ((vec)->capacity *= 2) : ((vec)->capacity = 1); \
+        (vec)->buffer = realloc((vec)->buffer, (vec)->capacity * sizeof(elem)); \
+        assert((vec)->buffer != NULL); \
     } \
-    (vec->buffer)[vec->size++] = elem; \
+    ((vec)->buffer)[(vec)->size++] = elem; \
 } while (0)
+
+#define VEC_FIND(vec, elem) \
+({ \
+    size_t i = -1; \
+    for (; i < (vec)->size; i++) { \
+        if ((vec)->buffer[i] == (elem)) { \
+            break; \
+        } \
+    } \
+    i; \
+})
 
 #define VEC_SHRINK(vec, type) \
 do { \
     (vec)->buffer = realloc((vec)->buffer, (vec)->size * sizeof(type)); \
     (vec)->capacity = (vec)->size; \
-    assert((vec->buffer) != NULL); \
+    assert(((vec)->buffer) != NULL); \
 } while (0)
 
 /**

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "ir/cfg.h"
 
-void bb_append_instr(ir_basic_block_t *bb, ir_instruction_t *instr) {
+void bb_append_instr(ir_basic_block_t *bb, const ir_instruction_t *instr) {
     ir_instruction_ptr_vector_t *instructions = &bb->instructions;
     VEC_APPEND(instructions, instr);
 }
@@ -71,11 +71,13 @@ const char* jump_target(const ir_instruction_t *instr) {
     }
 }
 
-ir_basic_block_t create_basic_block() {
-    static int id = 0;
+ir_basic_block_t create_basic_block(int *id_counter) {
+    int id = *id_counter;
+    *id_counter += 1;
     ir_basic_block_t bb = {
-        .id = id++,
+        .id = id,
         .label = NULL,
+        .is_entry = false,
         .fall_through = NULL,
         .predecessors = (ir_basic_block_ptr_vector_t) { .buffer = NULL, .size = 0, .capacity = 0 },
         .successors = (ir_basic_block_ptr_vector_t) { .buffer = NULL, .size = 0, .capacity = 0 },
@@ -85,6 +87,9 @@ ir_basic_block_t create_basic_block() {
 }
 
 ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definition_t *function) {
+    // IDs are only unique within a function
+    int id_counter = 0;
+
     ir_control_flow_graph_t cfg = (ir_control_flow_graph_t) {
         .function = function,
         .entry = NULL,
@@ -96,7 +101,8 @@ ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definitio
 
     // Create the basic block for the function entry point
     ir_basic_block_t *entry = malloc(sizeof(ir_basic_block_t));
-    *entry = create_basic_block();
+    *entry = create_basic_block(&id_counter);
+    entry->is_entry = true;
 
     // Add the entry block to the CFG
     cfg.entry = entry;
@@ -104,8 +110,8 @@ ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definitio
 
     // Iterate over the instructions, creating basic blocks as necessary
     ir_basic_block_t *current_block = entry;
-    for (size_t i = 0; i < function->num_instructions; i += 1) {
-        ir_instruction_t *instr = &function->instructions[i];
+    for (size_t i = 0; i < function->body.size; i += 1) {
+        const ir_instruction_t *instr = &function->body.buffer[i];
 
         if (instr->label != NULL) {
             hash_table_insert(&label_to_block, instr->label, current_block);
@@ -116,11 +122,11 @@ ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definitio
         bb_append_instr(current_block, instr);
 
         bool split_block = split_block_after(instr) ||
-            (i + 1 < function->num_instructions && split_block_before(&function->instructions[i + 1]));
+            (i + 1 < function->body.size && split_block_before(&function->body.buffer[i + 1]));
 
         if (split_block) {
             ir_basic_block_t *new_block = malloc(sizeof(ir_basic_block_t));
-            *new_block = create_basic_block();
+            *new_block = create_basic_block(&id_counter);
             cfg_append_basic_block(&cfg, new_block);
             if (fall_through(instr)) {
                 bb_append_predecessor(new_block, current_block);
@@ -175,6 +181,114 @@ ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definitio
     return cfg;
 }
 
+ir_instruction_vector_t ir_linearize_cfg(const ir_control_flow_graph_t *cfg) {
+    ir_instruction_vector_t instructions = { .buffer = NULL, .size = 0, .capacity = 0 };
+
+    hash_table_t visited_table = hash_table_create_pointer_keys(64);
+    ir_basic_block_ptr_vector_t stack = { .buffer = NULL, .size = 0, .capacity = 0 };
+
+    VEC_APPEND(&stack, cfg->entry);
+    while (stack.size > 0) {
+        // Peek the top block from the stack
+        ir_basic_block_t *block = stack.buffer[stack.size - 1];
+
+        if (hash_table_lookup(&visited_table, block, NULL)) {
+            // We have already visited this block
+            stack.size -= 1;
+            continue;
+        }
+
+        // If this block is the fall-through of another block, and we haven't visited the predecessor yet,
+        // push the predecessor onto the stack, so we can visit it first.
+        bool should_skip = false;
+        for (size_t i = 0; i < block->predecessors.size; i += 1) {
+            ir_basic_block_t *pred = block->predecessors.buffer[i];
+            if (pred->fall_through == block && !hash_table_lookup(&visited_table, pred, NULL)) {
+                VEC_APPEND(&stack, pred);
+                should_skip = true;
+            }
+        }
+        if (should_skip) continue;
+
+        // Pop the block from the stack
+        stack.size -= 1;
+
+        // Append the instructions from the block to the linearized list
+        for (size_t i = 0; i < block->instructions.size; i += 1) {
+            VEC_APPEND(&instructions, *block->instructions.buffer[i]);
+        }
+
+        // Mark the block as visited
+        hash_table_insert(&visited_table, block, NULL);
+
+        // Push the successors onto the stack. If this block falls through to another block, we must visit
+        // the fall-through block first, so we will push it last.
+        for (size_t i = 0; i < block->successors.size; i += 1) {
+            ir_basic_block_t *succ = block->successors.buffer[i];
+            if (block->fall_through == succ) {
+                continue;
+            }
+
+            if (!hash_table_lookup(&visited_table, succ, NULL)) {
+                VEC_APPEND(&stack, succ);
+            }
+        }
+        if (block->fall_through != NULL) {
+            // We should not have visited the fall-through block yet
+            assert(!hash_table_lookup(&visited_table, block->fall_through, NULL));
+            VEC_APPEND(&stack, block->fall_through);
+        }
+    }
+
+    hash_table_destroy(&visited_table);
+    VEC_SHRINK(&instructions, ir_instruction_t);
+    if (stack.buffer != NULL) {
+        free(stack.buffer);
+    }
+    return instructions;
+}
+
+void ir_prune_control_flow_graph(ir_control_flow_graph_t *cfg) {
+    // Fixed point algorithm to remove unreachable blocks.
+    // Could be optimized with a work list to keep track of modified blocks but this is the easiest way to do it.
+    ir_basic_block_t *block;
+    bool modified = false;
+    do {
+        modified = false;
+        for (size_t i = cfg->basic_blocks.size - 1; i > 0; i -= 1) {
+            block = cfg->basic_blocks.buffer[i];
+            if (block->predecessors.size == 0 && !block->is_entry) {
+                modified = true;
+
+                // If the block has a label, remove it from the label map
+                if (block->label != NULL) {
+                    hash_table_remove(&cfg->label_to_block_map, block->label, NULL);
+                }
+
+                // Swap the last element into the current position, then decrement the size to remove the last element
+                cfg->basic_blocks.buffer[i] = cfg->basic_blocks.buffer[cfg->basic_blocks.size - 1];
+                cfg->basic_blocks.size -= 1;
+
+                // Remove references to this block from its successors
+                for (size_t j = 0; j < block->successors.size; j += 1) {
+                    ir_basic_block_t *successor = block->successors.buffer[j];
+                    for (size_t k = 0; k < successor->predecessors.size; k += 1) {
+                        if (successor->predecessors.buffer[k] == block) {
+                            // Swap the last element into the current position, then decrement the size
+                            successor->predecessors.buffer[k] = successor->predecessors.buffer[
+                                successor->predecessors.size - 1];
+                            successor->predecessors.size -= 1;
+                            break;
+                        }
+                    }
+                }
+
+                // Free the block
+                free(block);
+            }
+        }
+    } while (modified);
+}
 
 void ir_print_control_flow_graph(FILE *file, const ir_control_flow_graph_t *function_list, size_t length) {
     fprintf(file, "digraph G {\n");

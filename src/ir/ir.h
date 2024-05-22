@@ -341,21 +341,20 @@ typedef struct IrInstruction {
     };
 } ir_instruction_t;
 
+typedef struct IrInstructionVector {
+    ir_instruction_t *buffer;
+    size_t size;
+    size_t capacity;
+} ir_instruction_vector_t;
+
 typedef struct IrFunctionDefinition {
     const char* name;
     const ir_type_t *type;
     ir_var_t *params;
     size_t num_params;
     bool is_variadic;
-    ir_instruction_t *instructions;
-    size_t num_instructions;
+    ir_instruction_vector_t body;
 } ir_function_definition_t;
-
-typedef struct IrInstructionVector {
-    ir_instruction_t *buffer;
-    size_t size;
-    size_t capacity;
-} ir_instruction_vector_t;
 
 typedef struct IrInstructionPtrVector {
     ir_instruction_t **buffer;

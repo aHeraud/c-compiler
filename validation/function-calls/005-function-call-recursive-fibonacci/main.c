@@ -1,7 +1,11 @@
 int fib(int n);
 
 int fib(int n) {
-    return n < 2 ? n : fib(n - 1) + fib(n - 2);
+    if (n  < 2) {
+        return n;
+    } else {
+        return fib(n - 1) + fib(n - 2);
+    }
 }
 
 int main() {

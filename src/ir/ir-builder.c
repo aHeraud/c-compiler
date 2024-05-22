@@ -31,20 +31,22 @@ ir_function_builder_t *ir_builder_create() {
     return builder;
 }
 
-void ir_builder_finalize(ir_function_builder_t *builder, ir_function_definition_t *function) {
-    ir_instruction_t *buffer = malloc(builder->length * sizeof(ir_instruction_t));
+ir_instruction_vector_t ir_builder_finalize(ir_function_builder_t *builder) {
+    ir_instruction_vector_t instructions = {
+        .buffer = malloc(builder->length * sizeof(ir_instruction_t)),
+        .size = 0,
+        .capacity = builder->length,
+    };
+
     ir_instruction_node_t *node = builder->head;
-    for (size_t i = 0; i < builder->length; i += 1) {
-        assert(node != NULL);
-        buffer[i] = node->instruction;
+    while (node != NULL) {
+        append_ir_instruction(&instructions, node->instruction);
         ir_instruction_node_t *next = node->next;
         free(node);
         node = next;
     }
-    assert(node == NULL);
 
-    function->instructions = buffer;
-    function->num_instructions = builder->length;
+    return instructions;
 }
 
 void ir_builder_position_at_beginning(ir_function_builder_t *builder) {
@@ -255,6 +257,66 @@ ir_instruction_node_t *ir_build_not(ir_function_builder_t *builder, ir_value_t v
 ir_instruction_node_t *ir_build_eq(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_EQ,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
+ir_instruction_node_t *ir_build_ne(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_NE,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
+ir_instruction_node_t *ir_build_lt(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_LT,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
+ir_instruction_node_t *ir_build_le(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_LE,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
+ir_instruction_node_t *ir_build_gt(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_GT,
+        .binary_op = {
+            .left = left,
+            .right = right,
+            .result = result,
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
+ir_instruction_node_t *ir_build_ge(ir_function_builder_t *builder, ir_value_t left, ir_value_t right, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_GE,
         .binary_op = {
             .left = left,
             .right = right,

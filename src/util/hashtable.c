@@ -17,9 +17,22 @@ bool hashtable_string_equals(const char* a, const char* b) {
     return strcmp(a, b) == 0;
 }
 
+size_t hashtable_ptr_hash_key(const void* key) {
+    return (size_t) key;
+}
+
+bool hashtable_ptr_equals(const void* a, const void* b) {
+    return a == b;
+}
+
 hash_table_t hash_table_create_string_keys(size_t num_buckets) {
     return hash_table_create(num_buckets, (hashtable_hash_fn_t) hashtable_string_hash_key,
                              (hashtable_equals_fn_t) hashtable_string_equals);
+}
+
+hash_table_t hash_table_create_pointer_keys(size_t num_buckets) {
+    return hash_table_create(num_buckets, (hashtable_hash_fn_t) hashtable_ptr_hash_key,
+                             (hashtable_equals_fn_t) hashtable_ptr_equals);
 }
 
 hash_table_t hash_table_create(size_t num_buckets, hashtable_hash_fn_t hash_fn, hashtable_equals_fn_t equals_fn) {

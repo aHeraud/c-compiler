@@ -7,6 +7,7 @@
 #include "ir/ir-gen.h"
 #include "ir/ir.h"
 #include "ir/ir-builder.h"
+#include "ir/cfg.h"
 #include "numeric-constants.h"
 #include "errors.h"
 #include "util/strings.h"
@@ -374,35 +375,71 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
 
     ir_visit_statement(context, function->body);
 
-    // TODO: Add a fall-through return statement
-    // TODO: this results in un-reachable code, could possibly be optimized out before codegen
-//    if (function->return_type->kind != TYPE_VOID) {
-//        ir_build_ret(context->builder, ir_get_zero_value(context, context->function->type->function.return_type));
-//    } else {
-//        ir_build_ret_void(context->builder);
-//    }
-
     leave_scope(context);
 
-    ir_builder_finalize(context->builder, context->function);
+    context->function->body = ir_builder_finalize(context->builder);
+
     hash_table_insert(&context->function_definition_map, function->identifier->value, context->function);
     ir_append_function_ptr(&context->module->functions, context->function);
 
-    if (context->errors.size == 0) {
-        // There were no semantic errors, so the generated IR should be valid.
-        // Validate the IR to catch any bugs in the compiler.
-        ir_validation_error_vector_t errors = ir_validate_function(context->function);
-        if (errors.size > 0) {
-            // We will just print the first error and exit for now.
-            const char* error_message = errors.buffer[0].message;
-            const char *instruction = ir_fmt_instr(alloca(512), 512, errors.buffer[0].instruction);
-            const char *function_type_str = ir_fmt_type(alloca(512), 512, context->function->type);
-            fprintf(stderr, "IR validation error in function %s %s\n", function->identifier->value, function_type_str);
-            fprintf(stderr, "At instruction: %s\n", instruction);
-            fprintf(stderr, "%s\n", error_message);
-            exit(1);
+    if (context->errors.size > 0) {
+        // There were errors processing the function, skip IR validation.
+        return;
+    }
+
+    // There were no semantic errors, so the generated IR should be valid.
+    // Validate the IR to catch any bugs in the compiler.
+    ir_validation_error_vector_t errors = ir_validate_function(context->function);
+    if (errors.size > 0) {
+        // We will just print the first error and exit for now.
+        const char* error_message = errors.buffer[0].message;
+        const char *instruction = ir_fmt_instr(alloca(512), 512, errors.buffer[0].instruction);
+        const char *function_type_str = ir_fmt_type(alloca(512), 512, context->function->type);
+        fprintf(stderr, "IR validation error in function %s %s\n", function->identifier->value, function_type_str);
+        fprintf(stderr, "At instruction: %s\n", instruction);
+        fprintf(stderr, "%s\n", error_message);
+        exit(1);
+    }
+
+    // Create the control flow graph for the function, and prune unreachable blocks
+    ir_control_flow_graph_t cfg = ir_create_control_flow_graph(context->function);
+    ir_prune_control_flow_graph(&cfg);
+
+    // Handle implicit return statements
+    // The c99 standard specifies the following:
+    // * 6.9.1 Function definitions - "If the } that terminates a function is reached, and the value of the function
+    //                                 call is used by the caller, the behavior is undefined"
+    // * 5.1.2.2.3 Program termination - "If the return type of the main function is a type compatible with int, ...
+    //                                    reaching the } that terminates the main function returns a value of 0. If the
+    //                                    return type is not compatible with int, the termination status returned to the
+    //                                    host environment is unspecified."
+    // To handle this: for any basic block that does not have a successor and which does not end in a return, we will
+    // add a `return 0` instruction.
+    // TODO: return undefined value for non-int main and non-main functions?
+    for (size_t i = 0; i < cfg.basic_blocks.size; i += 1) {
+        ir_basic_block_t *bb = cfg.basic_blocks.buffer[i];
+
+        if (bb->successors.size > 0) continue;
+
+        if (bb->instructions.size == 0 || bb->instructions.buffer[bb->instructions.size - 1]->opcode != IR_RET) {
+            ir_instruction_t *ret = malloc(sizeof(ir_instruction_t));
+            *ret = (ir_instruction_t) {
+                .opcode = IR_RET,
+                .ret = {
+                    .has_value = true,
+                    .value = ir_get_zero_value(context, context->function->type->function.return_type),
+                },
+            };
+            ir_instruction_ptr_vector_t *instructions = &bb->instructions;
+            VEC_APPEND(instructions, ret);
         }
     }
+
+    // Linearize the control flow graph
+    // TODO: it's a bit awkward to operate on the cfg then return to the linearized result,
+    //       may want to just store the cfg instead.
+    ir_instruction_vector_t linearized = ir_linearize_cfg(&cfg);
+    context->function->body = linearized;
 }
 
 void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement) {
@@ -1191,9 +1228,25 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
             case BINARY_COMPARISON_EQUAL:
                 ir_build_eq(context->builder, left.value, right.value, result);
                 break;
+            case BINARY_COMPARISON_NOT_EQUAL:
+                ir_build_ne(context->builder, left.value, right.value, result);
+                break;
+            case BINARY_COMPARISON_LESS_THAN:
+                ir_build_lt(context->builder, left.value, right.value, result);
+                break;
+            case BINARY_COMPARISON_LESS_THAN_OR_EQUAL:
+                ir_build_le(context->builder, left.value, right.value, result);
+                break;
+            case BINARY_COMPARISON_GREATER_THAN:
+                ir_build_gt(context->builder, left.value, right.value, result);
+                break;
+            case BINARY_COMPARISON_GREATER_THAN_OR_EQUAL:
+                ir_build_ge(context->builder, left.value, right.value, result);
+                break;
             default:
-                // TODO: implement the other comparison operators
-                assert(false && "Comparison operator not implemented");
+                // Invalid comparison operator
+                // Should be unreachable
+                assert(false && "Invalid comparison operator");
         }
 
         return (expression_result_t) {

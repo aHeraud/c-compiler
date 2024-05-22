@@ -21,6 +21,7 @@ typedef struct IrBasicBlock {
     int id;
     // Label of the first instruction in the block, if any
     const char* label;
+    bool is_entry;
     ir_basic_block_t *fall_through;
     ir_basic_block_ptr_vector_t predecessors;
     ir_basic_block_ptr_vector_t successors;
@@ -36,10 +37,22 @@ typedef struct IrControlFlowGraph {
 
 /**
  * Converts linear IR code into a control flow graph.
- * @param function
+ * @param function Function definition
  * @return control flow graph for the supplied function
  */
 ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definition_t *function);
+
+/**
+ * Converts a control flow graph into linear IR code.
+ * @param cfg
+ */
+ir_instruction_vector_t ir_linearize_cfg(const ir_control_flow_graph_t *cfg);
+
+/**
+ * Removes basic blocks that are unreachable from the entry block.
+ * @param cfg
+ */
+void ir_prune_control_flow_graph(ir_control_flow_graph_t *cfg);
 
 /**
  * Prints the control flow graph to a file/stream. The output is in the DOT format.

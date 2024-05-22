@@ -36,6 +36,13 @@ typedef struct HashTable {
 hash_table_t hash_table_create_string_keys(size_t num_buckets);
 
 /**
+ * Create a hash table whose keys are pointers.
+ * @param num_buckets number of buckets in the hash table
+ * @return An empty hash table
+ */
+hash_table_t hash_table_create_pointer_keys(size_t num_buckets);
+
+/**
  * Create a hash table with the specified number of buckets, hash function, and equals function.
  * @param num_buckets number of buckets in the hash table
  * @param hash_fn     key hash function

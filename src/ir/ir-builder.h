@@ -7,7 +7,7 @@ typedef struct IrInstructionNode ir_instruction_node_t;
 typedef struct IrFunctionBuilder ir_function_builder_t;
 
 ir_function_builder_t *ir_builder_create();
-void ir_builder_finalize(ir_function_builder_t *builder, ir_function_definition_t *function);
+ir_instruction_vector_t ir_builder_finalize(ir_function_builder_t *builder);
 
 
 /* Utilities to set the position of the next instruction */

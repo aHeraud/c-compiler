@@ -12,18 +12,18 @@
     translation_unit_t program;                                                  \
     CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
 
-#define ASSERT_IR_INSTRUCTIONS_EQ(function, body) \
+#define ASSERT_IR_INSTRUCTIONS_EQ(function, _body) \
 do { \
-    bool size_equals = function->num_instructions == sizeof(body)/sizeof(body[0]); \
+    bool size_equals = function->body.size == sizeof(_body)/sizeof(_body[0]);   \
     bool body_equals = true;                                                    \
     if (size_equals) {                                                          \
-        for (int i = 0; i < function->num_instructions; i += 1) {               \
+        for (int i = 0; i < function->body.size; i += 1) {                      \
             const char *instruction =                                           \
-                ir_fmt_instr(alloca(512), 512, &function->instructions[i]);     \
-            if (strcmp(body[i], instruction) != 0) {                            \
+                ir_fmt_instr(alloca(512), 512, &function->body.buffer[i]);      \
+            if (strcmp(_body[i], instruction) != 0) {                           \
                 body_equals = false;                                            \
                 fprintf(stderr, "Expected (at index %u): %s, Actual: %s\n",     \
-                    i, body[i], instruction);                                   \
+                    i, _body[i], instruction);                                  \
                 break;                                                          \
             }                                                                   \
         }                                                                       \
@@ -31,14 +31,14 @@ do { \
     if (!body_equals || !size_equals) {                                         \
         fprintf(stderr, "Expected and actual function body not equal:\n");      \
         fprintf(stderr, "\nExpected:\n");                                       \
-        for (int i = 0; i < (sizeof(body)/sizeof(body[0])); i += 1) {           \
-            fprintf(stderr, "%s\n", body[i]);                                   \
+        for (int i = 0; i < (sizeof(_body)/sizeof(_body[0])); i += 1) {         \
+            fprintf(stderr, "%s\n", _body[i]);                                  \
         }                                                                       \
         fprintf(stderr, "\nActual:\n");                                         \
-        for (int i = 0; i < function->num_instructions; i += 1) {               \
+        for (int i = 0; i < function->body.size; i += 1) {                      \
             char instr[512];                                                    \
             fprintf(stderr, "%s\n",                                             \
-                ir_fmt_instr(instr, 512, &function->instructions[i]));          \
+                ir_fmt_instr(instr, 512, &function->body.buffer[i]));           \
         }                                                                       \
         CU_FAIL()                                                               \
     }                                                                           \

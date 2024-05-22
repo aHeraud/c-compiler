@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "ir/ir.h"
+#include "cfg.h"
 
 void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t instruction) {
     if (vector->size == vector->capacity) {
@@ -330,9 +331,9 @@ void ir_print_module(FILE *file, const ir_module_t *module) {
         fprintf(file, "function %s %s", function->name, FMT_TYPE(function->type));
         fprintf(file, " {\n");
         char buffer[512];
-        for (size_t j = 0; j < function->num_instructions; j++) {
-            ir_instruction_t instr = function->instructions[j];
-            fprintf(file, "    %s\n", ir_fmt_instr(buffer, sizeof(buffer), &instr));
+        for (size_t j = 0; j < function->body.size; j++) {
+            ir_instruction_t *instr = &function->body.buffer[j];
+            fprintf(file, "    %s\n", ir_fmt_instr(buffer, sizeof(buffer), instr));
         }
         fprintf(file, "}\n");
     }
@@ -727,6 +728,12 @@ void ir_validate_visit_instruction(
         case IR_BITCAST:
             // TODO: validate bitcast instruction
             break;
+        default:
+            append_ir_validation_error(errors, (ir_validation_error_t) {
+                .instruction = instruction,
+                .message = "Invalid opcode value"
+            });
+            break;
     }
 }
 
@@ -739,8 +746,8 @@ ir_validation_error_vector_t ir_validate_function(const ir_function_definition_t
     // - Record all labels, and check for duplicates
     // - Verify that no variable is re-defined with a different type
     // - Validate that each instruction is well-formed
-    for (size_t i = 0; i < function->num_instructions; i++) {
-        const ir_instruction_t *instr = &function->instructions[i];
+    for (size_t i = 0; i < function->body.size; i++) {
+        const ir_instruction_t *instr = &function->body.buffer[i];
         if (instr->label != NULL) {
             if (hash_table_lookup(&labels, instr->label, NULL)) {
                 append_ir_validation_error(&errors, (ir_validation_error_t) {
@@ -754,8 +761,8 @@ ir_validation_error_vector_t ir_validate_function(const ir_function_definition_t
     }
 
     // Second pass: Check that all branch targets are valid
-    for (size_t i = 0; i < function->num_instructions; i += 1) {
-        const ir_instruction_t *instr = &function->instructions[i];
+    for (size_t i = 0; i < function->body.size; i += 1) {
+        const ir_instruction_t *instr = &function->body.buffer[i];
         const char *label = NULL;
         switch (instr->opcode) {
             case IR_BR:

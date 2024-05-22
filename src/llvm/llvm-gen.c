@@ -22,7 +22,7 @@ typedef struct LLVMGenContext {
     // Mapping of IR basic block IDs to LLVM basic blocks
     hash_table_t block_map;
 
-    ir_control_flow_graph_t ir_cfg;
+    ir_control_flow_graph_t *ir_cfg;
 } llvm_gen_context_t;
 
 LLVMTypeRef ir_to_llvm_type(const ir_type_t *type);
@@ -112,13 +112,19 @@ void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_defi
     }
 
     // Get the control flow graph for the IR function
-    context->ir_cfg = ir_create_control_flow_graph(function);
+    ir_control_flow_graph_t cfg = ir_create_control_flow_graph(function);
+    context->ir_cfg = &cfg;
 
     // Visit each basic block in the CFG
-    for (int i = 0; i < context->ir_cfg.basic_blocks.size; i += 1) {
-        ir_basic_block_t *block = context->ir_cfg.basic_blocks.buffer[i];
+    for (int i = 0; i < context->ir_cfg->basic_blocks.size; i += 1) {
+        ir_basic_block_t *block = context->ir_cfg->basic_blocks.buffer[i];
         llvm_gen_visit_basic_block(context, block);
     }
+
+    // Cleanup
+    context->ir_cfg = NULL;
+    hash_table_destroy(&context->local_var_map);
+    hash_table_destroy(&context->block_map);
 }
 
 void llvm_gen_visit_basic_block(llvm_gen_context_t *context, const ir_basic_block_t *block) {
@@ -345,7 +351,7 @@ void llvm_gen_visit_instruction(
         case IR_BR: {
             const char* label = instr->branch.label;
             const ir_basic_block_t *target_block;
-            assert(hash_table_lookup(&context->ir_cfg.label_to_block_map, label, (void**)&target_block));
+            assert(hash_table_lookup(&context->ir_cfg->label_to_block_map, label, (void**)&target_block));
             LLVMBasicBlockRef llvm_block = llvm_get_or_create_basic_block(context, target_block);
             LLVMBuildBr(context->llvm_builder, llvm_block);
             break;
@@ -353,7 +359,7 @@ void llvm_gen_visit_instruction(
         case IR_BR_COND: {
             const char* label = instr->branch.label;
             const ir_basic_block_t *ir_true_block;
-            assert(hash_table_lookup(&context->ir_cfg.label_to_block_map, label, (void**)&ir_true_block));
+            assert(hash_table_lookup(&context->ir_cfg->label_to_block_map, label, (void**)&ir_true_block));
             const ir_basic_block_t *ir_false_block = ir_block->fall_through;
             assert(ir_false_block != NULL);
 

@@ -43,11 +43,12 @@ typedef struct Options {
 
 options_t parse_and_validate_options(int argc, char** argv);
 void compile(options_t options, const char* input_file_name);
+void print_ir_cfg(const ir_module_t *module);
 
 int main(int argc, char** argv) {
     options_t options = parse_and_validate_options(argc, argv);
 
-    for (size_t i = 0; i < options.input_files.size; i++) {
+    for (size_t i = 0; i < options.input_files.size; i += 1) {
         const char* input_file_name = options.input_files.buffer[i];
         compile(options, input_file_name);
     }
@@ -235,11 +236,8 @@ void compile(options_t options, const char* input_file_name) {
         ir_print_module(stdout, ir_module);
     }
 
-    for (size_t i = 0; i < ir_module->functions.size; i+= 1) {
-        ir_function_definition_t *function = ir_module->functions.buffer[i];
-        ir_control_flow_graph_t cfg = ir_create_control_flow_graph(function);
-        ir_print_control_flow_graph(stdout, &cfg, 1);
-    }
+    // TODO: add flag to print control flow graph
+    print_ir_cfg(ir_module);
 
     const char *output_file_name;
     if (options.output_file == NULL) {
@@ -264,4 +262,15 @@ void get_output_path(const char *path, const char *extension, char *output, size
         memcpy(output, path, bytes <= output_size ? bytes : output_size);
         snprintf(output + bytes, output_size - bytes, ".%s", extension);
     }
+}
+
+void print_ir_cfg(const ir_module_t *module) {
+    // TODO: free cfgs
+    ir_control_flow_graph_t *cfgs = malloc(sizeof(ir_control_flow_graph_t) * module->functions.size);
+
+    for (size_t i = 0; i < module->functions.size; i++) {
+        cfgs[i] = ir_create_control_flow_graph(module->functions.buffer[i]);
+    }
+
+    ir_print_control_flow_graph(stdout, cfgs, module->functions.size);
 }

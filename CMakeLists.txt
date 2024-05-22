@@ -73,6 +73,7 @@ add_executable(unit-tests
         tst/types-test.c
         tst/numeric-constants-tests.c
         tst/ir/ir-gen-tests.c
+        tst/ir/cfg-tests.c
 )
 target_compile_definitions(unit-tests PRIVATE C_COMPILER_UNIT_TESTS)
 target_link_libraries(unit-tests PUBLIC cunit)
