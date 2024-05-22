@@ -52,8 +52,8 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
     llvm_gen_context_t context = {
         .llvm_module = LLVMModuleCreateWithName(module->name),
         .llvm_builder = LLVMCreateBuilder(),
-        .llvm_function_map = hash_table_create(128),
-        .global_var_map = hash_table_create(128),
+        .llvm_function_map = hash_table_create_string_keys(128),
+        .global_var_map = hash_table_create_string_keys(128),
     };
 
     // global variables
@@ -102,8 +102,8 @@ void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_defi
         llvm_get_or_add_function(context, function->name, ir_to_llvm_type(function->type));
     LLVMSetLinkage(context->llvm_function, LLVMExternalLinkage);
 
-    context->local_var_map = hash_table_create(128);
-    context->block_map = hash_table_create(128);
+    context->local_var_map = hash_table_create_string_keys(128);
+    context->block_map = hash_table_create_string_keys(128);
 
     // The IR refers to the parameters by name, so we need to set up the mapping
     for (int i = 0; i < function->num_params; i += 1) {

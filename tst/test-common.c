@@ -121,10 +121,6 @@ lexer_global_context_t create_lexer_context() {
     return (lexer_global_context_t) {
             .user_include_paths = NULL,
             .system_include_paths = NULL,
-            .macro_definitions = {
-                    .size = 0,
-                    .num_buckets = 10,
-                    .buckets = calloc(10, sizeof(hashtable_entry_t *)),
-            }
+            .macro_definitions = hash_table_create_string_keys(16),
     };
 }

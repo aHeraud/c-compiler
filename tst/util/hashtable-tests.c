@@ -1,14 +1,9 @@
-#include <malloc.h>
 #include "CUnit/Basic.h"
 #include "util/hashtable.h"
 
 void test_hashtable_insert() {
     // base case, insert into empty hashtable that has one bucket
-    hash_table_t table = {
-            .num_buckets = 1,
-            .size = 0,
-            .buckets = calloc(1, sizeof(hashtable_entry_t*)),
-    };
+    hash_table_t table = hash_table_create_string_keys(1);
 
     int value = 42;
     CU_ASSERT_TRUE(hash_table_insert(&table, "key", (void *) &value));
@@ -47,11 +42,7 @@ void test_hashtable_insert() {
 }
 
 void test_hashtable_lookup() {
-    hash_table_t table = {
-            .num_buckets = 1,
-            .size = 0,
-            .buckets = calloc(10, sizeof(hashtable_entry_t*)),
-    };
+    hash_table_t table = hash_table_create_string_keys(1);
 
     // base case, lookup in empty hashtable
     int* value;
@@ -75,10 +66,7 @@ void test_hashtable_lookup() {
 }
 
 void test_hashtable_remove() {
-    hash_table_t table = {
-            .num_buckets = 1,
-            .buckets = calloc(10, sizeof(hashtable_entry_t*)),
-    };
+    hash_table_t table = hash_table_create_string_keys(1);
 
     // base case, remove from empty hashtable
     int* value;

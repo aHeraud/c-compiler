@@ -92,7 +92,7 @@ ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definitio
     };
 
     // Map of label -> basic block that contains it
-    hash_table_t label_to_block = hash_table_create(64);
+    hash_table_t label_to_block = hash_table_create_string_keys(64);
 
     // Create the basic block for the function entry point
     ir_basic_block_t *entry = malloc(sizeof(ir_basic_block_t));

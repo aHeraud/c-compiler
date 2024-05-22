@@ -158,7 +158,7 @@ void enter_scope(ir_gen_context_t *context) {
     assert(context != NULL);
     scope_t *scope = malloc(sizeof(scope_t));
     *scope = (scope_t) {
-            .symbols = hash_table_create(1000),
+            .symbols = hash_table_create_string_keys(256),
             .parent = context->current_scope,
     };
     context->current_scope = scope;
@@ -206,8 +206,8 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     ir_gen_context_t context = {
         .module = malloc(sizeof(ir_module_t)),
-        .global_map = hash_table_create(256),
-        .function_definition_map = hash_table_create(256),
+        .global_map = hash_table_create_string_keys(256),
+        .function_definition_map = hash_table_create_string_keys(256),
         .function = NULL,
         .builder = NULL,
         .errors = (compilation_error_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },

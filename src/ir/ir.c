@@ -732,8 +732,8 @@ void ir_validate_visit_instruction(
 
 ir_validation_error_vector_t ir_validate_function(const ir_function_definition_t *function) {
     ir_validation_error_vector_t errors = { .buffer = NULL, .size = 0, .capacity = 0 };
-    hash_table_t labels = hash_table_create(64);
-    hash_table_t variables = hash_table_create(128);
+    hash_table_t labels = hash_table_create_string_keys(64);
+    hash_table_t variables = hash_table_create_string_keys(128);
 
     // First pass:
     // - Record all labels, and check for duplicates

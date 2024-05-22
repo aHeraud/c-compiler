@@ -4,7 +4,7 @@
 #include <string.h>
 #include "hashtable.h"
 
-size_t hash_key(const char* key) {
+size_t hashtable_string_hash_key(const char* key) {
     size_t hash = 0;
     for (size_t i = 0; key[i] != '\0'; i++) {
         char c = key[i];
@@ -13,19 +13,30 @@ size_t hash_key(const char* key) {
     return hash;
 }
 
-hash_table_t hash_table_create(size_t num_buckets) {
+bool hashtable_string_equals(const char* a, const char* b) {
+    return strcmp(a, b) == 0;
+}
+
+hash_table_t hash_table_create_string_keys(size_t num_buckets) {
+    return hash_table_create(num_buckets, (hashtable_hash_fn_t) hashtable_string_hash_key,
+                             (hashtable_equals_fn_t) hashtable_string_equals);
+}
+
+hash_table_t hash_table_create(size_t num_buckets, hashtable_hash_fn_t hash_fn, hashtable_equals_fn_t equals_fn) {
     return (hash_table_t) {
             .num_buckets = num_buckets,
             .size = 0,
-            .buckets = calloc(num_buckets, sizeof(hashtable_entry_t*)),
+            .hash_fn = hash_fn,
+            .equals_fn = equals_fn,
+            .buckets = calloc(num_buckets, sizeof(hash_table_bucket_t*)),
     };
 }
 
 void hash_table_destroy(hash_table_t* table) {
     for (size_t i = 0; i < table->num_buckets; i++) {
-        hashtable_entry_t* entry = table->buckets[i];
+        hash_table_bucket_t* entry = table->buckets[i];
         while (entry != NULL) {
-            hashtable_entry_t* next = entry->next;
+            hash_table_bucket_t* next = entry->next;
             free(entry);
             entry = next;
         }
@@ -45,15 +56,17 @@ void hash_table_destroy(hash_table_t* table) {
  * @param value
  * @return true if the key-value pair was inserted, false if the key already exists
  */
-bool hash_table_insert(hash_table_t* table, const char* key, void* value) {
+bool hash_table_insert(hash_table_t* table, const void* key, void* value) {
     assert(table != NULL && table->num_buckets > 0);
-    size_t bucket_index = hash_key(key) % table->num_buckets;
-    hashtable_entry_t* bucket_head = table->buckets[bucket_index];
+    size_t hashcode = table->hash_fn(key);
+    size_t bucket_index = hashcode % table->num_buckets;
+    hash_table_bucket_t* bucket_head = table->buckets[bucket_index];
     if (bucket_head == NULL) {
-        bucket_head = malloc(sizeof(hashtable_entry_t));
-        *bucket_head = (hashtable_entry_t) {
+        bucket_head = malloc(sizeof(hash_table_bucket_t));
+        *bucket_head = (hash_table_bucket_t) {
                 .prev = NULL,
                 .next = NULL,
+                .hashcode = hashcode,
                 .key = key,
                 .value = value,
         };
@@ -61,19 +74,20 @@ bool hash_table_insert(hash_table_t* table, const char* key, void* value) {
         table->size += 1;
         return true;
     } else {
-        hashtable_entry_t* prev = NULL;
-        hashtable_entry_t* entry = bucket_head;
+        hash_table_bucket_t* prev = NULL;
+        hash_table_bucket_t* entry = bucket_head;
         while (entry != NULL) {
-            if (strcmp(entry->key, key) == 0) {
+            if (entry->hashcode == hashcode && table->equals_fn(entry->key, key)) {
                 return false;
             }
             prev = entry;
             entry = entry->next;
         }
-        entry = malloc(sizeof(hashtable_entry_t));
-        *entry = (hashtable_entry_t) {
+        entry = malloc(sizeof(hash_table_bucket_t));
+        *entry = (hash_table_bucket_t) {
                 .prev = prev,
                 .next = NULL,
+                .hashcode = hashcode,
                 .key = key,
                 .value = value,
         };
@@ -90,11 +104,12 @@ bool hash_table_insert(hash_table_t* table, const char* key, void* value) {
  * @param value if not NULL, the value associated with the key will be written to this pointer if present in the table
  * @return true if the value was found, false otherwise
  */
-bool hash_table_lookup(const hash_table_t* table, const char* key, void** value) {
-    size_t index = hash_key(key) % table->num_buckets;
-    hashtable_entry_t* entry = table->buckets[index];
+bool hash_table_lookup(const hash_table_t* table, const void* key, void** value) {
+    size_t hashcode = table->hash_fn(key);
+    size_t index = hashcode % table->num_buckets;
+    hash_table_bucket_t* entry = table->buckets[index];
     while (entry != NULL) {
-        if (strcmp(entry->key, key) == 0) {
+        if (entry->hashcode == hashcode && table->equals_fn(entry->key, key)) {
             if (value != NULL) {
                 *value = entry->value;
             }
@@ -112,11 +127,12 @@ bool hash_table_lookup(const hash_table_t* table, const char* key, void** value)
  * @param value if not NULL, the value associated with the key will be written to this pointer if present in the table
  * @return true if the value was found, false otherwise
  */
-bool hash_table_remove(hash_table_t* table, const char* key, void** value) {
-    size_t index = hash_key(key) % table->num_buckets;
-    hashtable_entry_t* entry = table->buckets[index];
+bool hash_table_remove(hash_table_t* table, const void* key, void** value) {
+    size_t hashcode = table->hash_fn(key);
+    size_t index = hashcode % table->num_buckets;
+    hash_table_bucket_t* entry = table->buckets[index];
     while (entry != NULL) {
-        if (strcmp(entry->key, key) == 0) {
+        if (entry->hashcode == hashcode && table->equals_fn(entry->key, key)) {
             if (entry->prev != NULL) {
                 entry->prev->next = entry->next;
             } else {

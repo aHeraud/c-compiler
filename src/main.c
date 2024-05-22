@@ -199,11 +199,7 @@ void compile(options_t options, const char* input_file_name) {
     lexer_global_context_t global_context = {
             .user_include_paths = &options.additional_include_directories,
             .system_include_paths = &options.additional_system_include_directories,
-            .macro_definitions = {
-                    .size = 0,
-                    .num_buckets = 1000,
-                    .buckets = calloc(1000, sizeof(hashtable_entry_t*)),
-            }
+            .macro_definitions = hash_table_create_string_keys(1024),
     };
 
     lexer_t lexer = linit(input_file_name,

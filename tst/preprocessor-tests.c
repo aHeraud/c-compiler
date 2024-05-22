@@ -9,7 +9,7 @@ static lexer_global_context_t create_context() {
     return (lexer_global_context_t) {
             .user_include_paths = NULL,
             .system_include_paths = NULL,
-            .macro_definitions = hash_table_create(100)
+            .macro_definitions = hash_table_create_string_keys(128)
     };
 }
 
@@ -21,7 +21,7 @@ void test_includes_file(
     lexer_global_context_t context = {
             .user_include_paths = user_includes_paths,
             .system_include_paths = system_includes_path,
-            .macro_definitions = hash_table_create(10)
+            .macro_definitions = hash_table_create_string_keys(16)
     };
 
     FILE* file = fopen(input_path, "r");
