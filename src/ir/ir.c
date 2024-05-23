@@ -349,6 +349,7 @@ const ir_type_t *ir_get_type_of_value(const ir_value_t value) {
 
 bool ir_is_integer_type(const ir_type_t *type) {
     switch (type->kind) {
+        case IR_TYPE_BOOL:
         case IR_TYPE_I8:
         case IR_TYPE_I16:
         case IR_TYPE_I32:

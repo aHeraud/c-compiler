@@ -1403,6 +1403,42 @@ void test_parse_return_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
+void test_parse_while_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "while (cond > 0) { cond = cond - 1; }";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    // Assert that it was parsed successfully, and that the parser consumed all of the input.
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
+
+    // Make sure the statement is parsed correctly
+    // We have other tests to validate the condition and body, so just make sure
+    // they're present and have the expected types.
+    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_WHILE)
+    CU_ASSERT_EQUAL_FATAL(node.while_.condition->type, EXPRESSION_BINARY)
+    CU_ASSERT_EQUAL_FATAL(node.while_.body->type, STATEMENT_COMPOUND)
+}
+
+void test_parse_while_statement_with_empty_body() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "while (1);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
+
+    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_WHILE)
+    CU_ASSERT_EQUAL_FATAL(node.while_.condition->type, EXPRESSION_PRIMARY)
+    CU_ASSERT_EQUAL_FATAL(node.while_.body->type, STATEMENT_EMPTY)
+}
+
 void parse_external_declaration_declaration() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int a = 4;";
@@ -1597,6 +1633,8 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "if else statement", test_parse_if_else_statement) ||
         NULL == CU_add_test(pSuite, "if else if else statement", test_parse_if_else_if_else_statement) ||
         NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement) ||
+        NULL == CU_add_test(pSuite, "while statement", test_parse_while_statement) ||
+        NULL == CU_add_test(pSuite, "while statement with empty body", test_parse_while_statement_with_empty_body) ||
         NULL == CU_add_test(pSuite, "external declaration - declaration", parse_external_declaration_declaration) ||
         NULL == CU_add_test(pSuite, "external declaration - prototype (var args)", parse_external_definition_prototype_var_args) ||
         NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||

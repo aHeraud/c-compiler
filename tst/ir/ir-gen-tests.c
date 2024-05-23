@@ -5,6 +5,10 @@
 #include "../tests.h"
 #include "../test-common.h"
 
+/// IR generation tests
+/// These are extremely fragile, since they rely on the output of the IR generation matching excatly.
+/// This should probably be refactored in the future.
+
 #define PARSE(input)                                                             \
     lexer_global_context_t lexer_context = create_lexer_context();               \
     lexer_t lexer = linit("path/to/file", input, strlen(input), &lexer_context); \
@@ -12,6 +16,7 @@
     translation_unit_t program;                                                  \
     CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
 
+// TODO: fix this abomination
 #define ASSERT_IR_INSTRUCTIONS_EQ(function, _body) \
 do { \
     bool size_equals = function->body.size == sizeof(_body)/sizeof(_body[0]);   \
@@ -212,6 +217,44 @@ void test_ir_gen_conditional_expr_returning_int() {
     }));
 }
 
+void test_ir_while_loop() {
+    const char* input =
+        "int main() {\n"
+        "    int x = 0;\n"
+        "    while (x < 10) {\n"
+        "        x = x + 1;\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "i32 %1 = i32 0",
+        "store i32 %1, *i32 %0",
+        "l0: nop",
+        "i32 %2 = load *i32 %0",
+        "i32 %3 = i32 %2",
+        "i32 %4 = i32 10",
+        "bool %5 = lt i32 %3, i32 %4",
+        "bool %6 = eq bool %5, bool 0",
+        "br bool %6, l1",
+        "i32 %7 = load *i32 %0",
+        "i32 %9 = i32 %7",
+        "i32 %10 = i32 1",
+        "i32 %8 = add i32 %9, i32 %10",
+        "i32 %11 = i32 %8",
+        "store i32 %11, *i32 %0",
+        "br l0",
+        "l1: nop",
+        "ret i32 0",
+    }));
+}
+
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -225,5 +268,6 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "conditional expr (void)", test_ir_gen_conditional_expr_void);
     CU_add_test(suite, "conditional expr", test_ir_gen_conditional_expr_returning_int);
+    CU_add_test(suite, "while loop", test_ir_while_loop);
     return CUE_SUCCESS;
 }

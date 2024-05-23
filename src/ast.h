@@ -202,6 +202,7 @@ typedef struct Statement {
         STATEMENT_EXPRESSION,
         STATEMENT_IF,
         STATEMENT_RETURN,
+        STATEMENT_WHILE,
     } type;
     union {
         struct {
@@ -219,6 +220,11 @@ typedef struct Statement {
             token_t *keyword;
             expression_t *expression;
         } return_;
+        struct {
+            token_t *keyword;
+            expression_t *condition;
+            statement_t *body;
+        } while_;
     };
     token_t *terminator;
 } statement_t;

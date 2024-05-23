@@ -1330,6 +1330,8 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
         return parse_if_statement(parser, stmt, begin);
     } else if (accept(parser, TK_RETURN, &begin)) {
         return parse_return_statement(parser, stmt, begin);
+    } else if (accept(parser, TK_WHILE, &begin)) {
+        return parse_while_statement(parser, stmt, begin);
     } else {
         return parse_expression_statement(parser, stmt);
     }
@@ -1469,6 +1471,35 @@ bool parse_return_statement(parser_t *parser, statement_t *stmt, token_t *keywor
                     .expression = expr,
             },
             .terminator = terminator,
+    };
+
+    return true;
+}
+
+bool parse_while_statement(parser_t* parser, statement_t *statement, token_t *keyword) {
+    if (!require(parser, TK_LPAREN, NULL, "while-statement", NULL)) return false;
+
+    expression_t *condition = malloc(sizeof(expression_t));
+    if (!parse_expression(parser, condition)) {
+        free(condition);
+        return false;
+    }
+
+    if (!require(parser, TK_RPAREN, NULL, "while-statement", NULL)) return false;
+
+    statement_t *body = malloc(sizeof(statement_t));
+    if (!parse_statement(parser, body)) {
+        free(body);
+        return false;
+    }
+
+    *statement = (statement_t) {
+        .type = STATEMENT_WHILE,
+        .while_ = {
+            .keyword = keyword,
+            .condition = condition,
+            .body = body,
+        },
     };
 
     return true;

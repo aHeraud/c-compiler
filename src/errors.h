@@ -23,6 +23,7 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_TERNARY_EXPRESSION_OPERANDS,
     ERR_CALL_TARGET_NOT_FUNCTION,
     ERR_CALL_ARGUMENT_COUNT_MISMATCH,
+    ERR_INVALID_LOOP_CONDITION_TYPE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -68,6 +69,9 @@ typedef struct CompilationError {
             const type_t *true_type;
             const type_t *false_type;
         } invalid_ternary_expression_operands;
+        struct {
+            const type_t *type;
+        } invalid_loop_condition_type;
     };
 } compilation_error_t;
 
