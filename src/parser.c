@@ -614,6 +614,7 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
         type->kind = TYPE_INTEGER;
         type->integer.is_signed = unsigned_ == NULL;
         if (bool_ != NULL) {
+            type->integer.is_signed = false;
             type->integer.size = INTEGER_TYPE_BOOL;
         } else if (char_ != NULL) {
             type->integer.size = INTEGER_TYPE_CHAR;

@@ -385,7 +385,7 @@ static struct ReservedWord RESERVED_WORDS[] = {
 //        {"_Alignas", TK_ALIGNAS},
 //        {"_Alignof", TK_ALIGNOF},
 //        {"_Atomic", TK_ATOMIC},
-//        {"_Bool", TK_BOOL},
+        {"_Bool", TK_BOOL},
 //        {"_Complex", TK_COMPLEX},
 //        {"_Generic", TK_GENERIC},
 //        {"_Imaginary", TK_IMAGINARY},

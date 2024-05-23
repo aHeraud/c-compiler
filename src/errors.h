@@ -24,6 +24,7 @@ typedef enum CompilationErrorKind {
     ERR_CALL_TARGET_NOT_FUNCTION,
     ERR_CALL_ARGUMENT_COUNT_MISMATCH,
     ERR_INVALID_LOOP_CONDITION_TYPE,
+    ERR_INVALID_UNARY_NOT_OPERAND_TYPE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -72,6 +73,9 @@ typedef struct CompilationError {
         struct {
             const type_t *type;
         } invalid_loop_condition_type;
+        struct {
+            const type_t *type;
+        } invalid_unary_not_operand_type;
     };
 } compilation_error_t;
 

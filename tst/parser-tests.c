@@ -764,6 +764,27 @@ void test_parse_simple_declaration_with_initializer() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
+void test_parse_declaration_boolean() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "_Bool a = 1;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = {
+            .size = 0,
+            .capacity = 0,
+            .buffer = NULL,
+    };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    declaration_t expected = (declaration_t) {
+            .type = &BOOL,
+            .identifier = token(TK_IDENTIFIER, "a"),
+            .initializer = integer_constant("1"),
+    };
+    CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
+}
+
 void test_parse_pointer_declaration() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "void *a;";
@@ -1613,6 +1634,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "declaration - empty", test_parse_empty_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - simple", test_parse_simple_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - simple with initializer", test_parse_simple_declaration_with_initializer) ||
+        NULL == CU_add_test(pSuite, "declaration - boolean", test_parse_declaration_boolean) ||
         NULL == CU_add_test(pSuite, "declaration - pointer", test_parse_pointer_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - compound", test_parse_compound_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - function (no parameters)", test_parse_function_declaration_no_parameters) ||

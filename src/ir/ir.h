@@ -387,7 +387,7 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b);
 /**
  * Get the size of an IR type.
  * @param type IR type
- * @return size in bytes
+ * @return size in bits
  */
 size_t size_of_type(const ir_type_t *type);
 

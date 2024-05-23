@@ -14,20 +14,21 @@ void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t ins
 size_t size_of_type(const ir_type_t *type) {
     switch (type->kind) {
         case IR_TYPE_BOOL:
+            return 1;
         case IR_TYPE_I8:
         case IR_TYPE_U8:
-            return 1;
+            return 8;
         case IR_TYPE_I16:
         case IR_TYPE_U16:
-            return 2;
+            return 16;
         case IR_TYPE_I32:
         case IR_TYPE_U32:
-            return 4;
+            return 32;
         case IR_TYPE_I64:
         case IR_TYPE_U64:
-            return 8;
+            return 64;
         case IR_TYPE_PTR:
-            return 8;
+            return 64;
         case IR_TYPE_ARRAY:
             return type->array.length * size_of_type(type->array.element);
         case IR_TYPE_STRUCT:
@@ -136,7 +137,7 @@ const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type) {
             assert(false && "Unimplemented");
             exit(1);
         case IR_TYPE_FUNCTION: {
-            char param_list[512];
+            char param_list[512] = { 0 };
             char *curr = param_list;
             for (size_t i = 0; i < type->function.num_params; i++) {
                 const ir_type_t *param = type->function.params[i];
@@ -231,7 +232,7 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
             snprintf(buffer, size, "%s = xor %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
             break;
         case IR_NOT:
-            snprintf(buffer, size, "%s = not %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left));
+            snprintf(buffer, size, "%s = not %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
             break;
         case IR_EQ:
             snprintf(buffer, size, "%s = eq %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));

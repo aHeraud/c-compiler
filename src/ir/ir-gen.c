@@ -204,6 +204,8 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
 expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
 expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     ir_gen_context_t context = {
@@ -865,7 +867,7 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
             return ir_visit_ternary_expression(context, expression);
         }
         case EXPRESSION_UNARY: {
-            assert(false && "Unary operators not implemented");
+            return ir_visit_unary_expression(context, expression);
         }
     }
 
@@ -1446,12 +1448,60 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         ir_build_assign(context->builder, false_result.value, result);
     }
 
-
     // Merge block
     ir_build_nop(context->builder, merge_label);
 
     return (expression_result_t) {
         .c_type = result_type,
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .value = ir_value_for_var(result),
+    };
+}
+
+expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr) {
+    assert(context != NULL && "Context must not be NULL");
+    assert(expr != NULL && "Expression must not be NULL");
+    assert(expr->type == EXPRESSION_UNARY);
+
+    switch (expr->unary.operator) {
+        case UNARY_BITWISE_NOT:
+            return ir_visit_bitwise_not_unexpr(context, expr);
+        default:
+            // TODO
+            assert(false && "Unary operator not implemented");
+    }
+}
+
+expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr) {
+    assert(context != NULL && "Context must not be NULL");
+    assert(expr != NULL && "Expression must not be NULL");
+    assert(expr->type == EXPRESSION_UNARY);
+
+    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    if (operand.c_type == NULL) {
+        return EXPR_ERR;
+    }
+
+    if (operand.is_lvalue) operand = get_rvalue(context, operand);
+
+    if (!is_integer_type(operand.c_type)) {
+        // The operand must have integer type
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_UNARY_NOT_OPERAND_TYPE,
+            .location = expr->unary.operand->span.start,
+            .invalid_unary_not_operand_type = {
+                .type = operand.c_type,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    ir_var_t result = temp_var(context, ir_get_type_of_value(operand.value));
+    ir_build_not(context->builder, operand.value, result);
+
+    return (expression_result_t) {
+        .c_type = operand.c_type,
         .is_lvalue = false,
         .is_string_literal = false,
         .value = ir_value_for_var(result),
@@ -1835,8 +1885,8 @@ expression_result_t convert_to_type(
                 // Extend
                 ir_build_ext(context->builder, value, *result);
             } else {
-                // No conversion necessary
-                ir_build_assign(context->builder, value, *result);
+                // Sign/unsigned integer conversion
+                ir_build_bitcast(context->builder, value, *result);
             }
         } else if (ir_is_float_type(source_type)) {
             // float -> int
