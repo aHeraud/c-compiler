@@ -426,13 +426,22 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
 
         if (bb->instructions.size == 0 || bb->instructions.buffer[bb->instructions.size - 1]->opcode != IR_RET) {
             ir_instruction_t *ret = malloc(sizeof(ir_instruction_t));
-            *ret = (ir_instruction_t) {
-                .opcode = IR_RET,
-                .ret = {
-                    .has_value = true,
-                    .value = ir_get_zero_value(context, context->function->type->function.return_type),
-                },
-            };
+            if (context->function->type->function.return_type->kind == IR_TYPE_VOID) {
+                *ret = (ir_instruction_t) {
+                    .opcode = IR_RET,
+                    .ret = {
+                        .has_value = false,
+                    }
+                };
+            } else {
+                *ret = (ir_instruction_t) {
+                    .opcode = IR_RET,
+                    .ret = {
+                        .has_value = true,
+                        .value = ir_get_zero_value(context, context->function->type->function.return_type),
+                    },
+                };
+            }
             ir_instruction_ptr_vector_t *instructions = &bb->instructions;
             VEC_APPEND(instructions, ret);
         }
@@ -930,13 +939,14 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         }
 
         // Implicit conversion to the parameter type
-        const type_t *param_type = i < function.c_type->function.parameter_list->length ?
-            function.c_type->function.parameter_list->parameters[i]->type :
-            function.c_type->function.parameter_list->parameters[function.c_type->function.parameter_list->length - 1]->type;
-        arg = convert_to_type(context, arg.value, arg.c_type, param_type, NULL);
-        if (arg.c_type == NULL) {
-            // Conversion was invalid
-            return EXPR_ERR;
+        // Variadic arguments are _NOT_ converted, they are just passed as is.
+        if (i < function.c_type->function.parameter_list->length) {
+            const type_t *param_type = function.c_type->function.parameter_list->parameters[i]->type;
+            arg = convert_to_type(context, arg.value, arg.c_type, param_type, NULL);
+            if (arg.c_type == NULL) {
+                // Conversion was invalid
+                return EXPR_ERR;
+            }
         }
 
         args[i] = arg.value;
@@ -1937,6 +1947,15 @@ expression_result_t convert_to_type(
                 value = ir_value_for_var(temp);
             }
             ir_build_itop(context->builder, value, *result);
+        } else if (ir_is_float_type(source_type)) {
+            // float -> ptr
+            // This is pretty wacky, but does have actual uses.
+            // For example, when calling printf to print a float, we must convert the float to a pointer.
+            // int type with the same size as the float type
+            const ir_type_t* int_type = source_type->kind == IR_TYPE_F64 ? &IR_I64 : &IR_I32;
+            ir_var_t temp = temp_var(context, int_type);
+            ir_build_bitcast(context->builder, value, temp);
+            ir_build_itop(context->builder, ir_value_for_var(temp), *result);
         } else if (source_type->kind == IR_TYPE_ARRAY) {
             // TODO
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",

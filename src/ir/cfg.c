@@ -137,8 +137,8 @@ ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definitio
         }
     }
 
-    // If the last block is empty, remove it
-    if (current_block->instructions.size == 0) {
+    // If the last block is empty remove it, unless it is the entry block
+    if (current_block->instructions.size == 0 && !current_block->is_entry) {
         // We need to remove references to this block from its predecessors
         for (size_t i = 0; i < current_block->predecessors.size; i += 1) {
             ir_basic_block_t *pred = current_block->predecessors.buffer[i];
@@ -249,6 +249,11 @@ ir_instruction_vector_t ir_linearize_cfg(const ir_control_flow_graph_t *cfg) {
 }
 
 void ir_prune_control_flow_graph(ir_control_flow_graph_t *cfg) {
+    assert(cfg != NULL);
+    if (cfg->basic_blocks.size == 0) {
+        return;
+    }
+
     // Fixed point algorithm to remove unreachable blocks.
     // Could be optimized with a work list to keep track of modified blocks but this is the easiest way to do it.
     ir_basic_block_t *block;

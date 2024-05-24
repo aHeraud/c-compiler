@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "ir/ir.h"
-#include "cfg.h"
 
 void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t instruction) {
     if (vector->size == vector->capacity) {
@@ -23,12 +22,14 @@ size_t size_of_type(const ir_type_t *type) {
             return 16;
         case IR_TYPE_I32:
         case IR_TYPE_U32:
+        case IR_TYPE_F32:
             return 32;
         case IR_TYPE_I64:
         case IR_TYPE_U64:
+        case IR_TYPE_F64:
             return 64;
         case IR_TYPE_PTR:
-            return 64;
+            return 64; // this is actually architecture dependent, TODO: determine based on target architecture?
         case IR_TYPE_ARRAY:
             return type->array.length * size_of_type(type->array.element);
         case IR_TYPE_STRUCT:

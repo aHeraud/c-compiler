@@ -153,6 +153,83 @@ void test_ir_gen_call_expr_returns_void() {
     }));
 }
 
+void test_ir_gen_function_arg_promotion() {
+    const char* input =
+        "void foo(double a);\n"
+        "int main() {\n"
+        "    float a = 1.0f;\n"
+        "    foo(a);\n"
+        "    return 0;\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*f32 %0 = alloca f32",
+        "f32 %1 = f32 1.000000",
+        "store f32 %1, *f32 %0",
+        "f32 %2 = load *f32 %0",
+        "f64 %3 = ext f32 %2",
+        "call foo(f64 %3)",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_varargs_call() {
+    // Test calling a function with a variable number of arguments
+    // Important! The varargs arguments are _NOT_ converted to the type of the last named argument, they are just
+    // passed as is.
+    const char* input =
+        "void foo(int a, ...);\n"
+        "int main() {\n"
+        "    int a = 1;\n"
+        "    float b = 1.0;\n"
+        "    char* c = \"hello\";\n"
+        "    foo(a, b, c);\n"
+        "    return 0;\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "i32 %1 = i32 1",
+        "store i32 %1, *i32 %0",
+        "*f32 %2 = alloca f32",
+        "f32 %3 = trunc f64 1.000000",
+        "store f32 %3, *f32 %2",
+        "**i8 %4 = alloca *i8",
+        "*i8 %5 = bitcast *[i8;6]  @0",
+        "store *i8 %5, **i8 %4",
+        "i32 %6 = load *i32 %0",
+        "i32 %7 = i32 %6",
+        "f32 %8 = load *f32 %2",
+        "*i8 %9 = load **i8 %4",
+        "call foo(i32 %7, f32 %8, *i8 %9)",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_implicit_return_void() {
+    // No return statement, a return instruction should automatically be inserted
+    const char* input = "void foo() {}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret void"
+    }));
+}
+
 void test_ir_gen_conditional_expr_void() {
     const char *input =
         "void foo();\n"
@@ -266,6 +343,9 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "add i32 + f32", test_ir_gen_add_i32_f32);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
+    CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);
+    CU_add_test(suite, "implicit return (void)", test_ir_gen_implicit_return_void);
+    CU_add_test(suite, "varargs call", test_ir_gen_varargs_call);
     CU_add_test(suite, "conditional expr (void)", test_ir_gen_conditional_expr_void);
     CU_add_test(suite, "conditional expr", test_ir_gen_conditional_expr_returning_int);
     CU_add_test(suite, "while loop", test_ir_while_loop);
