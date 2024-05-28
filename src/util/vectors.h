@@ -16,6 +16,8 @@ VEC_DEFINE(CharVector, char_vector_t, char)
 VEC_DEFINE(StringVector, string_vector_t, char*)
 VEC_DEFINE(PtrVector, ptr_vector_t, void*)
 
+#define VEC_INIT { .buffer = NULL, .size = 0, .capacity = 0 }
+
 // Append a single element to a vector, growing the vector if necessary.
 #define VEC_APPEND(vec, elem) \
 do { \

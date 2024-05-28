@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "ir/ir-gen.h"
 #include "ir/cfg.h"
+#include "ir/fmt.h"
 #include "llvm/llvm-gen.h"
 
 // TODO: Set based on current platform

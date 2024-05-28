@@ -128,8 +128,6 @@
 ///     + a and type must have the same size
 ///     + b will have the same bit pattern as a
 
-#include <stdio.h>
-
 #include "types.h"
 
 typedef enum IrTypeKind {
@@ -409,12 +407,21 @@ typedef struct IrValidationErrorVector {
 
 ir_validation_error_vector_t ir_validate_function(const ir_function_definition_t *function);
 
-const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type);
-const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant);
-const char* ir_fmt_var(char *buffer, size_t size, ir_var_t var);
-const char* ir_fmt_val(char *buffer, size_t size, ir_value_t value);
-const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *instruction);
+/**
+ * Returns a pointer to each variable reference in the instruction.
+ * @param instr Instruction to search
+ * @param uses Array to store the found uses (must be large enough to store all uses)
+ * @param uses_max Length of the uses array
+ * @return Number of uses found in the provided instruction
+ */
+size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max);
 
-void ir_print_module(FILE *file, const ir_module_t *module);
+/**
+ * Returns a pointer to the variable definition in the instruction.
+ * @param instr Instruction to search
+ * @return Pointer to the variable definition in the instruction
+ *         (or NULL if the instruction does not contain any definitions)
+ */
+ir_var_t *ir_get_def(ir_instruction_t *instr);
 
 #endif //C_COMPILER_IR_H

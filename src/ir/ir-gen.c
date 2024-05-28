@@ -8,6 +8,7 @@
 #include "ir/ir.h"
 #include "ir/ir-builder.h"
 #include "ir/cfg.h"
+#include "ir/fmt.h"
 #include "numeric-constants.h"
 #include "errors.h"
 #include "util/strings.h"
@@ -1362,33 +1363,40 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         return EXPR_ERR;
     }
 
-    const char* false_label = gen_label(context);
+    const char* true_label = gen_label(context);
     const char* merge_label = gen_label(context);
 
     // Compare the condition to zero
-    ir_value_t zero = ir_get_zero_value(context, get_ir_type(condition.c_type));
-    ir_var_t bool_condition = temp_var(context, &IR_BOOL);
-    ir_build_eq(context->builder, condition.value, zero, bool_condition);
-
-    // Branch based on the condition, falls through to the true branch
-    ir_build_br_cond(context->builder, ir_value_for_var(bool_condition), false_label);
-
-    // True branch
-    expression_result_t true_result = ir_visit_expression(context, expr->ternary.true_expression);
-    if (true_result.c_type == NULL) {
-        return EXPR_ERR;
+    ir_value_t ir_condition;
+    if (ir_get_type_of_value(condition.value)->kind == IR_TYPE_BOOL) {
+        ir_condition = condition.value;
+    } else {
+        // Convert the condition to a boolean value (0 or 1)
+        ir_value_t zero = ir_get_zero_value(context, get_ir_type(condition.c_type));
+        ir_var_t bool_condition = temp_var(context, &IR_BOOL);
+        ir_build_eq(context->builder, condition.value, zero, bool_condition);
+        ir_condition = ir_value_for_var(bool_condition);
     }
-    if (true_result.is_lvalue) true_result = get_rvalue(context, true_result);
-    ir_instruction_node_t *true_branch_end = ir_builder_get_position(context->builder);
+
+    // Branch based on the condition, falls through to the false branch
+    ir_build_br_cond(context->builder, ir_condition, true_label);
 
     // False branch
-    ir_build_nop(context->builder, false_label);
     expression_result_t false_result = ir_visit_expression(context, expr->ternary.false_expression);
     if (false_result.c_type == NULL) {
         return EXPR_ERR;
     }
     if (false_result.is_lvalue) false_result = get_rvalue(context, false_result);
     ir_instruction_node_t *false_branch_end = ir_builder_get_position(context->builder);
+
+    // True branch
+    ir_build_nop(context->builder, true_label);
+    expression_result_t true_result = ir_visit_expression(context, expr->ternary.true_expression);
+    if (true_result.c_type == NULL) {
+        return EXPR_ERR;
+    }
+    if (true_result.is_lvalue) true_result = get_rvalue(context, true_result);
+    ir_instruction_node_t *true_branch_end = ir_builder_get_position(context->builder);
 
     // One of the following must be true of the true and false operands:
     // 1. both have arithmetic type
@@ -1400,7 +1408,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
 
     // This is a bit awkward, because we don't know the expected result type until after
     // generating code for the true and false branches.
-    // After we know the result type, we have to generate conversion code (if necessarry), then add an
+    // After we know the result type, we have to generate conversion code (if necessary), then add an
     // assignment to the result variable in both branches (the IR is not in SSA form, so no phi node/block arguments).
 
     const type_t *result_type;
@@ -1441,14 +1449,6 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
     }
 
     ir_var_t result = temp_var(context, ir_result_type);
-    ir_builder_position_after(context->builder, true_branch_end);
-    if (!types_equal(true_result.c_type, result_type)) {
-        true_result = convert_to_type(context, true_result.value, true_result.c_type, result_type, NULL);
-        ir_build_assign(context->builder, true_result.value, result);
-    } else {
-        ir_build_assign(context->builder, true_result.value, result);
-    }
-    ir_build_br(context->builder, merge_label);
 
     ir_builder_position_after(context->builder, false_branch_end);
     if (!types_equal(false_result.c_type, result_type)) {
@@ -1456,6 +1456,15 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         ir_build_assign(context->builder, false_result.value, result);
     } else {
         ir_build_assign(context->builder, false_result.value, result);
+    }
+    ir_build_br(context->builder, merge_label);
+
+    ir_builder_position_after(context->builder, true_branch_end);
+    if (!types_equal(true_result.c_type, result_type)) {
+        true_result = convert_to_type(context, true_result.value, true_result.c_type, result_type, NULL);
+        ir_build_assign(context->builder, true_result.value, result);
+    } else {
+        ir_build_assign(context->builder, true_result.value, result);
     }
 
     // Merge block

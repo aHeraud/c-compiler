@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "ir/cfg.h"
+#include "ir/fmt.h"
 
 void bb_append_instr(ir_basic_block_t *bb, const ir_instruction_t *instr) {
     ir_instruction_ptr_vector_t *instructions = &bb->instructions;

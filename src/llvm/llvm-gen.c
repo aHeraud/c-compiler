@@ -6,6 +6,15 @@
 #include "ir/ir.h"
 #include "llvm-gen.h"
 #include "ir/cfg.h"
+#include "ir/ssa.h"
+
+typedef struct IncompletePhiNode {
+    const ir_phi_node_t *phi;
+    const ir_ssa_basic_block_t *block;
+    LLVMValueRef llvm_phi;
+} incomplete_phi_node_t;
+
+VEC_DEFINE(IncompletePhiNodeVector, incomplete_phi_node_vector_t, incomplete_phi_node_t);
 
 typedef struct LLVMGenContext {
     LLVMModuleRef llvm_module;
@@ -21,8 +30,9 @@ typedef struct LLVMGenContext {
     hash_table_t local_var_map;
     // Mapping of IR basic block IDs to LLVM basic blocks
     hash_table_t block_map;
-
-    ir_control_flow_graph_t *ir_cfg;
+    // List of incomplete phi nodes
+    incomplete_phi_node_vector_t incomplete_phi_nodes;
+    ir_ssa_control_flow_graph_t *ir_cfg;
 } llvm_gen_context_t;
 
 LLVMTypeRef ir_to_llvm_type(const ir_type_t *type);
@@ -30,10 +40,10 @@ LLVMValueRef ir_to_llvm_value(const llvm_gen_context_t *context, const ir_value_
 LLVMValueRef llvm_get_or_add_function(llvm_gen_context_t *context, const char* name, LLVMTypeRef fn_type);
 
 void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_definition_t *function);
-void llvm_gen_visit_basic_block(llvm_gen_context_t *context, const ir_basic_block_t *block);
-void llvm_gen_visit_instruction(llvm_gen_context_t *context, const ir_instruction_t *instr, const ir_basic_block_t *ir_block);
+void llvm_gen_visit_basic_block(llvm_gen_context_t *context, const ir_ssa_basic_block_t *block);
+void llvm_gen_visit_instruction(llvm_gen_context_t *context, const ir_instruction_t *instr, const ir_ssa_basic_block_t *ir_block);
 
-LLVMBasicBlockRef llvm_get_or_create_basic_block(llvm_gen_context_t *context, const ir_basic_block_t *ir_block) {
+LLVMBasicBlockRef llvm_get_or_create_basic_block(llvm_gen_context_t *context, const ir_ssa_basic_block_t *ir_block) {
     char tmp[256];
     snprintf(tmp, sizeof(tmp), "block_%d", ir_block->id);
 
@@ -54,6 +64,7 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
         .llvm_builder = LLVMCreateBuilder(),
         .llvm_function_map = hash_table_create_string_keys(128),
         .global_var_map = hash_table_create_string_keys(128),
+        .incomplete_phi_nodes = VEC_INIT,
     };
 
     // global variables
@@ -113,29 +124,59 @@ void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_defi
 
     // Get the control flow graph for the IR function
     ir_control_flow_graph_t cfg = ir_create_control_flow_graph(function);
-    context->ir_cfg = &cfg;
+    ir_ssa_control_flow_graph_t ssa_cfg = ir_convert_cfg_to_ssa(&cfg);
+    context->ir_cfg = &ssa_cfg;
 
     // Visit each basic block in the CFG
     for (int i = 0; i < context->ir_cfg->basic_blocks.size; i += 1) {
-        ir_basic_block_t *block = context->ir_cfg->basic_blocks.buffer[i];
+        ir_ssa_basic_block_t *block = context->ir_cfg->basic_blocks.buffer[i];
         llvm_gen_visit_basic_block(context, block);
+    }
+
+    // Add phi node arguments now that we've filled all the blocks
+    for (int i = 0; i < context->incomplete_phi_nodes.size; i += 1) {
+        incomplete_phi_node_t *incomplete_phi = &context->incomplete_phi_nodes.buffer[i];
+        const ir_phi_node_t *phi = context->incomplete_phi_nodes.buffer[i].phi;
+
+        LLVMValueRef *incoming_values = malloc(phi->operands.size * sizeof(LLVMValueRef));
+        LLVMBasicBlockRef *incoming_blocks = malloc(phi->operands.size * sizeof(LLVMBasicBlockRef));
+        for (int j = 0; j < phi->operands.size; j += 1) {
+            ir_phi_node_operand_t *operand = &phi->operands.buffer[j];
+            LLVMValueRef incoming_value;
+            assert(hash_table_lookup(&context->local_var_map, operand->name, (void**) &incoming_value));
+            const ir_ssa_basic_block_t *incoming_block = operand->block;
+            incoming_values[j] = incoming_value;
+            incoming_blocks[j] = llvm_get_or_create_basic_block(context, incoming_block);
+        }
+
+        LLVMAddIncoming(incomplete_phi->llvm_phi, incoming_values, incoming_blocks, phi->operands.size);
     }
 
     // Cleanup
     context->ir_cfg = NULL;
+    context->incomplete_phi_nodes.size = 0;
     hash_table_destroy(&context->local_var_map);
     hash_table_destroy(&context->block_map);
 }
 
-void llvm_gen_visit_basic_block(llvm_gen_context_t *context, const ir_basic_block_t *block) {
+void llvm_gen_visit_basic_block(llvm_gen_context_t *context, const ir_ssa_basic_block_t *block) {
     char tmp[256];
     snprintf(tmp, sizeof(tmp), "block_%d", block->id);
 
     context->llvm_block = llvm_get_or_create_basic_block(context, block);
     LLVMPositionBuilderAtEnd(context->llvm_builder, context->llvm_block);
 
+    // Add phi nodes
+    for (int i = 0; i < block->phi_nodes.size; i += 1) {
+        ir_phi_node_t *phi = &block->phi_nodes.buffer[i];
+        LLVMValueRef llvm_phi = LLVMBuildPhi(context->llvm_builder, ir_to_llvm_type(phi->var.type), "");
+        hash_table_insert(&context->local_var_map, phi->var.name, llvm_phi);
+        // We need to add the phi node arguments later, since we may not have filled the incoming blocks yet.
+        VEC_APPEND(&context->incomplete_phi_nodes, ((incomplete_phi_node_t) { .phi = phi, .block = block, .llvm_phi = llvm_phi }));
+    }
+
     for (size_t i = 0; i < block->instructions.size; i += 1) {
-        const ir_instruction_t *instr = block->instructions.buffer[i];
+        const ir_instruction_t *instr = &block->instructions.buffer[i];
         llvm_gen_visit_instruction(context, instr, block);
     }
 }
@@ -143,13 +184,13 @@ void llvm_gen_visit_basic_block(llvm_gen_context_t *context, const ir_basic_bloc
 void llvm_gen_visit_instruction(
     llvm_gen_context_t *context,
     const ir_instruction_t *instr,
-    const ir_basic_block_t *ir_block
+    const ir_ssa_basic_block_t *ir_block
 ) {
     // This currently only works if the input IR is already in SSA form. The IR generated
     // by the first pass of the AST is in SSA form, since all variables that live across basic
     // block boundaries are just stored on the stack.
 
-    bool is_last_instr_in_block = ir_block->instructions.buffer[ir_block->instructions.size - 1] == instr;
+    bool is_last_instr_in_block = &ir_block->instructions.buffer[ir_block->instructions.size - 1] == instr;
     bool is_terminator = instr->opcode == IR_RET || instr->opcode == IR_BR || instr->opcode == IR_BR_COND;
 
     switch (instr->opcode) {
@@ -350,7 +391,7 @@ void llvm_gen_visit_instruction(
         }
         case IR_BR: {
             const char* label = instr->branch.label;
-            const ir_basic_block_t *target_block;
+            const ir_ssa_basic_block_t *target_block;
             assert(hash_table_lookup(&context->ir_cfg->label_to_block_map, label, (void**)&target_block));
             LLVMBasicBlockRef llvm_block = llvm_get_or_create_basic_block(context, target_block);
             LLVMBuildBr(context->llvm_builder, llvm_block);
@@ -358,9 +399,9 @@ void llvm_gen_visit_instruction(
         }
         case IR_BR_COND: {
             const char* label = instr->branch.label;
-            const ir_basic_block_t *ir_true_block;
+            const ir_ssa_basic_block_t *ir_true_block;
             assert(hash_table_lookup(&context->ir_cfg->label_to_block_map, label, (void**)&ir_true_block));
-            const ir_basic_block_t *ir_false_block = ir_block->fall_through;
+            const ir_ssa_basic_block_t *ir_false_block = ir_block->fall_through;
             assert(ir_false_block != NULL);
 
             LLVMValueRef cond = ir_to_llvm_value(context, &instr->branch.cond);

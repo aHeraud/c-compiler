@@ -47,8 +47,9 @@ add_library(cclib STATIC
         src/ir/ir-gen.h src/ir/ir-gen.c
         src/errors.h src/errors.c
         src/ir/cfg.h src/ir/cfg.c
-        src/llvm/llvm-gen.c
-        src/llvm/llvm-gen.h
+        src/llvm/llvm-gen.h src/llvm/llvm-gen.c
+        src/ir/ssa.h src/ir/ssa.c
+        src/ir/fmt.h src/ir/fmt.c
 )
 
 add_executable(cc src/main.c)
