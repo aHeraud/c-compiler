@@ -1,6 +1,7 @@
 #include <CUnit/Basic.h>
 
 #include "ir/ir-gen.h"
+#include "ir/fmt.h"
 
 #include "../tests.h"
 #include "../test-common.h"
@@ -250,9 +251,9 @@ void test_ir_gen_conditional_expr_void() {
         "i32 %1 = load *i32 %0",
         "bool %2 = eq i32 %1, i32 0",
         "br bool %2, l0",
-        "call foo()",
-        "l0: nop",
         "call bar()",
+        "l0: nop",
+        "call foo()",
         "ret i32 0"
     }));
 }
@@ -282,13 +283,13 @@ void test_ir_gen_conditional_expr_returning_int() {
         "i32 %5 = load *i32 %0",
         "bool %6 = eq i32 %5, i32 0",
         "br bool %6, l0",
-        "i32 %7 = load *i32 %1",
-        "i32 %9 = i32 %7",
+        "i16 %7 = load *i16 %3",
+        "i32 %10 = ext i16 %7",
+        "i32 %9 = i32 %10",
         "br l1",
         "l0: nop",
-        "i16 %8 = load *i16 %3",
-        "i32 %10 = ext i16 %8",
-        "i32 %9 = i32 %10",
+        "i32 %8 = load *i32 %1",
+        "i32 %9 = i32 %8",
         "l1: nop",
         "ret i32 %9"
     }));

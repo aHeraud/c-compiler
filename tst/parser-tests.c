@@ -621,6 +621,24 @@ void test_parse_logical_and_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
+void test_parse_logical_and_expression_float_operands() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "0.0 && 1.0";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t node;
+    CU_ASSERT_TRUE_FATAL(parse_logical_and_expression(&parser, &node))
+    CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
+    expression_t *expected = binary((binary_expression_t) {
+        .left = float_constant("0.0"),
+        .right = float_constant("1.0"),
+        .type = BINARY_LOGICAL,
+        .logical_operator = BINARY_LOGICAL_AND,
+        .operator = token(TK_LOGICAL_AND, "&&"),
+    });
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
+}
+
 void test_parse_logical_or_expression() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 || 2";
@@ -1626,6 +1644,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "exclusive or expression", test_parse_xor_expression) ||
         NULL == CU_add_test(pSuite, "inclusive or expression", test_parse_inclusive_or_expression) ||
         NULL == CU_add_test(pSuite, "logical and expression", test_parse_logical_and_expression) ||
+        NULL == CU_add_test(pSuite, "logical and expression (float operands)", test_parse_logical_and_expression_float_operands) ||
         NULL == CU_add_test(pSuite, "logical or expression", test_parse_logical_or_expression) ||
         NULL == CU_add_test(pSuite, "conditional expression", test_parse_conditional_expression) ||
         NULL == CU_add_test(pSuite, "assignment expression", test_parse_assignment_expression) ||

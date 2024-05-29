@@ -125,6 +125,7 @@ void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_defi
     // Get the control flow graph for the IR function
     ir_control_flow_graph_t cfg = ir_create_control_flow_graph(function);
     ir_ssa_control_flow_graph_t ssa_cfg = ir_convert_cfg_to_ssa(&cfg);
+    //ir_print_ssa_control_flow_graph(stdout, &ssa_cfg, 1);
     context->ir_cfg = &ssa_cfg;
 
     // Visit each basic block in the CFG

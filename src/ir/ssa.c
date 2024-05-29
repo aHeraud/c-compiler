@@ -5,6 +5,10 @@
 #include "ir/fmt.h"
 #include "util/hashtable.h"
 
+/// Module for converting a control flow graph into SSA form.
+/// Based on the paper "Simple and Efficient Construction of Static Single Assignment Form"
+/// by Braun et al. (1999).
+
 typedef struct SsaGenContext {
     // Function of the current CFG
     ir_function_definition_t *function;
@@ -225,6 +229,8 @@ ir_ssa_basic_block_t *visit_block(ssa_gen_context_t *context, ir_basic_block_t *
             ir_ssa_basic_block_t *successor = get_or_create_block(context, block->successors.buffer[i]);
             VEC_APPEND(&ssa_block->successors, successor);
             VEC_APPEND(&successor->predecessors, ssa_block);
+        }
+        for (int i = 0; i < block->successors.size; i += 1) {
             visit_block(context, block->successors.buffer[i]);
         }
         if (block->fall_through != NULL) {

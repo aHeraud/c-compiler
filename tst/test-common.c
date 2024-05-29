@@ -54,37 +54,48 @@ char* format_string_array(const char** array, size_t size) {
 
 source_position_t dummy_position() {
     return (source_position_t) {
-            .path = "path/to/file",
-            .line = 0,
-            .column = 0,
+        .path = "path/to/file",
+        .line = 0,
+        .column = 0,
     };
 }
 
 source_span_t dummy_span() {
     return (source_span_t) {
-            .start = {.path = "path/to/file", .line = 0, .column = 0},
-            .end = {.path = "path/to/file", .line = 0, .column = 0},
+        .start = {.path = "path/to/file", .line = 0, .column = 0},
+        .end = {.path = "path/to/file", .line = 0, .column = 0},
     };
 }
 
 expression_t *primary(primary_expression_t primary) {
     expression_t *expr = malloc(sizeof(expression_t));
     *expr = (expression_t) {
-            .type = EXPRESSION_PRIMARY,
-            .span = dummy_span(),
-            .primary = primary,
+        .type = EXPRESSION_PRIMARY,
+        .span = dummy_span(),
+        .primary = primary,
     };
     return expr;
 }
 
 expression_t *integer_constant(char* value) {
     return primary((primary_expression_t) {
-            .type = PE_CONSTANT,
-            .token = (token_t) {
-                    .kind = TK_INTEGER_CONSTANT,
-                    .value = value,
-                    .position = dummy_position(),
-            },
+        .type = PE_CONSTANT,
+        .token = (token_t) {
+            .kind = TK_INTEGER_CONSTANT,
+            .value = value,
+            .position = dummy_position(),
+        },
+    });
+}
+
+expression_t *float_constant(char* value) {
+    return primary((primary_expression_t) {
+        .type = PE_CONSTANT,
+        .token = (token_t) {
+            .kind = TK_FLOATING_CONSTANT,
+            .value = value,
+            .position = dummy_position(),
+        },
     });
 }
 

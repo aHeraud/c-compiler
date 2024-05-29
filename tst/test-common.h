@@ -20,6 +20,7 @@ source_position_t dummy_position();
 source_span_t dummy_span();
 expression_t *primary(primary_expression_t primary);
 expression_t *integer_constant(char* value);
+expression_t *float_constant(char* value);
 
 // Type helpers
 type_t *ptr_to(const type_t *type);

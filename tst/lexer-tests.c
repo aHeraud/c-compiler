@@ -39,6 +39,17 @@ void test_simple_program() {
     CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_EOF);
 }
 
+void test_lex_float_constant_0() {
+    lexer_global_context_t context = create_context();
+    char* input = "0.0";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    token_t token = lscan(&lexer);
+    printf("%s\n", token.value);
+    CU_ASSERT_EQUAL_FATAL(token.kind, TK_FLOATING_CONSTANT);
+    CU_ASSERT_STRING_EQUAL_FATAL(token.value, "0.0");
+    CU_ASSERT_EQUAL_FATAL((token = lscan(&lexer)).kind, TK_EOF);
+}
+
 void test_lex_float_constant() {
     lexer_global_context_t context = create_context();
     char* input = "42.0";
@@ -153,7 +164,8 @@ void test_lex_octal_constant() {
 int lexer_tests_init_suite() {
     CU_pSuite pSuite = CU_add_suite("lexer", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "lex simple test program", test_simple_program) ||
-        NULL == CU_add_test(pSuite, "lex float constant", test_lex_float_constant) ||
+        NULL == CU_add_test(pSuite, "lex float constant (zero)", test_lex_float_constant_0) ||
+        NULL == CU_add_test(pSuite, "lex float constant (non-zero)", test_lex_float_constant) ||
         NULL == CU_add_test(pSuite, "lex float constant with exponent", test_lex_float_constant_with_exponent) ||
         NULL == CU_add_test(pSuite, "lex float constant with exponent and suffix", test_lex_float_constant_with_exponent_and_suffix) ||
         NULL == CU_add_test(pSuite, "lex float constant with no fractional part", test_lex_float_constant_with_no_fractional_part) ||

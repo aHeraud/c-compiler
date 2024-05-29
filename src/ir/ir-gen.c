@@ -199,14 +199,15 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
 expression_result_t ir_visit_constant(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const expression_t *expr);
-expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
-expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
-expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
-expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
-expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right);
+expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const expression_t *expr);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     ir_gen_context_t context = {
@@ -984,48 +985,45 @@ expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const 
     assert(expr != NULL && "Expression must not be NULL");
     assert(expr->type == EXPRESSION_BINARY);
 
-    // Evaluate the left and right operands.
-    expression_result_t left = ir_visit_expression(context, expr->binary.left);
-    expression_result_t right = ir_visit_expression(context, expr->binary.right);
-
-    // Bubble up errors if the operands are invalid.
-    if (left.c_type == NULL || right.c_type == NULL) {
-        return EXPR_ERR;
-    }
-
     switch (expr->binary.type) {
         case BINARY_ARITHMETIC: {
             if (expr->binary.arithmetic_operator == BINARY_ARITHMETIC_ADD ||
                 expr->binary.arithmetic_operator == BINARY_ARITHMETIC_SUBTRACT) {
-                return ir_visit_additive_binexpr(context, expr, left, right);
+                return ir_visit_additive_binexpr(context, expr);
             } else {
-                return ir_visit_multiplicative_binexpr(context, expr, left, right);
+                return ir_visit_multiplicative_binexpr(context, expr);
             }
         }
         case BINARY_ASSIGNMENT: {
-            return ir_visit_assignment_binexpr(context, expr, left, right);
+            return ir_visit_assignment_binexpr(context, expr);
         }
         case BINARY_BITWISE: {
-            return ir_visit_bitwise_binexpr(context, expr, left, right);
+            return ir_visit_bitwise_binexpr(context, expr);
         }
         case BINARY_COMMA: {
             // TODO
             assert(false && "comma operator not implemented");
         }
         case BINARY_COMPARISON: {
-            return ir_visit_comparison_binexpr(context, expr, left, right);
+            return ir_visit_comparison_binexpr(context, expr);
         }
         case BINARY_LOGICAL: {
-            // TODO
-            assert(false && "logical operators not implemented");
+            return ir_visit_logical_expression(context, expr);
         }
     }
 }
 
-expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr) {
     const type_t *result_type;
     const ir_type_t *ir_result_type;
     ir_var_t result;
+
+    // Evaluate the left and right operands.
+    expression_result_t left = ir_visit_expression(context, expr->binary.left);
+    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+
+    // Bubble up errors if the operands are invalid.
+    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
 
     bool is_addition = expr->binary.operator->kind == TK_PLUS
                      || expr->binary.operator->kind == TK_PLUS_ASSIGN;
@@ -1122,9 +1120,16 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
     }
 }
 
-expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr) {
     bool is_modulo = expr->binary.operator->kind == TK_PERCENT;
     bool is_division = expr->binary.operator->kind == TK_SLASH;
+
+    // Evaluate the left and right operands.
+    expression_result_t left = ir_visit_expression(context, expr->binary.left);
+    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+
+    // Bubble up errors if the operands are invalid.
+    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
 
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
@@ -1172,7 +1177,14 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
     };
 }
 
-expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr) {
+    // Evaluate the left and right operands.
+    expression_result_t left = ir_visit_expression(context, expr->binary.left);
+    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+
+    // Bubble up errors if the operands are invalid.
+    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
+
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
 
@@ -1224,9 +1236,16 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
     };
 }
 
-expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
+
+    // Evaluate the left and right operands.
+    expression_result_t left = ir_visit_expression(context, expr->binary.left);
+    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+
+    // Bubble up errors if the operands are invalid.
+    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
 
     // The left operand must be a lvalue.
     if (!left.is_lvalue || left.c_type->is_const) {
@@ -1263,10 +1282,17 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
     return left;
 }
 
-expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
     assert(expr->type == EXPRESSION_BINARY && expr->binary.type == BINARY_COMPARISON);
+
+    // Evaluate the left and right operands.
+    expression_result_t left = ir_visit_expression(context, expr->binary.left);
+    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+
+    // Bubble up errors if the operands are invalid.
+    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
 
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
@@ -1337,6 +1363,90 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
         });
         return EXPR_ERR;
     }
+}
+
+expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const expression_t *expr) {
+    assert(context != NULL && "Context must not be NULL");
+    assert(expr != NULL && "Expression must not be NULL");
+    assert(expr->type == EXPRESSION_BINARY && expr->binary.type == BINARY_LOGICAL);
+
+    // Evaluate the left operand
+    // The logical && and || operators are short-circuiting, so if the left operand is false (for &&) or true (for ||),
+    // then the right operand is not evaluated.
+    expression_result_t left = ir_visit_expression(context, expr->binary.left);
+    if (left.c_type == NULL) return EXPR_ERR;
+    if (left.is_lvalue) left = get_rvalue(context, left);
+
+    // Both operands must have scalar type
+    if (!is_scalar_type(left.c_type)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
+            .location = expr->binary.left->span.start,
+            .invalid_logical_binary_expression_operand_type = {
+                .type = left.c_type,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    // Convert the left operand to a boolean value (if it is not already)
+    ir_value_t left_bool = left.value;
+    if  (ir_get_type_of_value(left_bool)->kind != IR_TYPE_BOOL) {
+        ir_var_t temp = temp_var(context, &IR_BOOL);
+        ir_build_ne(context->builder, left.value, ir_get_zero_value(context, ir_get_type_of_value(left_bool)), temp);
+        left_bool = ir_value_for_var(temp);
+    }
+
+    // && - if the left operand is false, the result is false, otherwise the result is the value of the right operand
+    // || - if the left operand is true, the result is true, otherwise the result is the value of the right operand
+    ir_var_t result = temp_var(context, &IR_BOOL);
+    ir_build_assign(context->builder, left_bool, result);
+    const char* merge_label = gen_label(context);
+    if (expr->binary.logical_operator == BINARY_LOGICAL_AND) {
+        // if the left operand is false, the result is false
+        // otherwise the result is the value of the right operand
+        ir_var_t cond = temp_var(context, &IR_BOOL);
+        ir_build_not(context->builder, left_bool, cond);
+        ir_build_br_cond(context->builder, ir_value_for_var(cond), merge_label);
+    } else {
+        // if the left operand is true, the result is true
+        // otherwise the result is the value of the right operand
+        ir_build_br_cond(context->builder, left_bool, merge_label);
+    }
+
+    // Evaluate the right operand
+    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+    if (right.c_type == NULL) return EXPR_ERR;
+    if (right.is_lvalue) right = get_rvalue(context, right);
+
+    // Both operands must have scalar type
+    if (!is_scalar_type(right.c_type)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
+            .location = expr->binary.left->span.start,
+            .invalid_logical_binary_expression_operand_type = {
+                .type = right.c_type,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    // Convert the right operand to a boolean value (if it is not already)
+    ir_value_t right_bool = right.value;
+    if  (ir_get_type_of_value(right_bool)->kind != IR_TYPE_BOOL) {
+        ir_var_t temp = temp_var(context, &IR_BOOL);
+        ir_build_ne(context->builder, right.value, ir_get_zero_value(context, ir_get_type_of_value(right_bool)), temp);
+        right_bool = ir_value_for_var(temp);
+    }
+    ir_build_assign(context->builder, right_bool, result);
+    ir_build_nop(context->builder, merge_label);
+
+    return (expression_result_t) {
+        .c_type = &BOOL,
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .value = ir_value_for_var(result),
+    };
 }
 
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr) {

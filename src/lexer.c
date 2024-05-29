@@ -518,7 +518,16 @@ void numeric_constant(struct Lexer* lexer, struct Token* token) {
                 lexer->input_path, lexer->position.line, lexer->position.column);
         exit(1);
     } else if (c1 == '0') {
-        octal_constant(lexer, token);
+        // This _could_ be an octal integer literal, but it could also be a floating point literal.
+        // We will look ahead to see if it contains a decimal point ('.') or an exponent suffix ('e' or 'E').
+        int i = 1;
+        while (isdigit(lpeek(lexer, i))) i++;
+        char next = lpeek(lexer, i);
+        if (next == '.' || next == 'e' || next == 'E') {
+            decimal_constant(lexer, token);
+        } else {
+            octal_constant(lexer, token);
+        }
     } else {
         decimal_constant(lexer, token);
     }
