@@ -129,14 +129,22 @@ const type_t *c_ptr_int_type();
 
 /**
  * Convert an IR value from one type to another.
+ * Will generate conversion instructions if necessary, and store the result in a new variable,
+ * with the exception of trivial conversions or constant values.
  * @param context The IR generation context
  * @param value   The value to convert
  * @param from_type The C type of the value
  * @param to_type  The C type to convert the value to
- * @param result  Variable to store the result in. If NULL, a temporary variable will be created.
  * @return The resulting ir value and its corresponding c type
  */
-expression_result_t convert_to_type(ir_gen_context_t *context, ir_value_t value, const type_t *from_type, const type_t *to_type, ir_var_t *result);
+expression_result_t convert_to_type(ir_gen_context_t *context, ir_value_t value, const type_t *from_type, const type_t *to_type);
+
+expression_result_t get_boolean_value(
+    ir_gen_context_t *context,
+    ir_value_t value,
+    const type_t *c_type,
+    const expression_t *expr
+);
 
 /**
  * Get the IR type that corresponds to a specific C type.
@@ -534,7 +542,7 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
     // Compare the condition to zero
     if (is_pointer_type(condition.c_type)) {
         // Convert to an integer type
-        condition = convert_to_type(context, condition.value, condition.c_type, c_ptr_int_type(), NULL);
+        condition = convert_to_type(context, condition.value, condition.c_type, c_ptr_int_type());
     }
 
     bool condition_is_floating = is_floating_type(condition.c_type);
@@ -600,7 +608,7 @@ void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *sta
 
         // Implicit conversion to the return type
         if (!ir_types_equal(ir_get_type_of_value(value.value), return_type)) {
-            value = convert_to_type(context, value.value, value.c_type, c_return_type, NULL);
+            value = convert_to_type(context, value.value, value.c_type, c_return_type);
             if (value.c_type == NULL) {
                 // Error occurred while converting the return value
                 return;
@@ -827,23 +835,19 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
         expression_result_t result = ir_visit_expression(context, declaration->initializer);
-        if (result.c_type == NULL) {
-            // Error occurred while evaluating the initializer
-            return;
-        }
+
+        // Error occurred while evaluating the initializer
+        if (result.c_type == NULL) return;
 
         // Verify that the types are compatible, convert if necessary
-        result = convert_to_type(context, result.value, result.c_type, declaration->type, NULL);
-        if (result.c_type == NULL) {
-            // Incompatible types
-            return;
-        }
+        result = convert_to_type(context, result.value, result.c_type, declaration->type);
+
+        // Incompatible types
+        if (result.c_type == NULL) return;
 
         // If the initializer is an lvalue, load the value
         // TODO: not sure that this is correct
-        if (result.is_lvalue) {
-            result = get_rvalue(context, result);
-        }
+        if (result.is_lvalue) result = get_rvalue(context, result);
 
         // Store the result in the allocated storage
         ir_build_store(context->builder, ir_value_for_var(symbol->ir_ptr), result.value);
@@ -944,7 +948,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         // Variadic arguments are _NOT_ converted, they are just passed as is.
         if (i < function.c_type->function.parameter_list->length) {
             const type_t *param_type = function.c_type->function.parameter_list->parameters[i]->type;
-            arg = convert_to_type(context, arg.value, arg.c_type, param_type, NULL);
+            arg = convert_to_type(context, arg.value, arg.c_type, param_type);
             if (arg.c_type == NULL) {
                 // Conversion was invalid
                 return EXPR_ERR;
@@ -1016,7 +1020,6 @@ expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const 
 expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr) {
     const type_t *result_type;
     const ir_type_t *ir_result_type;
-    ir_var_t result;
 
     // Evaluate the left and right operands.
     expression_result_t left = ir_visit_expression(context, expr->binary.left);
@@ -1037,19 +1040,41 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
         result_type = get_common_type(left.c_type, right.c_type);
         ir_result_type = get_ir_type(result_type);
 
-        // Generate a temp var to store the result
-        result = temp_var(context, ir_result_type);
+        left = convert_to_type(context, left.value, left.c_type, result_type);
+        right = convert_to_type(context, right.value, right.c_type, result_type);
 
-        left = convert_to_type(context, left.value, left.c_type, result_type, NULL);
-        right = convert_to_type(context, right.value, right.c_type, result_type, NULL);
+        ir_value_t result;
+        if (left.value.kind == IR_VALUE_CONST && right.value.kind == IR_VALUE_CONST) {
+            // constant folding
+            result = (ir_value_t) {
+                .kind = IR_VALUE_CONST,
+                .constant = (ir_const_t) {
+                    .kind = is_floating_type(result_type) ? IR_CONST_FLOAT : IR_CONST_INT,
+                    .type = ir_result_type,
+                    .i = 0,
+                }
+            };
 
-        is_addition ? ir_build_add(context->builder, left.value, right.value, result)
-                    : ir_build_sub(context->builder, left.value, right.value, result);
+            if (is_floating_type(result_type)) {
+                result.constant.f = is_addition ? left.value.constant.f + right.value.constant.f
+                                                : left.value.constant.f - right.value.constant.f;
+            } else {
+                result.constant.i = is_addition ? left.value.constant.i + right.value.constant.i
+                                                : left.value.constant.i - right.value.constant.i;
+            }
+        } else {
+            // Generate a temp var to store the result
+            ir_var_t temp = temp_var(context, ir_result_type);
+            is_addition ? ir_build_add(context->builder, left.value, right.value, temp)
+                        : ir_build_sub(context->builder, left.value, right.value, temp);
+            result = ir_value_for_var(temp);
+        }
+
         return (expression_result_t) {
             .c_type = result_type,
             .is_lvalue = false,
             .is_string_literal = false,
-            .value = ir_value_for_var(result),
+            .value = result,
         };
     } else if ((is_pointer_type(left.c_type) && is_integer_type(right.c_type)) ||
                (is_integer_type(left.c_type) && is_pointer_type(right.c_type))) {
@@ -1074,36 +1099,56 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
         // The result type is the same as the pointer type.
         result_type = pointer_operand.c_type;
 
-        // Generate a temp variable to store the result.
-        result = temp_var(context, ir_result_type);
+        ir_value_t result;
 
         // Extend/truncate the integer to the size of a pointer.
-        integer_operand = convert_to_type(context, integer_operand.value, integer_operand.c_type, c_ptr_int_type(), NULL);
+        integer_operand = convert_to_type(context, integer_operand.value, integer_operand.c_type, c_ptr_int_type());
 
-        // Multiply the integer by the size of the pointee type.
-        ir_value_t size_constant = (ir_value_t) {
-            .kind = IR_VALUE_CONST,
-            .constant = (ir_const_t) {
-                .kind = IR_CONST_INT,
-                .type = get_ir_type(c_ptr_int_type()),
-                .i = size_of_type(get_ir_type(pointer_operand.c_type->pointer.base))
-            }
-        };
-        ir_var_t temp = temp_var(context, get_ir_type(c_ptr_int_type()));
-        ir_build_mul(context->builder, integer_operand.value, size_constant, temp);
-        ir_value_t temp_val = (ir_value_t) { .kind = IR_VALUE_VAR, .var = temp };
-        // Add/sub the operands
-        is_addition ? ir_build_add(context->builder, pointer_operand.value, temp_val, result)
-                    : ir_build_sub(context->builder, pointer_operand.value, temp_val, result);
+        // Size of the pointee type
+        ssize_t stride = size_of_type(get_ir_type(pointer_operand.c_type->pointer.base));
+
+        if (integer_operand.value.kind == IR_VALUE_CONST && pointer_operand.value.kind == IR_VALUE_CONST) {
+            // constant folding
+            long long val = is_addition ? pointer_operand.value.constant.i + (integer_operand.value.constant.i * stride)
+                                           : pointer_operand.value.constant.i - (integer_operand.value.constant.i * stride);
+            result = (ir_value_t) {
+                .kind = IR_VALUE_CONST,
+                .constant = (ir_const_t) {
+                    .kind = IR_CONST_INT,
+                    .type = ir_result_type,
+                    .i = val,
+                }
+            };
+        } else {
+            // Multiply the integer by the size of the pointee type.
+            ir_value_t size_constant = (ir_value_t) {
+                .kind = IR_VALUE_CONST,
+                .constant = (ir_const_t) {
+                    .kind = IR_CONST_INT,
+                    .type = get_ir_type(c_ptr_int_type()),
+                    .i = stride
+                }
+            };
+            ir_var_t temp = temp_var(context, get_ir_type(c_ptr_int_type()));
+            ir_build_mul(context->builder, integer_operand.value, size_constant, temp);
+            ir_value_t temp_val = (ir_value_t) { .kind = IR_VALUE_VAR, .var = temp };
+
+            // Generate a temp variable to store the result.
+            ir_var_t temp2 = temp_var(context, ir_result_type);
+
+            // Add/sub the operands
+            is_addition ? ir_build_add(context->builder, pointer_operand.value, temp_val, temp2)
+                        : ir_build_sub(context->builder, pointer_operand.value, temp_val, temp2);
+
+            result = ir_value_for_var(temp2);
+        }
+
 
         return (expression_result_t) {
             .c_type = result_type,
             .is_lvalue = false,
             .is_string_literal = false,
-            .value = (ir_value_t) {
-                .kind = IR_VALUE_VAR,
-                .var = result,
-            },
+            .value = result,
         };
     } else {
         // Invalid operand types.
@@ -1156,24 +1201,50 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
     const type_t *result_type = get_common_type(left.c_type, right.c_type);
     const ir_type_t *ir_result_type = get_ir_type(result_type);
 
-    left = convert_to_type(context, left.value, left.c_type, result_type, NULL);
-    right = convert_to_type(context, right.value, right.c_type, result_type, NULL);
+    left = convert_to_type(context, left.value, left.c_type, result_type);
+    right = convert_to_type(context, right.value, right.c_type, result_type);
 
-    ir_var_t result = temp_var(context, ir_result_type);
+    ir_value_t result;
 
-    if (is_modulo) {
-        ir_build_mod(context->builder, left.value, right.value, result);
-    } else if (is_division) {
-        ir_build_div(context->builder, left.value, right.value, result);
+    if (left.value.kind == IR_VALUE_CONST && right.value.kind == IR_VALUE_CONST) {
+        // constant folding
+        ir_const_t value = (ir_const_t) {
+            .kind = is_floating_type(result_type) ? IR_CONST_FLOAT : IR_CONST_INT,
+            .type = ir_result_type,
+            .i = 0,
+        };
+
+        if (ir_is_integer_type(ir_result_type)) {
+            if (is_modulo) value.i = left.value.constant.i % right.value.constant.i;
+            else if (is_division) value.i = left.value.constant.i / right.value.constant.i;
+            else value.i = left.value.constant.i * right.value.constant.i;
+        } else {
+            // no modulo operator for floating point
+            if (is_division) value.f = left.value.constant.f / right.value.constant.f;
+            else value.f = left.value.constant.f * right.value.constant.f;
+        }
+
+        result = (ir_value_t) {
+            .kind = IR_VALUE_CONST,
+            .constant = value,
+        };
     } else {
-        ir_build_mul(context->builder, left.value, right.value, result);
+        ir_var_t temp = temp_var(context, ir_result_type);
+        if (is_modulo) {
+            ir_build_mod(context->builder, left.value, right.value, temp);
+        } else if (is_division) {
+            ir_build_div(context->builder, left.value, right.value, temp);
+        } else {
+            ir_build_mul(context->builder, left.value, right.value, temp);
+        }
+        result = ir_value_for_var(temp);
     }
 
     return (expression_result_t) {
         .c_type = result_type,
         .is_lvalue = false,
         .is_string_literal = false,
-        .value = ir_value_for_var(result),
+        .value = result,
     };
 }
 
@@ -1210,29 +1281,54 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
     const type_t *common_type = get_common_type(left.c_type, right.c_type);
     const ir_type_t *result_type = get_ir_type(common_type);
 
-    left = convert_to_type(context, left.value, left.c_type, common_type, NULL);
-    right = convert_to_type(context, right.value, right.c_type, common_type, NULL);
+    left = convert_to_type(context, left.value, left.c_type, common_type);
+    right = convert_to_type(context, right.value, right.c_type, common_type);
 
-    ir_var_t result = temp_var(context, result_type);
-    if (is_shift) {
-        if (expr->binary.operator->kind == TK_LSHIFT) {
-            ir_build_shl(context->builder, left.value, right.value, result);
-        } else {
-            ir_build_shr(context->builder, left.value, right.value, result);
-        }
-    } else if (is_and) {
-        ir_build_and(context->builder, left.value, right.value, result);
-    } else if (is_or) {
-        ir_build_or(context->builder, left.value, right.value, result);
+    ir_value_t result;
+
+    if (left.value.kind == IR_VALUE_CONST && right.value.kind == IR_VALUE_CONST) {
+        // constant folding
+        ir_const_t value = {
+            .kind = IR_CONST_INT,
+            .type = result_type,
+            .i = 0,
+        };
+
+        if (expr->binary.operator->kind == TK_LSHIFT) value.i = left.value.constant.i << right.value.constant.i;
+        else if (expr->binary.operator->kind == TK_RSHIFT) value.i = left.value.constant.i >> right.value.constant.i;
+        else if (is_and) value.i = left.value.constant.i & right.value.constant.i;
+        else if (is_or) value.i = left.value.constant.i | right.value.constant.i;
+        else value.i = left.value.constant.i ^ right.value.constant.i;
+
+        result = (ir_value_t) {
+            .kind = IR_VALUE_CONST,
+            .constant = value,
+        };
     } else {
-        ir_build_xor(context->builder, left.value, right.value, result);
+        ir_var_t temp = temp_var(context, result_type);
+
+        if (is_shift) {
+            if (expr->binary.operator->kind == TK_LSHIFT) {
+                ir_build_shl(context->builder, left.value, right.value, temp);
+            } else {
+                ir_build_shr(context->builder, left.value, right.value, temp);
+            }
+        } else if (is_and) {
+            ir_build_and(context->builder, left.value, right.value, temp);
+        } else if (is_or) {
+            ir_build_or(context->builder, left.value, right.value, temp);
+        } else {
+            ir_build_xor(context->builder, left.value, right.value, temp);
+        }
+
+        result = ir_value_for_var(temp);
     }
 
     return (expression_result_t) {
         .c_type = common_type,
         .is_lvalue = false,
         .is_string_literal = false,
-        .value = ir_value_for_var(result),
+        .value = result,
     };
 }
 
@@ -1269,10 +1365,8 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
 
     if (!types_equal(left.c_type, right.c_type)) {
         // Convert the right operand to the type of the left operand.
-        right = convert_to_type(context, right.value, right.c_type, left.c_type, &result);
-        if (right.c_type == NULL) {
-            return EXPR_ERR;
-        }
+        right = convert_to_type(context, right.value, right.c_type, left.c_type);
+        if (right.c_type == NULL) return EXPR_ERR;
     }
 
     ir_build_assign(context->builder, right.value, result);
@@ -1308,45 +1402,95 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
 
     if (is_arithmetic_type(left.c_type) && is_arithmetic_type(right.c_type)) {
         const type_t *common_type = get_common_type(left.c_type, right.c_type);
-        left = convert_to_type(context, left.value, left.c_type, common_type, NULL);
-        right = convert_to_type(context, right.value, right.c_type, common_type, NULL);
-        if (left.c_type == NULL || right.c_type == NULL) {
-            return EXPR_ERR;
-        }
+        left = convert_to_type(context, left.value, left.c_type, common_type);
+        right = convert_to_type(context, right.value, right.c_type, common_type);
 
-        ir_var_t result = temp_var(context, &IR_BOOL);
+        if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
 
-        binary_comparison_operator_t op = expr->binary.comparison_operator;
-        switch (op) {
-            case BINARY_COMPARISON_EQUAL:
-                ir_build_eq(context->builder, left.value, right.value, result);
-                break;
-            case BINARY_COMPARISON_NOT_EQUAL:
-                ir_build_ne(context->builder, left.value, right.value, result);
-                break;
-            case BINARY_COMPARISON_LESS_THAN:
-                ir_build_lt(context->builder, left.value, right.value, result);
-                break;
-            case BINARY_COMPARISON_LESS_THAN_OR_EQUAL:
-                ir_build_le(context->builder, left.value, right.value, result);
-                break;
-            case BINARY_COMPARISON_GREATER_THAN:
-                ir_build_gt(context->builder, left.value, right.value, result);
-                break;
-            case BINARY_COMPARISON_GREATER_THAN_OR_EQUAL:
-                ir_build_ge(context->builder, left.value, right.value, result);
-                break;
-            default:
-                // Invalid comparison operator
-                // Should be unreachable
-                assert(false && "Invalid comparison operator");
+        ir_value_t result;
+        const binary_comparison_operator_t op = expr->binary.comparison_operator;
+
+        if (left.value.kind == IR_VALUE_CONST && right.value.kind == IR_VALUE_CONST) {
+            // constant folding
+            ir_const_t value = {
+                .kind = IR_CONST_INT,
+                .type = &IR_BOOL,
+                .i = 0,
+            };
+            bool floating = is_floating_type(common_type);
+            long double leftf;
+            long double rightf;
+            long long lefti;
+            long long righti;
+            if (floating) {
+                leftf = left.value.constant.kind == IR_CONST_INT ? left.value.constant.i : left.value.constant.f;
+                rightf = right.value.constant.kind == IR_CONST_INT ? right.value.constant.i : right.value.constant.f;
+            } else {
+                lefti = left.value.constant.kind == IR_CONST_INT ? left.value.constant.i : left.value.constant.f;
+                righti = right.value.constant.kind == IR_CONST_INT ? right.value.constant.i : right.value.constant.f;
+            }
+            switch (op) {
+                case BINARY_COMPARISON_EQUAL:
+                    value.i = floating ? leftf == rightf : lefti == righti;
+                    break;
+                case BINARY_COMPARISON_NOT_EQUAL:
+                    value.i = floating ? leftf != rightf : lefti != righti;
+                    break;
+                case BINARY_COMPARISON_LESS_THAN:
+                    value.i = floating ? leftf < rightf : lefti < righti;
+                    break;
+                case BINARY_COMPARISON_LESS_THAN_OR_EQUAL:
+                    value.i = floating ? leftf <= rightf : lefti <= righti;
+                    break;
+                case BINARY_COMPARISON_GREATER_THAN:
+                    value.i = floating ? leftf > rightf : lefti > righti;
+                    break;
+                case BINARY_COMPARISON_GREATER_THAN_OR_EQUAL:
+                    value.i = floating ? leftf >= rightf : lefti >= righti;
+                    break;
+                default:
+                    // Invalid comparison operator
+                    // Should be unreachable
+                    assert(false && "Invalid comparison operator");
+            }
+            result = (ir_value_t) {
+                .kind = IR_VALUE_CONST,
+                .constant = value,
+            };
+        } else {
+            ir_var_t temp = temp_var(context, &IR_BOOL);
+            switch (op) {
+                case BINARY_COMPARISON_EQUAL:
+                    ir_build_eq(context->builder, left.value, right.value, temp);
+                    break;
+                case BINARY_COMPARISON_NOT_EQUAL:
+                    ir_build_ne(context->builder, left.value, right.value, temp);
+                    break;
+                case BINARY_COMPARISON_LESS_THAN:
+                    ir_build_lt(context->builder, left.value, right.value, temp);
+                    break;
+                case BINARY_COMPARISON_LESS_THAN_OR_EQUAL:
+                    ir_build_le(context->builder, left.value, right.value, temp);
+                    break;
+                case BINARY_COMPARISON_GREATER_THAN:
+                    ir_build_gt(context->builder, left.value, right.value, temp);
+                    break;
+                case BINARY_COMPARISON_GREATER_THAN_OR_EQUAL:
+                    ir_build_ge(context->builder, left.value, right.value, temp);
+                    break;
+                default:
+                    // Invalid comparison operator
+                    // Should be unreachable
+                    assert(false && "Invalid comparison operator");
+            }
+            result = ir_value_for_var(temp);
         }
 
         return (expression_result_t) {
             .c_type = &BOOL,
             .is_lvalue = false,
             .is_string_literal = false,
-            .value = ir_value_for_var(result),
+            .value = result,
         };
     } else if (is_pointer_type(left.c_type) && is_pointer_type(right.c_type)) {
         // TODO: Implement pointer comparisons
@@ -1370,6 +1514,10 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     assert(expr != NULL && "Expression must not be NULL");
     assert(expr->type == EXPRESSION_BINARY && expr->binary.type == BINARY_LOGICAL);
 
+    // Whether the operator is logical AND ('&&') or logical OR ('||')
+    bool is_logical_and = expr->binary.logical_operator == BINARY_LOGICAL_AND;
+    bool is_logical_or = !is_logical_and;
+
     // Evaluate the left operand
     // The logical && and || operators are short-circuiting, so if the left operand is false (for &&) or true (for ||),
     // then the right operand is not evaluated.
@@ -1390,11 +1538,42 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     }
 
     // Convert the left operand to a boolean value (if it is not already)
-    ir_value_t left_bool = left.value;
-    if  (ir_get_type_of_value(left_bool)->kind != IR_TYPE_BOOL) {
-        ir_var_t temp = temp_var(context, &IR_BOOL);
-        ir_build_ne(context->builder, left.value, ir_get_zero_value(context, ir_get_type_of_value(left_bool)), temp);
-        left_bool = ir_value_for_var(temp);
+    // We already know that the left operand is a scalar type, so we don't need to check for errors since its a
+    // valid conversion.
+    ir_value_t left_bool = get_boolean_value(context, left.value, left.c_type, expr->binary.left).value;
+    if (left_bool.kind == IR_VALUE_CONST) {
+        // constant folding
+        if ((is_logical_and && left_bool.constant.i == 0) || (is_logical_or && left_bool.constant.i != 0)) {
+            // result is the value of the left operand (false for and, true for or)
+            return (expression_result_t) {
+                .c_type = &BOOL,
+                .is_lvalue = false,
+                .is_string_literal = false,
+                .value = left_bool,
+            };
+        } else {
+            // result is the value of the right operand
+            expression_result_t right = ir_visit_expression(context, expr->binary.right);
+            if (right.c_type == NULL) return EXPR_ERR;
+            if (right.is_lvalue) right = get_rvalue(context, right);
+            if (!is_scalar_type(right.c_type)) {
+                append_compilation_error(&context->errors, (compilation_error_t) {
+                    .kind = ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
+                    .location = expr->binary.right->span.start,
+                    .invalid_logical_binary_expression_operand_type = {
+                        .type = right.c_type,
+                    },
+                });
+                return EXPR_ERR;
+            }
+            ir_value_t right_bool = get_boolean_value(context, right.value, right.c_type, expr->binary.right).value;
+            return (expression_result_t) {
+                .c_type = &BOOL,
+                .is_lvalue = false,
+                .is_string_literal = false,
+                .value = right_bool,
+            };
+        }
     }
 
     // && - if the left operand is false, the result is false, otherwise the result is the value of the right operand
@@ -1402,7 +1581,7 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     ir_var_t result = temp_var(context, &IR_BOOL);
     ir_build_assign(context->builder, left_bool, result);
     const char* merge_label = gen_label(context);
-    if (expr->binary.logical_operator == BINARY_LOGICAL_AND) {
+    if (is_logical_and) {
         // if the left operand is false, the result is false
         // otherwise the result is the value of the right operand
         ir_var_t cond = temp_var(context, &IR_BOOL);
@@ -1476,37 +1655,58 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
     const char* true_label = gen_label(context);
     const char* merge_label = gen_label(context);
 
-    // Compare the condition to zero
-    ir_value_t ir_condition;
-    if (ir_get_type_of_value(condition.value)->kind == IR_TYPE_BOOL) {
-        ir_condition = condition.value;
+    // Get the boolean value of the condition
+    ir_value_t ir_condition = get_boolean_value(context, condition.value, condition.c_type, expr->ternary.condition).value;
+
+    expression_result_t true_result;
+    expression_result_t false_result;
+
+    ir_instruction_node_t *true_branch_end = NULL;
+    ir_instruction_node_t *false_branch_end = NULL;
+
+    if (ir_condition.kind == IR_VALUE_CONST) {
+        // Constant folding
+        // Even though one of the branches will not be evaluated, we still need to visit it to perform semantic analysis
+        // and to decide the type of the result. We will just throw away the generated code afterwards.
+
+        if (ir_condition.constant.i != 0) {
+            // Evaluate the true branch
+            true_result = ir_visit_expression(context, expr->ternary.true_expression);
+            if (true_result.c_type == NULL) return EXPR_ERR;
+            // Throw away the code for the false branch
+            ir_instruction_node_t *position = ir_builder_get_position(context->builder);
+            false_result = ir_visit_expression(context, expr->ternary.false_expression);
+            ir_builder_clear_after(context->builder, position);
+        } else {
+            // Evaluate the false branch
+            false_result = ir_visit_expression(context, expr->ternary.false_expression);
+            if (false_result.c_type == NULL) return EXPR_ERR;
+            // Throw away the code for the true branch
+            ir_instruction_node_t *position = ir_builder_get_position(context->builder);
+            true_result = ir_visit_expression(context, expr->ternary.true_expression);
+            ir_builder_clear_after(context->builder, position);
+        }
     } else {
-        // Convert the condition to a boolean value (0 or 1)
-        ir_value_t zero = ir_get_zero_value(context, get_ir_type(condition.c_type));
-        ir_var_t bool_condition = temp_var(context, &IR_BOOL);
-        ir_build_eq(context->builder, condition.value, zero, bool_condition);
-        ir_condition = ir_value_for_var(bool_condition);
-    }
+        // Branch based on the condition, falls through to the false branch
+        ir_build_br_cond(context->builder, ir_condition, true_label);
 
-    // Branch based on the condition, falls through to the false branch
-    ir_build_br_cond(context->builder, ir_condition, true_label);
+        // False branch
+        false_result = ir_visit_expression(context, expr->ternary.false_expression);
+        if (false_result.c_type == NULL) {
+            return EXPR_ERR;
+        }
+        if (false_result.is_lvalue) false_result = get_rvalue(context, false_result);
+        false_branch_end = ir_builder_get_position(context->builder);
 
-    // False branch
-    expression_result_t false_result = ir_visit_expression(context, expr->ternary.false_expression);
-    if (false_result.c_type == NULL) {
-        return EXPR_ERR;
+        // True branch
+        ir_build_nop(context->builder, true_label);
+        true_result = ir_visit_expression(context, expr->ternary.true_expression);
+        if (true_result.c_type == NULL) {
+            return EXPR_ERR;
+        }
+        if (true_result.is_lvalue) true_result = get_rvalue(context, true_result);
+        true_branch_end = ir_builder_get_position(context->builder);
     }
-    if (false_result.is_lvalue) false_result = get_rvalue(context, false_result);
-    ir_instruction_node_t *false_branch_end = ir_builder_get_position(context->builder);
-
-    // True branch
-    ir_build_nop(context->builder, true_label);
-    expression_result_t true_result = ir_visit_expression(context, expr->ternary.true_expression);
-    if (true_result.c_type == NULL) {
-        return EXPR_ERR;
-    }
-    if (true_result.is_lvalue) true_result = get_rvalue(context, true_result);
-    ir_instruction_node_t *true_branch_end = ir_builder_get_position(context->builder);
 
     // One of the following must be true of the true and false operands:
     // 1. both have arithmetic type
@@ -1558,11 +1758,19 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         return EXPR_ERR;
     }
 
+    if (ir_condition.kind == IR_VALUE_CONST) {
+        // Constant folding
+        expression_result_t result_expr;
+        return ir_condition.constant.i != 0
+            ? convert_to_type(context, true_result.value, true_result.c_type, result_type)
+            : convert_to_type(context, false_result.value, false_result.c_type, result_type);
+    }
+
     ir_var_t result = temp_var(context, ir_result_type);
 
     ir_builder_position_after(context->builder, false_branch_end);
     if (!types_equal(false_result.c_type, result_type)) {
-        false_result = convert_to_type(context, false_result.value, false_result.c_type, result_type, NULL);
+        false_result = convert_to_type(context, false_result.value, false_result.c_type, result_type);
         ir_build_assign(context->builder, false_result.value, result);
     } else {
         ir_build_assign(context->builder, false_result.value, result);
@@ -1571,7 +1779,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
 
     ir_builder_position_after(context->builder, true_branch_end);
     if (!types_equal(true_result.c_type, result_type)) {
-        true_result = convert_to_type(context, true_result.value, true_result.c_type, result_type, NULL);
+        true_result = convert_to_type(context, true_result.value, true_result.c_type, result_type);
         ir_build_assign(context->builder, true_result.value, result);
     } else {
         ir_build_assign(context->builder, true_result.value, result);
@@ -1608,10 +1816,7 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
     assert(expr->type == EXPRESSION_UNARY);
 
     expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
-    if (operand.c_type == NULL) {
-        return EXPR_ERR;
-    }
-
+    if (operand.c_type == NULL) return EXPR_ERR;
     if (operand.is_lvalue) operand = get_rvalue(context, operand);
 
     if (!is_integer_type(operand.c_type)) {
@@ -1624,6 +1829,24 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
             },
         });
         return EXPR_ERR;
+    }
+
+    if (operand.value.kind == IR_VALUE_CONST) {
+        // Constant folding
+        ir_value_t result = {
+            .kind = IR_VALUE_CONST,
+            .constant = {
+                .kind = IR_CONST_INT,
+                .type = ir_get_type_of_value(operand.value),
+                .i = ~operand.value.constant.i,
+            },
+        };
+        return (expression_result_t) {
+            .c_type = operand.c_type,
+            .is_lvalue = false,
+            .is_string_literal = false,
+            .value = result,
+        };
     }
 
     ir_var_t result = temp_var(context, ir_get_type_of_value(operand.value));
@@ -1968,12 +2191,63 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
     }
 }
 
+expression_result_t get_boolean_value(
+    ir_gen_context_t *context,
+    ir_value_t value,
+    const type_t *c_type,
+    const expression_t *expr
+) {
+    const ir_type_t *ir_type = ir_get_type_of_value(value);
+    if (ir_type->kind == IR_TYPE_BOOL) {
+        return (expression_result_t) {
+            .c_type = &BOOL,
+            .is_lvalue = false,
+            .value = value,
+        };
+    }
+
+    if (!ir_is_scalar_type(ir_type)) {
+        // The value must have scalar type
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_CONVERSION_TO_BOOLEAN,
+            .location = expr->span.start,
+            .invalid_conversion_to_boolean = {
+                .type = c_type,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    ir_value_t result;
+    if (value.kind == IR_VALUE_CONST) {
+        // constant folding
+        ir_const_t constant = {
+            .kind = IR_CONST_INT,
+            .type = &IR_BOOL,
+            .i =  ir_is_float_type(ir_type) ? value.constant.f != 0.0 : value.constant.i != 0,
+        };
+        result = (ir_value_t) {
+            .kind = IR_VALUE_CONST,
+            .constant = constant,
+        };
+    } else {
+        ir_var_t temp = temp_var(context, &IR_BOOL);
+        ir_build_ne(context->builder, value, ir_get_zero_value(context, ir_type), temp);
+        result = ir_value_for_var(temp);
+    }
+
+    return (expression_result_t) {
+        .c_type = &BOOL,
+        .is_lvalue = false,
+        .value = result,
+    };
+}
+
 expression_result_t convert_to_type(
         ir_gen_context_t *context,
         ir_value_t value,
         const type_t *from_type,
-        const type_t *to_type,
-        ir_var_t *result
+        const type_t *to_type
 ) {
     const ir_type_t *result_type = get_ir_type(to_type);
     const ir_type_t *source_type;
@@ -1983,46 +2257,89 @@ expression_result_t convert_to_type(
         source_type = value.var.type;
     }
 
-    if (result == NULL) {
-        result = (ir_var_t *) alloca(sizeof(ir_var_t));
-        *result = (ir_var_t) {
-            .name = temp_name(context),
-            .type = result_type,
-        };
-    } else {
-        // Ensure that the result variable has the correct type
-        assert(ir_types_equal(result->type, result_type));
-    }
-
     if (ir_types_equal(source_type, result_type)) {
         // No conversion necessary
-        ir_build_assign(context->builder, value, *result);
         return (expression_result_t) {
             .c_type = to_type,
             .is_lvalue = false,
-            .value = ir_value_for_var(*result),
+            .value = value,
         };
     }
 
+    ir_var_t result = {
+        .name = temp_name(context),
+        .type = result_type,
+    };
+
     if (ir_is_integer_type(result_type)) {
         if (ir_is_integer_type(source_type)) {
+            if (value.kind == IR_VALUE_CONST) {
+                // constant -> constant conversion
+                ir_value_t constant = (ir_value_t) {
+                    .kind = IR_VALUE_CONST,
+                    .constant = (ir_const_t) {
+                        .kind = IR_CONST_INT,
+                        .type = result_type,
+                        .i = value.constant.i,
+                    }
+                };
+                return (expression_result_t) {
+                    .c_type = to_type,
+                    .is_lvalue = false,
+                    .value = constant,
+                };
+            }
+
             // int -> int conversion
             if (size_of_type(source_type) > size_of_type(result_type)) {
                 // Truncate
-                ir_build_trunc(context->builder, value, *result);
+                ir_build_trunc(context->builder, value, result);
             } else if (size_of_type(source_type) < size_of_type(result_type)) {
                 // Extend
-                ir_build_ext(context->builder, value, *result);
+                ir_build_ext(context->builder, value, result);
             } else {
                 // Sign/unsigned integer conversion
-                ir_build_bitcast(context->builder, value, *result);
+                ir_build_bitcast(context->builder, value, result);
             }
         } else if (ir_is_float_type(source_type)) {
+            // constant conversion
+            if (value.kind == IR_VALUE_CONST) {
+                ir_value_t constant = (ir_value_t) {
+                    .kind = IR_VALUE_CONST,
+                    .constant = (ir_const_t) {
+                        .kind = IR_CONST_INT,
+                        .type = result_type,
+                        .i = (long long)value.constant.f,
+                    },
+                };
+                return (expression_result_t) {
+                    .c_type = to_type,
+                    .is_lvalue = false,
+                    .value = constant,
+                };
+            }
+
             // float -> int
-            ir_build_ftoi(context->builder, value, *result);
+            ir_build_ftoi(context->builder, value, result);
         } else if (source_type->kind == IR_TYPE_PTR) {
+            if (value.kind == IR_VALUE_CONST) {
+                ir_value_t constant = (ir_value_t) {
+                    .kind = IR_VALUE_CONST,
+                    .constant = (ir_const_t) {
+                        .kind = IR_CONST_INT,
+                        .type = result_type,
+                        .i = value.constant.i,
+                    }
+                };
+                return (expression_result_t) {
+                    .c_type = to_type,
+                    .is_lvalue = false,
+                    .value = constant,
+                };
+            }
+
             // ptr -> int
-            ir_build_ptoi(context->builder, value, *result);
+            ir_build_ptoi(context->builder, value, result);
         } else {
             // TODO, other conversions, proper error handling
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
@@ -2032,20 +2349,54 @@ expression_result_t convert_to_type(
         }
     } else if (ir_is_float_type(result_type)) {
         if (ir_is_float_type(source_type)) {
+            // constant conversion
+            if (value.kind == IR_VALUE_CONST) {
+                ir_value_t constant = (ir_value_t) {
+                    .kind = IR_VALUE_CONST,
+                    .constant = (ir_const_t) {
+                        .kind = IR_CONST_FLOAT,
+                        .type = result_type,
+                        .f = value.constant.f,
+                    }
+                };
+                return (expression_result_t) {
+                    .c_type = to_type,
+                    .is_lvalue = false,
+                    .value = constant,
+                };
+            }
+
             // float -> float conversion
             if (size_of_type(source_type) > size_of_type(result_type)) {
                 // Truncate
-                ir_build_trunc(context->builder, value, *result);
+                ir_build_trunc(context->builder, value, result);
             } else if (size_of_type(source_type) < size_of_type(result_type)) {
                 // Extend
-                ir_build_ext(context->builder, value, *result);
+                ir_build_ext(context->builder, value, result);
             } else {
                 // No conversion necessary
-                ir_build_assign(context->builder, value, *result);
+                ir_build_assign(context->builder, value, result);
             }
         } else if (ir_is_integer_type(source_type)) {
+            // constant conversion
+            if (value.kind == IR_VALUE_CONST) {
+                ir_value_t constant = (ir_value_t) {
+                    .kind = IR_VALUE_CONST,
+                    .constant = (ir_const_t) {
+                        .kind = IR_CONST_FLOAT,
+                        .type = result_type,
+                        .f = (double)value.constant.i,
+                    }
+                };
+                return (expression_result_t) {
+                    .c_type = to_type,
+                    .is_lvalue = false,
+                    .value = constant,
+                };
+            }
+
             // int -> float
-            ir_build_itof(context->builder, value, *result);
+            ir_build_itof(context->builder, value, result);
         } else {
             // TODO: proper error handling
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
@@ -2055,9 +2406,43 @@ expression_result_t convert_to_type(
         }
     } else if (result_type->kind == IR_TYPE_PTR) {
         if (source_type->kind == IR_TYPE_PTR) {
+            // constant conversion
+            if (value.kind == IR_VALUE_CONST) {
+                ir_value_t constant = (ir_value_t) {
+                    .kind = IR_VALUE_CONST,
+                    .constant = (ir_const_t) {
+                        .kind = IR_CONST_INT,
+                        .type = result_type,
+                        .i = value.constant.i,
+                    }
+                };
+                return (expression_result_t) {
+                    .c_type = to_type,
+                    .is_lvalue = false,
+                    .value = constant,
+                };
+            }
+
             // ptr -> ptr conversion
-            ir_build_bitcast(context->builder, value, *result);
+            ir_build_bitcast(context->builder, value, result);
         } else if (ir_is_integer_type(source_type)) {
+            // constant conversion
+            if (value.kind == IR_VALUE_CONST) {
+                ir_value_t constant = (ir_value_t) {
+                    .kind = IR_VALUE_CONST,
+                    .constant = (ir_const_t) {
+                        .kind = IR_CONST_INT,
+                        .type = result_type,
+                        .i = value.constant.i,
+                    }
+                };
+                return (expression_result_t) {
+                    .c_type = to_type,
+                    .is_lvalue = false,
+                    .value = constant,
+                };
+            }
+
             // int -> ptr
             // If the source is smaller than the target, we need to extend it
             if (size_of_type(source_type) < size_of_type(get_ir_type(c_ptr_int_type()))) {
@@ -2065,16 +2450,14 @@ expression_result_t convert_to_type(
                 ir_build_ext(context->builder, value, temp);
                 value = ir_value_for_var(temp);
             }
-            ir_build_itop(context->builder, value, *result);
+            ir_build_itop(context->builder, value, result);
         } else if (ir_is_float_type(source_type)) {
             // float -> ptr
-            // This is pretty wacky, but does have actual uses.
-            // For example, when calling printf to print a float, we must convert the float to a pointer.
-            // int type with the same size as the float type
+            // TODO: is this allowed? Seems like it's an invalid conversion
             const ir_type_t* int_type = source_type->kind == IR_TYPE_F64 ? &IR_I64 : &IR_I32;
             ir_var_t temp = temp_var(context, int_type);
             ir_build_bitcast(context->builder, value, temp);
-            ir_build_itop(context->builder, ir_value_for_var(temp), *result);
+            ir_build_itop(context->builder, ir_value_for_var(temp), result);
         } else if (source_type->kind == IR_TYPE_ARRAY) {
             // TODO
             fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
@@ -2092,7 +2475,7 @@ expression_result_t convert_to_type(
     return (expression_result_t) {
         .c_type = to_type,
         .is_lvalue = false,
-        .value = ir_value_for_var(*result),
+        .value = ir_value_for_var(result),
     };
 }
 

@@ -255,7 +255,7 @@ typedef struct IrConst {
     } kind;
     const ir_type_t *type;
     union {
-        unsigned long long i;
+        long long i;
         long double f;
         const char* s;
     };
@@ -387,12 +387,13 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b);
  * @param type IR type
  * @return size in bits
  */
-size_t size_of_type(const ir_type_t *type);
+ssize_t size_of_type(const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(ir_value_t value);
 bool ir_is_integer_type(const ir_type_t *type);
 bool ir_is_signed_integer_type(const ir_type_t *type);
 bool ir_is_float_type(const ir_type_t *type);
+bool ir_is_scalar_type(const ir_type_t *type);
 
 typedef struct IrValidationError {
     const struct IrInstruction *instruction;

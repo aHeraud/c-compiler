@@ -45,6 +45,13 @@ void ir_builder_position_after(ir_function_builder_t *builder, ir_instruction_no
  */
 ir_instruction_node_t *ir_builder_get_position(const ir_function_builder_t *builder);
 
+/**
+ * Clear all instructions after the specified position.
+ * @param builder
+ * @param position
+ */
+void ir_builder_clear_after(ir_function_builder_t *builder, ir_instruction_node_t *position);
+
 /* No-op */
 ir_instruction_node_t *ir_build_nop(ir_function_builder_t *builder, const char* label);
 

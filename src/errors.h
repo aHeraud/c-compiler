@@ -26,6 +26,7 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_LOOP_CONDITION_TYPE,
     ERR_INVALID_UNARY_NOT_OPERAND_TYPE,
     ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
+    ERR_INVALID_CONVERSION_TO_BOOLEAN,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -80,6 +81,9 @@ typedef struct CompilationError {
         struct {
             const type_t *type;
         } invalid_logical_binary_expression_operand_type;
+        struct {
+            const type_t *type;
+        } invalid_conversion_to_boolean;
     };
 } compilation_error_t;
 

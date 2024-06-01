@@ -66,6 +66,54 @@ void test_ir_gen_basic() {
 
 void test_ir_gen_add_simple() {
     const char* input = "float main() {\n"
+                        "    float a = 1.0f;\n"
+                        "    float b = 2.0f;\n"
+                        "    return a + b;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*f32 %0 = alloca f32",
+        "store f32 1.000000, *f32 %0",
+        "*f32 %1 = alloca f32",
+        "store f32 2.000000, *f32 %1",
+        "f32 %2 = load *f32 %0",
+        "f32 %3 = load *f32 %1",
+        "f32 %4 = add f32 %2, f32 %3",
+        "ret f32 %4"
+    }));
+}
+
+void test_ir_gen_add_i32_f32() {
+    const char* input = "int main() {\n"
+                        "    int a = 1;\n"
+                        "    float b = 2.0f;\n"
+                        "    return a + b;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        "*f32 %1 = alloca f32",
+        "store f32 2.000000, *f32 %1",
+        "i32 %2 = load *i32 %0",
+        "f32 %3 = load *f32 %1",
+        "f32 %4 = itof i32 %2",
+        "f32 %5 = add f32 %4, f32 %3",
+        "i32 %6 = ftoi f32 %5",
+        "ret i32 %6"
+    }));
+}
+
+void test_ir_gen_add_constants() {
+    const char* input = "float main() {\n"
                         "    return 1.0f + 2.0f;\n"
                         "}\n";
     PARSE(input)
@@ -74,16 +122,13 @@ void test_ir_gen_add_simple() {
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "f32 %1 = f32 1.000000",
-        "f32 %2 = f32 2.000000",
-        "f32 %0 = add f32 %1, f32 %2",
-        "ret f32 %0"
+        "ret f32 3.000000"
     }));
 }
 
-void test_ir_gen_add_i32_f32() {
+void test_ir_gen_sub_constants() {
     const char* input = "int main() {\n"
-                        "    return 1 + 2.0f;\n"
+                        "    return 3 - 5;\n"
                         "}\n";
     PARSE(input)
     ir_gen_result_t result = generate_ir(&program);
@@ -91,13 +136,192 @@ void test_ir_gen_add_i32_f32() {
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "f32 %1 = itof i32 1",
-        "f32 %2 = f32 2.000000",
-        "f32 %0 = add f32 %1, f32 %2",
-        "i32 %3 = ftoi f32 %0",
-        "ret i32 %3"
+        "ret i32 -2"
     }));
 }
+
+void test_ir_gen_multiply_constants() {
+    const char* input = "int main() {\n"
+                        "    return 3 * 5;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 15"
+    }));
+}
+
+void test_ir_gen_divide_constants() {
+    const char* input = "int main() {\n"
+                        "    return 64 / 8;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 8"
+    }));
+}
+
+void test_ir_gen_mod_constants() {
+    const char* input = "int main() {\n"
+                        "    return 5 % 3;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 2"
+    }));
+}
+
+void test_ir_gen_left_shift_constants() {
+    const char* input = "int main() {\n"
+                        "    return 4 << 2;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 16"
+    }));
+}
+
+void test_ir_gen_right_shift_constants() {
+    const char* input = "int main() {\n"
+                        "    return 3 >> 1;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 1"
+    }));
+}
+
+void test_ir_gen_logic_and_constants_1() {
+    const char* input = "int main() {\n"
+                        "    return 1 && 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_logic_and_constants_2() {
+    const char* input = "int main() {\n"
+                        "    return 0 && 1;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_logic_and_constants_3() {
+    const char* input = "int main() {\n"
+                        "    return 1 && 1;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 1"
+    }));
+}
+
+void test_ir_gen_logic_or_constants_1() {
+    const char* input = "int main() {\n"
+                        "    return 1 || 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 1"
+    }));
+}
+
+void test_ir_gen_logic_or_constants_2() {
+    const char* input = "int main() {\n"
+                        "    return 0 || 1;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 1"
+    }));
+}
+
+void test_ir_gen_logic_or_constants_3() {
+    const char* input = "int main() {\n"
+                        "    return 0 || 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_ternary_expression_constants_1() {
+    const char* input = "int main() {\n"
+                        "    return 1 ? 2 : 3;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 2"
+    }));
+}
+
+void test_ir_gen_ternary_expression_constants_2() {
+    const char* input = "int main() {\n"
+                        "    return 0 ? 2 : 3;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 3"
+    }));
+}
+
 
 void test_ir_gen_if_else_statement() {
     const char* input =
@@ -148,8 +372,7 @@ void test_ir_gen_call_expr_returns_void() {
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "i32 %0 = i32 1",
-        "call foo(i32 %0)",
+        "call foo(i32 1)",
         "ret i32 0"
     }));
 }
@@ -170,11 +393,10 @@ void test_ir_gen_function_arg_promotion() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*f32 %0 = alloca f32",
-        "f32 %1 = f32 1.000000",
-        "store f32 %1, *f32 %0",
-        "f32 %2 = load *f32 %0",
-        "f64 %3 = ext f32 %2",
-        "call foo(f64 %3)",
+        "store f32 1.000000, *f32 %0",
+        "f32 %1 = load *f32 %0",
+        "f64 %2 = ext f32 %1",
+        "call foo(f64 %2)",
         "ret i32 0"
     }));
 }
@@ -200,19 +422,16 @@ void test_ir_gen_varargs_call() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*i32 %0 = alloca i32",
-        "i32 %1 = i32 1",
-        "store i32 %1, *i32 %0",
-        "*f32 %2 = alloca f32",
-        "f32 %3 = trunc f64 1.000000",
-        "store f32 %3, *f32 %2",
-        "**i8 %4 = alloca *i8",
-        "*i8 %5 = bitcast *[i8;6]  @0",
-        "store *i8 %5, **i8 %4",
-        "i32 %6 = load *i32 %0",
-        "i32 %7 = i32 %6",
-        "f32 %8 = load *f32 %2",
-        "*i8 %9 = load **i8 %4",
-        "call foo(i32 %7, f32 %8, *i8 %9)",
+        "store i32 1, *i32 %0",
+        "*f32 %1 = alloca f32",
+        "store f32 1.000000, *f32 %1",
+        "**i8 %3 = alloca *i8",
+        "*i8 %4 = bitcast *[i8;6]  @0",
+        "store *i8 %4, **i8 %3",
+        "i32 %5 = load *i32 %0",
+        "f32 %6 = load *f32 %1",
+        "*i8 %7 = load **i8 %3",
+        "call foo(i32 %5, f32 %6, *i8 %7)",
         "ret i32 0"
     }));
 }
@@ -249,7 +468,7 @@ void test_ir_gen_conditional_expr_void() {
         "*i32 %0 = alloca i32",
         "store i32 argc, *i32 %0",
         "i32 %1 = load *i32 %0",
-        "bool %2 = eq i32 %1, i32 0",
+        "bool %2 = ne i32 %1, i32 0",
         "br bool %2, l0",
         "call bar()",
         "l0: nop",
@@ -275,23 +494,21 @@ void test_ir_gen_conditional_expr_returning_int() {
         "*i32 %0 = alloca i32",
         "store i32 argc, *i32 %0",
         "*i32 %1 = alloca i32",
-        "i32 %2 = i32 1",
-        "store i32 %2, *i32 %1",
-        "*i16 %3 = alloca i16",
-        "i16 %4 = trunc i32 1",
-        "store i16 %4, *i16 %3",
-        "i32 %5 = load *i32 %0",
-        "bool %6 = eq i32 %5, i32 0",
-        "br bool %6, l0",
-        "i16 %7 = load *i16 %3",
-        "i32 %10 = ext i16 %7",
-        "i32 %9 = i32 %10",
+        "store i32 1, *i32 %1",
+        "*i16 %2 = alloca i16",
+        "store i16 1, *i16 %2",
+        "i32 %4 = load *i32 %0",
+        "bool %5 = ne i32 %4, i32 0",
+        "br bool %5, l0",
+        "i16 %6 = load *i16 %2",
+        "i32 %9 = ext i16 %6",
+        "i32 %8 = i32 %9",
         "br l1",
         "l0: nop",
-        "i32 %8 = load *i32 %1",
-        "i32 %9 = i32 %8",
+        "i32 %7 = load *i32 %1",
+        "i32 %8 = i32 %7",
         "l1: nop",
-        "ret i32 %9"
+        "ret i32 %8"
     }));
 }
 
@@ -312,24 +529,19 @@ void test_ir_while_loop() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*i32 %0 = alloca i32",
-        "i32 %1 = i32 0",
-        "store i32 %1, *i32 %0",
+        "store i32 0, *i32 %0",
         "l0: nop",
-        "i32 %2 = load *i32 %0",
-        "i32 %3 = i32 %2",
-        "i32 %4 = i32 10",
-        "bool %5 = lt i32 %3, i32 %4",
-        "bool %6 = eq bool %5, bool 0",
-        "br bool %6, l1",
-        "i32 %7 = load *i32 %0",
-        "i32 %9 = i32 %7",
-        "i32 %10 = i32 1",
-        "i32 %8 = add i32 %9, i32 %10",
-        "i32 %11 = i32 %8",
-        "store i32 %11, *i32 %0",
+        "i32 %1 = load *i32 %0",
+        "bool %2 = lt i32 %1, i32 10",
+        "bool %3 = eq bool %2, bool 0",
+        "br bool %3, l1",
+        "i32 %4 = load *i32 %0",
+        "i32 %5 = add i32 %4, i32 1",
+        "i32 %6 = i32 %5",
+        "store i32 %6, *i32 %0",
         "br l0",
         "l1: nop",
-        "ret i32 0",
+        "ret i32 0"
     }));
 }
 
@@ -342,6 +554,21 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "basic", test_ir_gen_basic);
     CU_add_test(suite, "add simple", test_ir_gen_add_simple);
     CU_add_test(suite, "add i32 + f32", test_ir_gen_add_i32_f32);
+    CU_add_test(suite, "add constants", test_ir_gen_add_constants);
+    CU_add_test(suite, "sub constants", test_ir_gen_sub_constants);
+    CU_add_test(suite, "multiply constants", test_ir_gen_multiply_constants);
+    CU_add_test(suite, "divide constants", test_ir_gen_divide_constants);
+    CU_add_test(suite, "mod constants", test_ir_gen_mod_constants);
+    CU_add_test(suite, "left shift constants", test_ir_gen_left_shift_constants);
+    CU_add_test(suite, "right shift constants", test_ir_gen_right_shift_constants);
+    CU_add_test(suite, "logic and constants 1", test_ir_gen_logic_and_constants_1);
+    CU_add_test(suite, "logic and constants 2", test_ir_gen_logic_and_constants_2);
+    CU_add_test(suite, "logic and constants 3", test_ir_gen_logic_and_constants_3);
+    CU_add_test(suite, "logic or constants 1", test_ir_gen_logic_or_constants_1);
+    CU_add_test(suite, "logic or constants 2", test_ir_gen_logic_or_constants_2);
+    CU_add_test(suite, "logic or constants 3", test_ir_gen_logic_or_constants_3);
+    CU_add_test(suite, "ternary expression constants 1", test_ir_gen_ternary_expression_constants_1);
+    CU_add_test(suite, "ternary expression constants 2", test_ir_gen_ternary_expression_constants_2);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);

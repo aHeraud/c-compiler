@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <string.h>
 #include "ir/ir.h"
 
@@ -10,7 +9,7 @@ void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t ins
     vector->buffer[vector->size++] = instruction;
 }
 
-size_t size_of_type(const ir_type_t *type) {
+ssize_t size_of_type(const ir_type_t *type) {
     switch (type->kind) {
         case IR_TYPE_BOOL:
             return 1;
@@ -125,6 +124,10 @@ bool ir_is_signed_integer_type(const ir_type_t *type) {
 
 bool ir_is_float_type(const ir_type_t *type) {
     return type->kind == IR_TYPE_F32 || type->kind == IR_TYPE_F64;
+}
+
+bool ir_is_scalar_type(const ir_type_t *type) {
+    return ir_is_integer_type(type) || ir_is_float_type(type) || type->kind == IR_TYPE_PTR;
 }
 
 void append_ir_validation_error(ir_validation_error_vector_t *vector, ir_validation_error_t error) {

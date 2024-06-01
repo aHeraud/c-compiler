@@ -69,6 +69,19 @@ ir_instruction_node_t *ir_builder_get_position(const ir_function_builder_t *buil
     return builder->cursor;
 }
 
+void ir_builder_clear_after(ir_function_builder_t *builder, ir_instruction_node_t *position) {
+    if (position == NULL) return;
+
+    ir_instruction_node_t *node = position->next;
+    while (node != NULL) {
+        ir_instruction_node_t *next = node->next;
+        free(node);
+        node = next;
+    }
+
+    position->next = NULL;
+}
+
 ir_instruction_node_t *ir_builder_insert_instruction(
     ir_function_builder_t *builder, ir_instruction_t instruction
 ) {

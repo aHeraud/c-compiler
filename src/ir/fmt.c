@@ -73,7 +73,7 @@ const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type) {
 const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
     switch (constant.kind) {
         case IR_CONST_INT:
-            snprintf(buffer, size, "%s %llu", ir_fmt_type(alloca(256), 256, constant.type), constant.i);
+            snprintf(buffer, size, "%s %lli", ir_fmt_type(alloca(256), 256, constant.type), constant.i);
             break;
         case IR_CONST_FLOAT:
             snprintf(buffer, size, "%s %Lf", ir_fmt_type(alloca(256), 256, constant.type), constant.f);
