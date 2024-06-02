@@ -83,9 +83,23 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
             }
         }
         LLVMValueRef llvm_global = LLVMAddGlobal(context.llvm_module, ir_to_llvm_type(ir_type), name);
-        if (global->value.kind == IR_CONST_STRING) {
-            LLVMSetInitializer(llvm_global, LLVMConstString(global->value.s, strlen(global->value.s), false));
+        // TODO: don't set values for un-initialized static globals?
+        LLVMValueRef value;
+        switch (global->value.kind) {
+            case IR_CONST_STRING: {
+                value = LLVMConstString(global->value.s, strlen(global->value.s), false);
+                break;
+            }
+            case IR_CONST_INT: {
+                value = LLVMConstInt(ir_to_llvm_type(ir_type), global->value.i, true);
+                break;
+            }
+            case IR_CONST_FLOAT: {
+                value = LLVMConstReal(ir_to_llvm_type(ir_type), global->value.f);
+                break;
+            }
         }
+        LLVMSetInitializer(llvm_global, value);
         hash_table_insert(&context.global_var_map, global->name, llvm_global);
     }
 

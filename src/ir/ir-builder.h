@@ -8,7 +8,7 @@ typedef struct IrFunctionBuilder ir_function_builder_t;
 
 ir_function_builder_t *ir_builder_create();
 ir_instruction_vector_t ir_builder_finalize(ir_function_builder_t *builder);
-
+void ir_builder_destroy(ir_function_builder_t *builder);
 
 /* Utilities to set the position of the next instruction */
 

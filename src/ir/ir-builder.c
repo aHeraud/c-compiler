@@ -46,7 +46,19 @@ ir_instruction_vector_t ir_builder_finalize(ir_function_builder_t *builder) {
         node = next;
     }
 
+    free(builder);
+
     return instructions;
+}
+
+void ir_builder_destroy(ir_function_builder_t *builder) {
+    ir_instruction_node_t *node = builder->head;
+    while (node != NULL) {
+        ir_instruction_node_t *next = node->next;
+        free(node);
+        node = next;
+    }
+    free(builder);
 }
 
 void ir_builder_position_at_beginning(ir_function_builder_t *builder) {

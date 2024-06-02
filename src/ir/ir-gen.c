@@ -680,6 +680,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
     assert(declaration != NULL && "Declaration must not be NULL");
 
     symbol_t *symbol = lookup_symbol_in_current_scope(context, declaration->identifier->value);
+    ir_global_t *global = NULL;
     if (symbol != NULL) {
         // Global scope is a bit special. Re-declarations are allowed if the types match, however if
         // the global was previously given a value (e.g. has an initializer or is a function definition),
@@ -711,7 +712,6 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             return;
         } else {
             // Look up the global in the module's global list.
-            ir_global_t *global = NULL;
             assert(hash_table_lookup(&context->global_map, declaration->identifier->value, (void**) &global));
             assert(global != NULL);
             // If the types are not equal, or the global has already been initialized, it is a redefinition error.
@@ -725,15 +725,6 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
                     },
                 });
                 return;
-            }
-            // Visit the initializer if present
-            if (declaration->initializer != NULL) {
-                // TODO: global variable initializers
-                fprintf(stderr, "Error: %s:%d:%d: Global variable initializers not implemented\n",
-                        declaration->initializer->span.start.path,
-                        declaration->initializer->span.start.line,
-                        declaration->initializer->span.start.column);
-                exit(1);
             }
         }
     } else {
@@ -768,27 +759,72 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
         // Add the global to the module's global list
         // *Function declarations are not IR globals*
         if (declaration->type->kind != TYPE_FUNCTION) {
-            ir_global_t *global = malloc(sizeof(ir_global_t));
+            global = malloc(sizeof(ir_global_t));
             *global = (ir_global_t) {
                 .name = symbol->ir_ptr.name,
                 .type = symbol->ir_ptr.type,
                 .initialized = declaration->initializer != NULL,
             };
 
-            // Default value for global
-            // TODO
-
             hash_table_insert(&context->global_map, symbol->name, global);
             ir_append_global_ptr(&context->module->globals, global);
         }
+    }
 
-        if (declaration->initializer != NULL) {
-            // TODO: global variable initializers
-            fprintf(stderr, "Error: %s:%d:%d: Global variable initializers not implemented\n",
-                    declaration->initializer->span.start.path,
-                    declaration->initializer->span.start.line,
-                    declaration->initializer->span.start.column);
-            exit(1);
+    // Visit the initializer if present
+    if (declaration->initializer != NULL) {
+        assert(global != NULL);
+
+        // Set up function builder state for the global initializer
+        // (a valid initializer is a constant expression which will generate no instructions, but we use the same
+        // code to generate IR for all expressions)
+        context->function = & (ir_function_definition_t) {
+            .name = "global_initializer",
+            .type = NULL,
+            .num_params = 0,
+            .params = NULL,
+            .is_variadic = false,
+            .body = NULL,
+        };
+        context->builder = ir_builder_create();
+
+        expression_result_t result = ir_visit_expression(context, declaration->initializer);
+        if (result.c_type == NULL) return; // Invalid initializer
+
+        // Typecheck/convert the initializer
+        result = convert_to_type(context, result.value, result.c_type, declaration->type);
+
+        // Delete the builder, throw away any generated instructions
+        ir_builder_destroy(context->builder);
+        context->function = NULL;
+
+        if (result.value.kind != IR_VALUE_CONST) {
+            // The initializer must be a constant expression
+            append_compilation_error(&context->errors, (compilation_error_t) {
+                .kind = ERR_GLOBAL_INITIALIZER_NOT_CONSTANT,
+                .location = declaration->initializer->span.start,
+                .global_initializer_not_constant = {
+                    .declaration = declaration,
+                },
+            });
+            return;
+        }
+
+        global->value = result.value.constant;
+    } else if (global != NULL) {
+        // Default value for uninitialized global variables
+        if (is_floating_type(declaration->type)) {
+            global->value = (ir_const_t) {
+                .kind = IR_CONST_FLOAT,
+                .type = symbol->ir_type,
+                .f = 0.0,
+            };
+        } else {
+            global->value = (ir_const_t) {
+                .kind = IR_CONST_INT,
+                .type = symbol->ir_type,
+                .i = 0,
+            };
         }
     }
 }
