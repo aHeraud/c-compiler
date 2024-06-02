@@ -168,6 +168,31 @@ void test_ir_gen_divide_constants() {
     }));
 }
 
+void test_ir_gen_divide_by_zero_float_constants() {
+    const char* input = "float main() {\n"
+                        "    return 1.0f / 0.0f;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, (const char*[]) {
+        "ret f32 inf"
+    });
+}
+
+void test_ir_gen_divide_by_zero_integer_constants() {
+    const char* input = "int main() {\n"
+                        "    return 1 / 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+
+    // TODO: warning, undefined result
+    // For now we just make sure this doesn't crash
+}
+
 void test_ir_gen_mod_constants() {
     const char* input = "int main() {\n"
                         "    return 5 % 3;\n"
@@ -558,6 +583,8 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "sub constants", test_ir_gen_sub_constants);
     CU_add_test(suite, "multiply constants", test_ir_gen_multiply_constants);
     CU_add_test(suite, "divide constants", test_ir_gen_divide_constants);
+    CU_add_test(suite, "divide by zero (float constants)", test_ir_gen_divide_by_zero_float_constants);
+    CU_add_test(suite, "divide by zero (integer constants)", test_ir_gen_divide_by_zero_integer_constants);
     CU_add_test(suite, "mod constants", test_ir_gen_mod_constants);
     CU_add_test(suite, "left shift constants", test_ir_gen_left_shift_constants);
     CU_add_test(suite, "right shift constants", test_ir_gen_right_shift_constants);

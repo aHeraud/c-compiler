@@ -1181,20 +1181,19 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
 
     // For multiplication/division both operands must have arithmetic type
     // For modulo both operands must have integer type
-    if ((is_modulo && !is_integer_type(left.c_type) || !is_integer_type(right.c_type)) ||
-        (!is_modulo && (!is_arithmetic_type(left.c_type) || !is_arithmetic_type(right.c_type)))) {
-        if (!is_integer_type(left.c_type) || !is_integer_type(right.c_type)) {
-            append_compilation_error(&context->errors, (compilation_error_t) {
-                .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
-                .location = expr->binary.operator->position,
-                .invalid_binary_expression_operands = {
-                    .operator = expr->binary.operator->value,
-                    .left_type = left.c_type,
-                    .right_type = right.c_type,
-                },
-            });
-            return EXPR_ERR;
-        }
+    if ((is_modulo && (!is_integer_type(left.c_type) || !is_integer_type(right.c_type))) ||
+        (!is_modulo && (!is_arithmetic_type(left.c_type) || !is_arithmetic_type(right.c_type)))
+    ) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
+            .location = expr->binary.operator->position,
+            .invalid_binary_expression_operands = {
+                .operator = expr->binary.operator->value,
+                .left_type = left.c_type,
+                .right_type = right.c_type,
+            },
+        });
+        return EXPR_ERR;
     }
 
     // Type conversions
@@ -1215,9 +1214,15 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
         };
 
         if (ir_is_integer_type(ir_result_type)) {
-            if (is_modulo) value.i = left.value.constant.i % right.value.constant.i;
-            else if (is_division) value.i = left.value.constant.i / right.value.constant.i;
-            else value.i = left.value.constant.i * right.value.constant.i;
+            // TODO: emit warning and set undefined value for division by zero
+            // For now we will just set the value to 0 and move on
+            if (is_division && right.value.constant.i == 0) {
+                value.i = 0;
+            } else {
+                if (is_modulo) value.i = left.value.constant.i % right.value.constant.i;
+                else if (is_division) value.i = left.value.constant.i / right.value.constant.i;
+                else value.i = left.value.constant.i * right.value.constant.i;
+            }
         } else {
             // no modulo operator for floating point
             if (is_division) value.f = left.value.constant.f / right.value.constant.f;
