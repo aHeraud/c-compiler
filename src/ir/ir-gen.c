@@ -26,6 +26,7 @@ typedef struct IrGenContext {
     ir_function_definition_t *function;
     const function_definition_t *c_function;
     ir_function_builder_t *builder;
+    ir_instruction_node_t *alloca_tail;
 
     // List of compilation errors encountered during semantic analysis
     compilation_error_vector_t errors;
@@ -120,6 +121,11 @@ char *gen_label(ir_gen_context_t *context);
 ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(const ir_value_t value);
+
+/**
+ * Helper to insert alloca instructions for local variables at the top of the function.
+ */
+void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t result);
 
 /**
  * Get the C integer type that is the same width as a pointer.
@@ -279,6 +285,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     };
     context->c_function = function;
     context->builder = ir_builder_create();
+    context->alloca_tail = ir_builder_get_position(context->builder);
 
     const type_t function_c_type = {
         .kind = TYPE_FUNCTION,
@@ -368,7 +375,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
             .name = temp_name(context),
             .type = get_ir_ptr_type(ir_param_type),
         };
-        ir_build_alloca(context->builder, ir_param_type, param_ptr);
+        insert_alloca(context, ir_param_type, param_ptr);
 
         // Store the parameter in the stack slot
         ir_build_store(context->builder, ir_value_for_var(param_ptr), ir_value_for_var(ir_param));
@@ -866,7 +873,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
     declare_symbol(context, symbol);
 
     // Allocate storage space for the variable
-    ir_build_alloca(context->builder, get_ir_type(declaration->type), symbol->ir_ptr);
+    insert_alloca(context, ir_type, symbol->ir_ptr);
 
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
@@ -2542,4 +2549,18 @@ expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t re
         .is_lvalue = false,
         .value = ir_value_for_var(temp),
     };
+}
+
+
+void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t result) {
+    // save the current position of the builder
+    ir_instruction_node_t *position = ir_builder_get_position(context->builder);
+
+    ir_builder_position_after(context->builder, context->alloca_tail);
+    context->alloca_tail = ir_build_alloca(context->builder, ir_type, result);
+
+    // restore the builder position
+    if (position != NULL) {
+        ir_builder_position_after(context->builder, position);
+    }
 }

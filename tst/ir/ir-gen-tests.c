@@ -77,8 +77,8 @@ void test_ir_gen_add_simple() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*f32 %0 = alloca f32",
-        "store f32 1.000000, *f32 %0",
         "*f32 %1 = alloca f32",
+        "store f32 1.000000, *f32 %0",
         "store f32 2.000000, *f32 %1",
         "f32 %2 = load *f32 %0",
         "f32 %3 = load *f32 %1",
@@ -100,8 +100,8 @@ void test_ir_gen_add_i32_f32() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*i32 %0 = alloca i32",
-        "store i32 1, *i32 %0",
         "*f32 %1 = alloca f32",
+        "store i32 1, *i32 %0",
         "store f32 2.000000, *f32 %1",
         "i32 %2 = load *i32 %0",
         "f32 %3 = load *f32 %1",
@@ -366,8 +366,8 @@ void test_ir_gen_if_else_statement() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*i32 %0 = alloca i32",
-        "store i32 a, *i32 %0",
         "*i32 %1 = alloca i32",
+        "store i32 a, *i32 %0",
         "i32 %2 = load *i32 %0",
         "bool %3 = eq i32 %2, i32 0",
         "br bool %3, l0",
@@ -447,10 +447,10 @@ void test_ir_gen_varargs_call() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*i32 %0 = alloca i32",
-        "store i32 1, *i32 %0",
         "*f32 %1 = alloca f32",
-        "store f32 1.000000, *f32 %1",
         "**i8 %3 = alloca *i8",
+        "store i32 1, *i32 %0",
+        "store f32 1.000000, *f32 %1",
         "*i8 %4 = bitcast *[i8;6]  @0",
         "store *i8 %4, **i8 %3",
         "i32 %5 = load *i32 %0",
@@ -517,10 +517,10 @@ void test_ir_gen_conditional_expr_returning_int() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*i32 %0 = alloca i32",
-        "store i32 argc, *i32 %0",
         "*i32 %1 = alloca i32",
-        "store i32 1, *i32 %1",
         "*i16 %2 = alloca i16",
+        "store i32 argc, *i32 %0",
+        "store i32 1, *i32 %1",
         "store i16 1, *i16 %2",
         "i32 %4 = load *i32 %0",
         "bool %5 = ne i32 %4, i32 0",
