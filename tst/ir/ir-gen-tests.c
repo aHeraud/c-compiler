@@ -347,6 +347,63 @@ void test_ir_gen_ternary_expression_constants_2() {
     }));
 }
 
+void test_ir_gen_addr_of_variable() {
+    const char* input = "int main() {\n"
+                        "    int a = 1;\n"
+                        "    int *b = &a;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "**i32 %1 = alloca *i32",
+        "store i32 1, *i32 %0",
+        "store *i32 %0, **i32 %1",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_indirect_load() {
+    const char* input = "int foo(int *a) {\n"
+                        "    return *a;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "**i32 %0 = alloca *i32",
+        "store *i32 a, **i32 %0",
+        "*i32 %1 = load **i32 %0",
+        "i32 %2 = load *i32 %1",
+        "ret i32 %2"
+    }));
+}
+
+void test_ir_gen_indirect_store() {
+    const char* input = "int foo(int *a) {\n"
+                        "    *a = 1;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "**i32 %0 = alloca *i32",
+        "store *i32 a, **i32 %0",
+        "i32 %1 = i32 1",
+        "*i32 %2 = load **i32 %0",
+        "store i32 %1, *i32 %2",
+        "ret i32 0"
+    }));
+}
 
 void test_ir_gen_if_else_statement() {
     const char* input =
@@ -596,6 +653,9 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "logic or constants 3", test_ir_gen_logic_or_constants_3);
     CU_add_test(suite, "ternary expression constants 1", test_ir_gen_ternary_expression_constants_1);
     CU_add_test(suite, "ternary expression constants 2", test_ir_gen_ternary_expression_constants_2);
+    CU_add_test(suite, "address of variable", test_ir_gen_addr_of_variable);
+    CU_add_test(suite, "indirect load", test_ir_gen_indirect_load);
+    CU_add_test(suite, "indirect store", test_ir_gen_indirect_store);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);

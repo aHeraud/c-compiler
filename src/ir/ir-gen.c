@@ -42,11 +42,23 @@ typedef struct IrGenContext {
     int label_counter;
 } ir_gen_context_t;
 
+typedef enum ExpressionResultKind {
+    EXPR_RESULT_ERR,
+    EXPR_RESULT_VALUE,
+    EXPR_RESULT_INDIRECTION,
+} expression_result_kind_t;
+
+typedef struct ExpressionResult expression_result_t;
 typedef struct ExpressionResult {
-    ir_value_t value;
-    bool is_lvalue;
-    bool is_string_literal;
+    expression_result_kind_t kind;
     const type_t *c_type;
+    bool is_lvalue;
+    bool addr_of;
+    bool is_string_literal;
+    union {
+        ir_value_t value;
+        expression_result_t *indirection_inner;
+    };
 } expression_result_t;
 
 typedef struct Scope {
@@ -75,9 +87,11 @@ typedef struct Symbol {
 } symbol_t;
 
 const expression_result_t EXPR_ERR = {
+    .kind = EXPR_RESULT_ERR,
     .c_type = NULL,
     .is_lvalue = false,
     .is_string_literal = false,
+    .addr_of = false,
     .value = {
         .kind = IR_VALUE_VAR,
         .var = {
@@ -168,6 +182,7 @@ const ir_type_t *get_ir_ptr_type(const ir_type_t *pointee);
 
 ir_value_t ir_value_for_var(ir_var_t var);
 
+ir_value_t get_indirect_ptr(ir_gen_context_t *context, expression_result_t res);
 expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t res);
 
 void enter_scope(ir_gen_context_t *context) {
@@ -221,6 +236,8 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const expression_t *expr);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
@@ -880,10 +897,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         expression_result_t result = ir_visit_expression(context, declaration->initializer);
 
         // Error occurred while evaluating the initializer
-        if (result.c_type == NULL) return;
-
-        // Verify that the types are compatible, convert if necessary
-        result = convert_to_type(context, result.value, result.c_type, declaration->type);
+        if (result.kind == EXPR_RESULT_ERR) return;
 
         // Incompatible types
         if (result.c_type == NULL) return;
@@ -891,6 +905,9 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         // If the initializer is an lvalue, load the value
         // TODO: not sure that this is correct
         if (result.is_lvalue) result = get_rvalue(context, result);
+
+        // Verify that the types are compatible, convert if necessary
+        result = convert_to_type(context, result.value, result.c_type, declaration->type);
 
         // Store the result in the allocated storage
         ir_build_store(context->builder, ir_value_for_var(symbol->ir_ptr), result.value);
@@ -941,9 +958,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         .buffer = NULL,
     };
 
-    if (function.c_type == NULL) {
-        return EXPR_ERR;
-    }
+    if (function.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     // Function can be a function, or a pointer to a function
     // TODO: handle function pointers
@@ -978,24 +993,20 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     ir_value_t *args = malloc(sizeof(ir_value_t) * actual_args_count);
     for (size_t i = 0; i < actual_args_count; i += 1) {
         expression_result_t arg = ir_visit_expression(context, expr->call.arguments.buffer[i]);
-        if (arg.c_type == NULL) {
-            // Error occurred while evaluating the argument
-            return EXPR_ERR;
-        }
 
-        if (arg.is_lvalue) {
-            arg = get_rvalue(context, arg);
-        }
+        // Error occurred while evaluating the argument
+        if (arg.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+
+        if (arg.is_lvalue) arg = get_rvalue(context, arg);
 
         // Implicit conversion to the parameter type
         // Variadic arguments are _NOT_ converted, they are just passed as is.
         if (i < function.c_type->function.parameter_list->length) {
             const type_t *param_type = function.c_type->function.parameter_list->parameters[i]->type;
             arg = convert_to_type(context, arg.value, arg.c_type, param_type);
-            if (arg.c_type == NULL) {
-                // Conversion was invalid
-                return EXPR_ERR;
-            }
+
+            // Conversion was invalid
+            if (arg.kind == EXPR_RESULT_ERR) return EXPR_ERR;
         }
 
         args[i] = arg.value;
@@ -1020,9 +1031,11 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     };
 
     return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
         .c_type = function.c_type->function.return_type,
         .is_lvalue = false,
         .is_string_literal = false,
+        .addr_of = false,
         .value = result_value,
     };
 }
@@ -1069,7 +1082,7 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
     expression_result_t right = ir_visit_expression(context, expr->binary.right);
 
     // Bubble up errors if the operands are invalid.
-    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
+    if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     bool is_addition = expr->binary.operator->kind == TK_PLUS
                      || expr->binary.operator->kind == TK_PLUS_ASSIGN;
@@ -1114,6 +1127,7 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
         }
 
         return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
             .c_type = result_type,
             .is_lvalue = false,
             .is_string_literal = false,
@@ -1188,9 +1202,11 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
 
 
         return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
             .c_type = result_type,
             .is_lvalue = false,
             .is_string_literal = false,
+            .addr_of = false,
             .value = result,
         };
     } else {
@@ -1217,7 +1233,7 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
     expression_result_t right = ir_visit_expression(context, expr->binary.right);
 
     // Bubble up errors if the operands are invalid.
-    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
+    if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
@@ -1289,9 +1305,11 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
     }
 
     return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
         .c_type = result_type,
         .is_lvalue = false,
         .is_string_literal = false,
+        .addr_of = false,
         .value = result,
     };
 }
@@ -1302,7 +1320,7 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
     expression_result_t right = ir_visit_expression(context, expr->binary.right);
 
     // Bubble up errors if the operands are invalid.
-    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
+    if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
@@ -1373,9 +1391,11 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
     }
 
     return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
         .c_type = common_type,
         .is_lvalue = false,
         .is_string_literal = false,
+        .addr_of = false,
         .value = result,
     };
 }
@@ -1389,7 +1409,7 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
     expression_result_t right = ir_visit_expression(context, expr->binary.right);
 
     // Bubble up errors if the operands are invalid.
-    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
+    if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     // The left operand must be a lvalue.
     if (!left.is_lvalue || left.c_type->is_const) {
@@ -1399,6 +1419,8 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
         });
         return EXPR_ERR;
     }
+
+    if (right.is_lvalue) right = get_rvalue(context, right);
 
     if (expr->binary.operator->kind != TK_ASSIGN) {
         // TODO
@@ -1418,7 +1440,17 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
     }
 
     ir_build_assign(context->builder, right.value, result);
-    ir_build_store(context->builder, left.value, ir_value_for_var(result));
+
+    ir_value_t ptr;
+    if (left.kind == EXPR_RESULT_VALUE) {
+        ptr = left.value;
+    } else if (left.kind == EXPR_RESULT_INDIRECTION) {
+        ptr = get_indirect_ptr(context, left);
+    } else {
+        return EXPR_ERR;
+    }
+
+    ir_build_store(context->builder, ptr, ir_value_for_var(result));
 
     // assignments can be chained, e.g. `a = b = c;`
     return left;
@@ -1434,7 +1466,7 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
     expression_result_t right = ir_visit_expression(context, expr->binary.right);
 
     // Bubble up errors if the operands are invalid.
-    if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
+    if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
@@ -1453,7 +1485,7 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
         left = convert_to_type(context, left.value, left.c_type, common_type);
         right = convert_to_type(context, right.value, right.c_type, common_type);
 
-        if (left.c_type == NULL || right.c_type == NULL) return EXPR_ERR;
+        if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
         ir_value_t result;
         const binary_comparison_operator_t op = expr->binary.comparison_operator;
@@ -1535,9 +1567,11 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
         }
 
         return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
             .c_type = &BOOL,
             .is_lvalue = false,
             .is_string_literal = false,
+            .addr_of = false,
             .value = result,
         };
     } else if (is_pointer_type(left.c_type) && is_pointer_type(right.c_type)) {
@@ -1570,7 +1604,7 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     // The logical && and || operators are short-circuiting, so if the left operand is false (for &&) or true (for ||),
     // then the right operand is not evaluated.
     expression_result_t left = ir_visit_expression(context, expr->binary.left);
-    if (left.c_type == NULL) return EXPR_ERR;
+    if (left.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (left.is_lvalue) left = get_rvalue(context, left);
 
     // Both operands must have scalar type
@@ -1594,15 +1628,17 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
         if ((is_logical_and && left_bool.constant.i == 0) || (is_logical_or && left_bool.constant.i != 0)) {
             // result is the value of the left operand (false for and, true for or)
             return (expression_result_t) {
+                .kind = EXPR_RESULT_VALUE,
                 .c_type = &BOOL,
                 .is_lvalue = false,
                 .is_string_literal = false,
+                .addr_of = false,
                 .value = left_bool,
             };
         } else {
             // result is the value of the right operand
             expression_result_t right = ir_visit_expression(context, expr->binary.right);
-            if (right.c_type == NULL) return EXPR_ERR;
+            if (right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
             if (right.is_lvalue) right = get_rvalue(context, right);
             if (!is_scalar_type(right.c_type)) {
                 append_compilation_error(&context->errors, (compilation_error_t) {
@@ -1616,9 +1652,11 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
             }
             ir_value_t right_bool = get_boolean_value(context, right.value, right.c_type, expr->binary.right).value;
             return (expression_result_t) {
+                .kind = EXPR_RESULT_VALUE,
                 .c_type = &BOOL,
                 .is_lvalue = false,
                 .is_string_literal = false,
+                .addr_of = false,
                 .value = right_bool,
             };
         }
@@ -1643,7 +1681,7 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
 
     // Evaluate the right operand
     expression_result_t right = ir_visit_expression(context, expr->binary.right);
-    if (right.c_type == NULL) return EXPR_ERR;
+    if (right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (right.is_lvalue) right = get_rvalue(context, right);
 
     // Both operands must have scalar type
@@ -1669,9 +1707,11 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     ir_build_nop(context->builder, merge_label);
 
     return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
         .c_type = &BOOL,
         .is_lvalue = false,
         .is_string_literal = false,
+        .addr_of = false,
         .value = ir_value_for_var(result),
     };
 }
@@ -1682,10 +1722,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
     assert(expr->type == EXPRESSION_TERNARY);
 
     expression_result_t condition = ir_visit_expression(context, expr->ternary.condition);
-    if (condition.c_type == NULL) {
-        return EXPR_ERR;
-    }
-
+    if (condition.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (condition.is_lvalue) condition = get_rvalue(context, condition);
 
     // The condition must have scalar type
@@ -1720,7 +1757,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         if (ir_condition.constant.i != 0) {
             // Evaluate the true branch
             true_result = ir_visit_expression(context, expr->ternary.true_expression);
-            if (true_result.c_type == NULL) return EXPR_ERR;
+            if (true_result.kind == EXPR_RESULT_ERR) return EXPR_ERR;
             // Throw away the code for the false branch
             ir_instruction_node_t *position = ir_builder_get_position(context->builder);
             false_result = ir_visit_expression(context, expr->ternary.false_expression);
@@ -1728,7 +1765,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         } else {
             // Evaluate the false branch
             false_result = ir_visit_expression(context, expr->ternary.false_expression);
-            if (false_result.c_type == NULL) return EXPR_ERR;
+            if (false_result.kind == EXPR_RESULT_ERR) return EXPR_ERR;
             // Throw away the code for the true branch
             ir_instruction_node_t *position = ir_builder_get_position(context->builder);
             true_result = ir_visit_expression(context, expr->ternary.true_expression);
@@ -1740,18 +1777,14 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
 
         // False branch
         false_result = ir_visit_expression(context, expr->ternary.false_expression);
-        if (false_result.c_type == NULL) {
-            return EXPR_ERR;
-        }
+        if (false_result.kind == EXPR_RESULT_ERR) return EXPR_ERR;
         if (false_result.is_lvalue) false_result = get_rvalue(context, false_result);
         false_branch_end = ir_builder_get_position(context->builder);
 
         // True branch
         ir_build_nop(context->builder, true_label);
         true_result = ir_visit_expression(context, expr->ternary.true_expression);
-        if (true_result.c_type == NULL) {
-            return EXPR_ERR;
-        }
+        if (true_result.kind == EXPR_RESULT_ERR) return EXPR_ERR;
         if (true_result.is_lvalue) true_result = get_rvalue(context, true_result);
         true_branch_end = ir_builder_get_position(context->builder);
     }
@@ -1777,6 +1810,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         ir_result_type = get_ir_type(result_type);
     } else if (true_result.c_type->kind == TYPE_VOID && false_result.c_type->kind == TYPE_VOID) {
         return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
             .c_type = &VOID,
             .is_lvalue = false,
             .is_string_literal = false,
@@ -1837,9 +1871,11 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
     ir_build_nop(context->builder, merge_label);
 
     return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
         .c_type = result_type,
         .is_lvalue = false,
         .is_string_literal = false,
+        .addr_of = false,
         .value = ir_value_for_var(result),
     };
 }
@@ -1852,6 +1888,10 @@ expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const e
     switch (expr->unary.operator) {
         case UNARY_BITWISE_NOT:
             return ir_visit_bitwise_not_unexpr(context, expr);
+        case UNARY_ADDRESS_OF:
+            return ir_visit_address_of_unexpr(context, expr);
+        case UNARY_DEREFERENCE:
+            return ir_visit_indirection_unexpr(context, expr);
         default:
             // TODO
             assert(false && "Unary operator not implemented");
@@ -1864,7 +1904,7 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
     assert(expr->type == EXPRESSION_UNARY);
 
     expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
-    if (operand.c_type == NULL) return EXPR_ERR;
+    if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (operand.is_lvalue) operand = get_rvalue(context, operand);
 
     if (!is_integer_type(operand.c_type)) {
@@ -1890,9 +1930,11 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
             },
         };
         return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
             .c_type = operand.c_type,
             .is_lvalue = false,
             .is_string_literal = false,
+            .addr_of = false,
             .value = result,
         };
     }
@@ -1901,11 +1943,71 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
     ir_build_not(context->builder, operand.value, result);
 
     return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
         .c_type = operand.c_type,
         .is_lvalue = false,
         .is_string_literal = false,
+        .addr_of = false,
         .value = ir_value_for_var(result),
     };
+}
+
+expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const expression_t *expr) {
+    // The operand of the unary address of ('&') operator must be one of:
+    // 1. A function designator
+    // 2. The result of a [] or * operator
+    // 3. A lvalue that designates an object that is not a bit-field and does not have the 'register' storage-class specifier
+
+    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+
+    if (operand.is_lvalue) {
+
+        return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
+            .value = operand.value,
+            .c_type = operand.c_type,
+            .is_lvalue = false,
+            .is_string_literal = false,
+            .addr_of = true,
+        };
+    } else {
+        // TODO: handle result of [] or * operator, function designator
+        assert(false && "Unimplemented");
+    }
+}
+
+expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const expression_t *expr) {
+    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+
+    // The operand must be a pointer.
+    if (!is_pointer_type(operand.c_type)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_UNARY_INDIRECTION_OPERAND_NOT_PTR_TYPE,
+            .location = expr->span.start,
+        });
+        return EXPR_ERR;
+    }
+
+    // If the operand points to a function, the result is a function designator.
+    // Otherwise, the result is a lvalue designating the object or function designated by the operand.
+    if (operand.c_type->pointer.base->kind == TYPE_FUNCTION) {
+        // TODO: dereference function pointers
+        assert(false && "De-referencing function pointers not implemented");
+    } else {
+        expression_result_t *inner = malloc(sizeof(expression_result_t));
+        *inner = operand;
+
+        return (expression_result_t) {
+            .kind = EXPR_RESULT_INDIRECTION,
+            .c_type = operand.c_type->pointer.base,
+            .is_lvalue = true,
+            .is_string_literal = false,
+            .addr_of = false,
+            .indirection_inner = inner,
+        };
+    }
 }
 
 expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr) {
@@ -1928,9 +2030,11 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
                 return EXPR_ERR;
             }
             return (expression_result_t) {
+                .kind = EXPR_RESULT_VALUE,
                 .c_type = symbol->c_type,
                 .is_lvalue = true,
                 .is_string_literal = false,
+                .addr_of = false,
                 .value = (ir_value_t) {
                     .kind = IR_VALUE_VAR,
                     .var = symbol->ir_ptr,
@@ -1998,9 +2102,11 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
             ir_append_global_ptr(&context->module->globals, global);
 
             return (expression_result_t) {
+                .kind = EXPR_RESULT_VALUE,
                 .c_type = c_type,
                 .is_lvalue = false,
                 .is_string_literal = true,
+                .addr_of = false,
                 .value = ir_value_for_var((ir_var_t) {
                     .type = get_ir_ptr_type(ir_type),
                     .name = global->name,
@@ -2030,8 +2136,11 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
             char c = expr->primary.token.value[0];
             // In C char literals are ints
             return (expression_result_t) {
+                .kind = EXPR_RESULT_VALUE,
                 .c_type = &INT,
                 .is_lvalue = false,
+                .is_string_literal = false,
+                .addr_of = false,
                 .value = (ir_value_t) {
                     .kind = IR_VALUE_CONST,
                     .constant = (ir_const_t) {
@@ -2047,8 +2156,11 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
             const type_t *c_type;
             decode_integer_constant(&expr->primary.token, &value, &c_type);
             return (expression_result_t) {
+                .kind = EXPR_RESULT_VALUE,
                 .c_type = c_type,
                 .is_lvalue = false,
+                .addr_of = false,
+                .is_string_literal = false,
                 .value = (ir_value_t) {
                     .kind = IR_VALUE_CONST,
                     .constant = (ir_const_t) {
@@ -2064,8 +2176,11 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
             const type_t *c_type;
             decode_float_constant(&expr->primary.token, &value, &c_type);
             return (expression_result_t) {
+                .kind = EXPR_RESULT_VALUE,
                 .c_type = c_type,
                 .is_lvalue = false,
+                .is_string_literal = false,
+                .addr_of = false,
                 .value = (ir_value_t) {
                     .kind = IR_VALUE_CONST,
                     .constant = (ir_const_t) {
@@ -2308,6 +2423,7 @@ expression_result_t convert_to_type(
     if (ir_types_equal(source_type, result_type)) {
         // No conversion necessary
         return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
             .c_type = to_type,
             .is_lvalue = false,
             .value = value,
@@ -2332,6 +2448,7 @@ expression_result_t convert_to_type(
                     }
                 };
                 return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
                     .c_type = to_type,
                     .is_lvalue = false,
                     .value = constant,
@@ -2361,6 +2478,7 @@ expression_result_t convert_to_type(
                     },
                 };
                 return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
                     .c_type = to_type,
                     .is_lvalue = false,
                     .value = constant,
@@ -2380,6 +2498,7 @@ expression_result_t convert_to_type(
                     }
                 };
                 return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
                     .c_type = to_type,
                     .is_lvalue = false,
                     .value = constant,
@@ -2408,6 +2527,7 @@ expression_result_t convert_to_type(
                     }
                 };
                 return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
                     .c_type = to_type,
                     .is_lvalue = false,
                     .value = constant,
@@ -2437,6 +2557,7 @@ expression_result_t convert_to_type(
                     }
                 };
                 return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
                     .c_type = to_type,
                     .is_lvalue = false,
                     .value = constant,
@@ -2465,6 +2586,7 @@ expression_result_t convert_to_type(
                     }
                 };
                 return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
                     .c_type = to_type,
                     .is_lvalue = false,
                     .value = constant,
@@ -2485,6 +2607,7 @@ expression_result_t convert_to_type(
                     }
                 };
                 return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
                     .c_type = to_type,
                     .is_lvalue = false,
                     .value = constant,
@@ -2521,6 +2644,7 @@ expression_result_t convert_to_type(
     }
 
     return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
         .c_type = to_type,
         .is_lvalue = false,
         .value = ir_value_for_var(result),
@@ -2534,21 +2658,63 @@ ir_value_t ir_value_for_var(ir_var_t var) {
     };
 }
 
+ir_value_t get_indirect_ptr(ir_gen_context_t *context, expression_result_t res) {
+    assert(res.kind == EXPR_RESULT_INDIRECTION && "Expected indirection expression");
+
+    // We need to load the value from a pointer.
+    // However, there may be multiple levels of indirection, each requiring a load.
+    expression_result_t *e = &res;
+    int indirection_level = 0;
+    do {
+        assert(e->indirection_inner != NULL);
+        e = e->indirection_inner;
+        indirection_level += 1;
+    } while (e->kind == EXPR_RESULT_INDIRECTION);
+
+    // Starting at the base pointer, repeatedly load the new pointer
+    ir_value_t ptr = e->value;
+    for (int i = 0; i < indirection_level; i += 1) {
+        ir_var_t temp = temp_var(context, ir_get_type_of_value(ptr)->ptr.pointee);
+        ir_build_load(context->builder, ptr, temp);
+        ptr = ir_value_for_var(temp);
+    }
+
+    return ptr;
+}
+
 expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t res) {
     assert(res.is_lvalue && "Expected lvalue");
-    assert(ir_get_type_of_value(res.value)->kind == IR_TYPE_PTR && "Expected pointer type");
-
-    ir_var_t temp = temp_var(context, ir_get_type_of_value(res.value)->ptr.pointee);
-    ir_var_t ptr = (ir_var_t) {
+    if (res.kind == EXPR_RESULT_VALUE) {
+        assert(ir_get_type_of_value(res.value)->kind == IR_TYPE_PTR && "Expected pointer type");
+        ir_var_t temp = temp_var(context, ir_get_type_of_value(res.value)->ptr.pointee);
+        ir_var_t ptr = (ir_var_t) {
             .name = res.value.var.name,
             .type = res.value.var.type,
-    };
-    ir_build_load(context->builder, ir_value_for_var(ptr), temp);
-    return (expression_result_t) {
-        .c_type = res.c_type,
-        .is_lvalue = false,
-        .value = ir_value_for_var(temp),
-    };
+        };
+        ir_build_load(context->builder, ir_value_for_var(ptr), temp);
+        return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
+            .c_type = res.c_type,
+            .is_lvalue = false,
+            .value = ir_value_for_var(temp),
+        };
+    } else if(res.kind == EXPR_RESULT_INDIRECTION) {
+        ir_value_t ptr = get_indirect_ptr(context, res);
+
+        // Then finally, load the result
+        ir_var_t result = temp_var(context, ir_get_type_of_value(ptr)->ptr.pointee);
+        ir_build_load(context->builder, ptr, result);
+        return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
+            .c_type = res.c_type,
+            .is_lvalue = false,
+            .addr_of = false,
+            .is_string_literal = false,
+            .value = ir_value_for_var(result)
+        };
+    } else {
+        return EXPR_ERR;
+    }
 }
 
 

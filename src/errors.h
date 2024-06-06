@@ -27,6 +27,7 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_UNARY_NOT_OPERAND_TYPE,
     ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
     ERR_INVALID_CONVERSION_TO_BOOLEAN,
+    ERR_UNARY_INDIRECTION_OPERAND_NOT_PTR_TYPE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
