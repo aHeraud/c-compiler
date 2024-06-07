@@ -6,7 +6,7 @@ int a;
 // A global variable can have an initializer, but it must be a constant expression
 int b = 123;
 
-// The compiler does constant folding for expressions, so an arithmetic expression like this is alloed
+// The compiler does constant folding for expressions, so an arithmetic expression like this is allowed
 int c = 4 * 12 << 1;
 
 int main() {

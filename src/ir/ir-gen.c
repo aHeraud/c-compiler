@@ -132,6 +132,7 @@ char *temp_name(ir_gen_context_t *context);
 ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type);
 char *gen_label(ir_gen_context_t *context);
 
+ir_value_t ir_make_const_int(const ir_type_t *type, long long value);
 ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(const ir_value_t value);
@@ -143,9 +144,13 @@ void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t
 
 /**
  * Get the C integer type that is the same width as a pointer.
- * @return
  */
 const type_t *c_ptr_int_type();
+
+/**
+ * Get the IR integer type that is the same width as a pointer.
+ */
+const ir_type_t *ir_ptr_int_type();
 
 /**
  * Convert an IR value from one type to another.
@@ -171,7 +176,7 @@ expression_result_t get_boolean_value(
  * @param c_type
  * @return corresponding IR type
  */
-const ir_type_t* get_ir_type(const type_t *c_type);
+const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type);
 
 /**
  * Get the IR type that is a pointer to the specified IR type
@@ -224,6 +229,7 @@ void ir_visit_while_statement(ir_gen_context_t *context, const statement_t *stat
 void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 expression_result_t ir_visit_expression(ir_gen_context_t *context, const expression_t *expression);
+expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_constant(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr);
@@ -311,7 +317,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
             .parameter_list = function->parameter_list,
         },
     };
-    const ir_type_t *function_type = get_ir_type(&function_c_type);
+    const ir_type_t *function_type = get_ir_type(context,&function_c_type);
     context->function->type = function_type;
 
     // Verify that the function was not previously defined with a different signature.
@@ -380,7 +386,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     context->function->is_variadic = function->parameter_list->variadic;
     for (size_t i = 0; i < function->parameter_list->length; i += 1) {
         parameter_declaration_t *param = function->parameter_list->parameters[i];
-        const ir_type_t *ir_param_type = get_ir_type(param->type);
+        const ir_type_t *ir_param_type = get_ir_type(context,param->type);
         ir_var_t ir_param = {
             .name = param->identifier->value,
             .type = ir_param_type,
@@ -575,7 +581,7 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
               .kind = IR_VALUE_CONST,
               .constant = (ir_const_t) {
                   .kind = IR_CONST_FLOAT,
-                  .type = get_ir_type(condition.c_type),
+                  .type = get_ir_type(context,condition.c_type),
                   .f = 0.0,
               },
           } :
@@ -583,7 +589,7 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
               .kind = IR_VALUE_CONST,
               .constant = (ir_const_t) {
                   .kind = IR_CONST_INT,
-                  .type = get_ir_type(condition.c_type),
+                  .type = get_ir_type(context,condition.c_type),
                   .i = 0,
               },
           };
@@ -723,7 +729,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
                 });
             }
             // Check if the types match. Re-declaration is allowed if the types match.
-            if (!ir_types_equal(symbol->ir_type, get_ir_type(declaration->type))) {
+            if (!ir_types_equal(symbol->ir_type, get_ir_type(context,declaration->type))) {
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .location = declaration->identifier->position,
                     .kind = ERR_REDEFINITION_OF_SYMBOL,
@@ -739,7 +745,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             assert(hash_table_lookup(&context->global_map, declaration->identifier->value, (void**) &global));
             assert(global != NULL);
             // If the types are not equal, or the global has already been initialized, it is a redefinition error.
-            if (!ir_types_equal(global->type, get_ir_type(declaration->type)) || global->initialized) {
+            if (!ir_types_equal(global->type, get_ir_type(context,declaration->type)) || global->initialized) {
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .location = declaration->identifier->position,
                     .kind = ERR_REDEFINITION_OF_SYMBOL,
@@ -766,13 +772,13 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             name = global_name(context);
         }
 
-        const ir_type_t *ir_type = get_ir_type(declaration->type);
+        const ir_type_t *ir_type = get_ir_type(context,declaration->type);
         *symbol = (symbol_t) {
             .kind = is_function ? SYMBOL_FUNCTION : SYMBOL_GLOBAL_VARIABLE,
             .identifier = declaration->identifier,
             .name = declaration->identifier->value,
             .c_type = declaration->type,
-            .ir_type = get_ir_type(declaration->type),
+            .ir_type = get_ir_type(context,declaration->type),
             .ir_ptr = (ir_var_t) {
                 .name = name,
                 .type = is_function ? ir_type : get_ir_ptr_type(ir_type),
@@ -872,7 +878,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         return;
     }
 
-    const ir_type_t *ir_type = get_ir_type(declaration->type);
+    const ir_type_t *ir_type = get_ir_type(context,declaration->type);
 
     // Create a new symbol for this declaration and add it to the current scope
     symbol = malloc(sizeof(symbol_t));
@@ -920,7 +926,7 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
 
     switch (expression->type) {
         case EXPRESSION_ARRAY_SUBSCRIPT: {
-            assert(false && "Array subscript not implemented");
+            return ir_visit_array_subscript_expression(context, expression);
         }
         case EXPRESSION_BINARY:
             return ir_visit_binary_expression(context, expression);
@@ -948,6 +954,97 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
 
     // TODO
     return EXPR_ERR;
+}
+
+expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *context, const expression_t *expr) {
+    expression_result_t target = ir_visit_expression(context, expr->array_subscript.array);
+    if (target.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+
+    // The target must be an array or a pointer
+    if (target.c_type->kind != TYPE_ARRAY && target.c_type->kind != TYPE_POINTER) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_SUBSCRIPT_TARGET,
+            .location = expr->array_subscript.array->span.start, // TODO, use the '[' token position?
+        });
+        return EXPR_ERR;
+    }
+
+    ir_value_t base_ptr;
+    if (target.kind == IR_VALUE_VAR) {
+        assert(ir_get_type_of_value(target.value)->kind == IR_TYPE_PTR);
+        base_ptr = target.value;
+    } else {
+        base_ptr = get_indirect_ptr(context, target);
+    }
+
+    const ir_type_t *ptr_type = ir_get_type_of_value(base_ptr);
+    const ir_type_t *element_type = ptr_type->ptr.pointee->kind == IR_TYPE_PTR
+        ? ptr_type->ptr.pointee->ptr.pointee
+        : ptr_type->ptr.pointee->array.element;
+
+    expression_result_t index = ir_visit_expression(context, expr->array_subscript.index);
+    if (index.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+    if (index.is_lvalue) index = get_rvalue(context, index);
+    assert(index.kind == EXPR_RESULT_VALUE);
+
+    // The subscript must have an integer type
+    if (!is_integer_type(index.c_type)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_SUBSCRIPT_TYPE,
+            .location = expr->array_subscript.index->span.start,
+        });
+        return EXPR_ERR;
+    }
+
+    // Note:
+    // Currently we directly calculate the pointer to the requested element. We could introduce
+    // a new IR instruction that abstracts this, which may simplify optimizations later on.
+    // As an example, consider the LLVM GetElementPtr instruction.
+
+    // Calculate the offset from the base pointer to the requested element
+    ssize_t stride = size_of_type_bytes(element_type);
+    ir_value_t offset;
+    if (index.value.kind == IR_VALUE_CONST) {
+        // Constant folding
+        offset = ir_make_const_int(ir_ptr_int_type(), index.value.constant.i * stride);
+    } else {
+        ir_value_t stride_val = ir_make_const_int(ir_ptr_int_type(), stride);
+        ir_var_t index_ext = temp_var(context, ir_ptr_int_type());
+        ir_build_ext(context->builder, index.value, index_ext);
+        ir_var_t temp = temp_var(context, ir_ptr_int_type());
+        ir_build_mul(context->builder, ir_value_for_var(index_ext), stride_val, temp);
+        offset = ir_value_for_var(temp);
+    }
+
+    // Calculate the new pointer.
+    ir_value_t result;
+    if (offset.kind == IR_VALUE_CONST && offset.constant.i == 0) {
+        ir_var_t converted_ptr = temp_var(context, get_ir_ptr_type(element_type));
+        ir_build_bitcast(context->builder, base_ptr, converted_ptr);
+        result = ir_value_for_var(converted_ptr);
+    } else {
+        // I know this looks like a lot of stuff, but everything except the add is just a pseudo-instruction.
+        const ir_type_t *new_ptr_type = get_ir_ptr_type(element_type);
+        ir_var_t base_addr = temp_var(context, ir_ptr_int_type());
+        ir_build_ptoi(context->builder, base_ptr, base_addr);
+        ir_var_t addr = temp_var(context, ir_ptr_int_type());
+        ir_build_add(context->builder, ir_value_for_var(base_addr), offset, addr);
+        ir_var_t new_ptr = temp_var(context, new_ptr_type);
+        ir_build_itop(context->builder, ir_value_for_var(addr), new_ptr);
+        result = ir_value_for_var(new_ptr);
+    }
+
+    const type_t *result_type = target.c_type->kind == TYPE_ARRAY
+        ? target.c_type->array.element_type
+        : target.c_type->pointer.base;
+    return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
+        .c_type = result_type,
+        .is_lvalue = true,
+        .is_string_literal = false,
+        .addr_of = false,
+        .value = result,
+    };
 }
 
 expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr) {
@@ -1016,7 +1113,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     ir_var_t *result = NULL;
     if (function.c_type->function.return_type->kind != TYPE_VOID) {
         result = (ir_var_t*) malloc(sizeof(ir_var_t));
-        *result = temp_var(context, get_ir_type(function.c_type->function.return_type));
+        *result = temp_var(context, get_ir_type(context,function.c_type->function.return_type));
     }
     assert(function.value.kind == IR_VALUE_VAR); // TODO: is it possible to directly call a constant?
     ir_build_call(context->builder, function.value.var, args, actual_args_count, result);
@@ -1094,7 +1191,7 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
     if (is_arithmetic_type(left.c_type) && is_arithmetic_type(right.c_type)) {
         // Integer/Float + Integer/Float
         result_type = get_common_type(left.c_type, right.c_type);
-        ir_result_type = get_ir_type(result_type);
+        ir_result_type = get_ir_type(context,result_type);
 
         left = convert_to_type(context, left.value, left.c_type, result_type);
         right = convert_to_type(context, right.value, right.c_type, result_type);
@@ -1162,7 +1259,7 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
         integer_operand = convert_to_type(context, integer_operand.value, integer_operand.c_type, c_ptr_int_type());
 
         // Size of the pointee type
-        ssize_t stride = size_of_type(get_ir_type(pointer_operand.c_type->pointer.base));
+        ssize_t stride = size_of_type_bits(get_ir_type(context, pointer_operand.c_type->pointer.base));
 
         if (integer_operand.value.kind == IR_VALUE_CONST && pointer_operand.value.kind == IR_VALUE_CONST) {
             // constant folding
@@ -1182,11 +1279,11 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
                 .kind = IR_VALUE_CONST,
                 .constant = (ir_const_t) {
                     .kind = IR_CONST_INT,
-                    .type = get_ir_type(c_ptr_int_type()),
+                    .type = get_ir_type(context,c_ptr_int_type()),
                     .i = stride
                 }
             };
-            ir_var_t temp = temp_var(context, get_ir_type(c_ptr_int_type()));
+            ir_var_t temp = temp_var(context, get_ir_type(context,c_ptr_int_type()));
             ir_build_mul(context->builder, integer_operand.value, size_constant, temp);
             ir_value_t temp_val = (ir_value_t) { .kind = IR_VALUE_VAR, .var = temp };
 
@@ -1257,7 +1354,7 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
 
     // Type conversions
     const type_t *result_type = get_common_type(left.c_type, right.c_type);
-    const ir_type_t *ir_result_type = get_ir_type(result_type);
+    const ir_type_t *ir_result_type = get_ir_type(context,result_type);
 
     left = convert_to_type(context, left.value, left.c_type, result_type);
     right = convert_to_type(context, right.value, right.c_type, result_type);
@@ -1345,7 +1442,7 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
     }
 
     const type_t *common_type = get_common_type(left.c_type, right.c_type);
-    const ir_type_t *result_type = get_ir_type(common_type);
+    const ir_type_t *result_type = get_ir_type(context,common_type);
 
     left = convert_to_type(context, left.value, left.c_type, common_type);
     right = convert_to_type(context, right.value, right.c_type, common_type);
@@ -1430,7 +1527,7 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
     // Generate an assignment instruction.
     ir_var_t result = (ir_var_t) {
         .name = temp_name(context),
-        .type = get_ir_type(left.c_type),
+        .type = get_ir_type(context,left.c_type),
     };
 
     if (!types_equal(left.c_type, right.c_type)) {
@@ -1807,7 +1904,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
 
     if (is_arithmetic_type(true_result.c_type) && is_arithmetic_type(false_result.c_type)) {
         result_type = get_common_type(true_result.c_type, false_result.c_type);
-        ir_result_type = get_ir_type(result_type);
+        ir_result_type = get_ir_type(context,result_type);
     } else if (true_result.c_type->kind == TYPE_VOID && false_result.c_type->kind == TYPE_VOID) {
         return (expression_result_t) {
             .kind = EXPR_RESULT_VALUE,
@@ -1827,7 +1924,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         // TODO: pointer compatibility checks
         // For now, we will just use the type of the first non void* pointer branch
         result_type = true_result.c_type->pointer.base->kind == TYPE_VOID ? false_result.c_type : true_result.c_type;
-        ir_result_type = get_ir_type(result_type);
+        ir_result_type = get_ir_type(context,result_type);
     } else {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_TERNARY_EXPRESSION_OPERANDS,
@@ -2165,7 +2262,7 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
                     .kind = IR_VALUE_CONST,
                     .constant = (ir_const_t) {
                             .kind = IR_CONST_INT,
-                            .type = get_ir_type(c_type),
+                            .type = get_ir_type(context,c_type),
                             .i = value,
                     }
                 }
@@ -2185,7 +2282,7 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
                     .kind = IR_VALUE_CONST,
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_FLOAT,
-                        .type = get_ir_type(c_type),
+                        .type = get_ir_type(context,c_type),
                         .f = value,
                     }
                 }
@@ -2228,7 +2325,7 @@ const type_t *c_ptr_int_type() {
     return &UNSIGNED_LONG;
 }
 
-const ir_type_t* get_ir_type(const type_t *c_type) {
+const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
     assert(c_type != NULL && "C type must not be NULL");
 
     switch (c_type->kind) {
@@ -2273,7 +2370,7 @@ const ir_type_t* get_ir_type(const type_t *c_type) {
             }
         }
         case TYPE_POINTER: {
-            const ir_type_t *pointee = get_ir_type(c_type->pointer.base);
+            const ir_type_t *pointee = get_ir_type(context,c_type->pointer.base);
             ir_type_t *ir_type = malloc(sizeof(ir_type_t));
             *ir_type = (ir_type_t) {
                 .kind = IR_TYPE_PTR,
@@ -2284,11 +2381,11 @@ const ir_type_t* get_ir_type(const type_t *c_type) {
             return ir_type;
         }
         case TYPE_FUNCTION: {
-            const ir_type_t *ir_return_type = get_ir_type(c_type->function.return_type);
+            const ir_type_t *ir_return_type = get_ir_type(context,c_type->function.return_type);
             const ir_type_t **ir_param_types = malloc(c_type->function.parameter_list->length * sizeof(ir_type_t*));
             for (size_t i = 0; i < c_type->function.parameter_list->length; i++) {
                 const parameter_declaration_t *param = c_type->function.parameter_list->parameters[i];
-                ir_param_types[i] = get_ir_type(param->type);
+                ir_param_types[i] = get_ir_type(context,param->type);
             }
             ir_type_t *ir_type = malloc(sizeof(ir_type_t));
             *ir_type = (ir_type_t) {
@@ -2303,8 +2400,24 @@ const ir_type_t* get_ir_type(const type_t *c_type) {
             return ir_type;
         }
         case TYPE_ARRAY: {
-            // TODO
-            assert(false && "Unimplemented");
+            const ir_type_t *element_type = get_ir_type(context,c_type->array.element_type);
+            expression_result_t array_len = ir_visit_expression(context, c_type->array.size);
+            if (array_len.kind == EXPR_RESULT_ERR) assert(false && "Invalid array size"); // TODO: handle error
+            if (array_len.is_lvalue) array_len = get_rvalue(context, array_len);
+            ir_value_t length = array_len.value;
+            if (length.kind != IR_VALUE_CONST) {
+                // TODO: handle non-constant array sizes
+                assert(false && "Non-constant array sizes not implemented");
+            }
+            ir_type_t *ir_type = malloc(sizeof(ir_type_t));
+            *ir_type = (ir_type_t) {
+                .kind = IR_TYPE_ARRAY,
+                .array = {
+                    .element = element_type,
+                    .length = length.constant.i,
+                }
+            };
+            return ir_type;
         }
         default:
             return &IR_VOID;
@@ -2343,7 +2456,7 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
             }
         };
     } else if (type->kind == IR_TYPE_PTR) {
-        ir_value_t zero = ir_get_zero_value(context, get_ir_type(c_ptr_int_type()));
+        ir_value_t zero = ir_get_zero_value(context, get_ir_type(context,c_ptr_int_type()));
         ir_var_t result = temp_var(context, type);
         ir_build_ptoi(context->builder, zero, result);
         return ir_value_for_var(result);
@@ -2412,7 +2525,7 @@ expression_result_t convert_to_type(
         const type_t *from_type,
         const type_t *to_type
 ) {
-    const ir_type_t *result_type = get_ir_type(to_type);
+    const ir_type_t *result_type = get_ir_type(context,to_type);
     const ir_type_t *source_type;
     if (value.kind == IR_VALUE_CONST) {
         source_type = value.constant.type;
@@ -2456,10 +2569,10 @@ expression_result_t convert_to_type(
             }
 
             // int -> int conversion
-            if (size_of_type(source_type) > size_of_type(result_type)) {
+            if (size_of_type_bits(source_type) > size_of_type_bits(result_type)) {
                 // Truncate
                 ir_build_trunc(context->builder, value, result);
-            } else if (size_of_type(source_type) < size_of_type(result_type)) {
+            } else if (size_of_type_bits(source_type) < size_of_type_bits(result_type)) {
                 // Extend
                 ir_build_ext(context->builder, value, result);
             } else {
@@ -2535,10 +2648,10 @@ expression_result_t convert_to_type(
             }
 
             // float -> float conversion
-            if (size_of_type(source_type) > size_of_type(result_type)) {
+            if (size_of_type_bits(source_type) > size_of_type_bits(result_type)) {
                 // Truncate
                 ir_build_trunc(context->builder, value, result);
-            } else if (size_of_type(source_type) < size_of_type(result_type)) {
+            } else if (size_of_type_bits(source_type) < size_of_type_bits(result_type)) {
                 // Extend
                 ir_build_ext(context->builder, value, result);
             } else {
@@ -2616,8 +2729,8 @@ expression_result_t convert_to_type(
 
             // int -> ptr
             // If the source is smaller than the target, we need to extend it
-            if (size_of_type(source_type) < size_of_type(get_ir_type(c_ptr_int_type()))) {
-                ir_var_t temp = temp_var(context, get_ir_type(c_ptr_int_type()));
+            if (size_of_type_bits(source_type) < size_of_type_bits(get_ir_type(context, c_ptr_int_type()))) {
+                ir_var_t temp = temp_var(context, get_ir_type(context,c_ptr_int_type()));
                 ir_build_ext(context->builder, value, temp);
                 value = ir_value_for_var(temp);
             }
@@ -2717,16 +2830,32 @@ expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t re
     }
 }
 
-
 void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t result) {
     // save the current position of the builder
     ir_instruction_node_t *position = ir_builder_get_position(context->builder);
+    bool should_restore = position != NULL && position != context->alloca_tail;
 
     ir_builder_position_after(context->builder, context->alloca_tail);
     context->alloca_tail = ir_build_alloca(context->builder, ir_type, result);
 
     // restore the builder position
-    if (position != NULL) {
+    if (should_restore) {
         ir_builder_position_after(context->builder, position);
     }
+}
+
+const ir_type_t *ir_ptr_int_type() {
+    // TODO: arch dependent
+    return &IR_I64;
+}
+
+ir_value_t ir_make_const_int(const ir_type_t *type, long long value) {
+    return (ir_value_t) {
+        .kind = IR_VALUE_CONST,
+        .constant = {
+            .kind = IR_CONST_INT,
+            .type = type,
+            .i = value,
+        }
+    };
 }

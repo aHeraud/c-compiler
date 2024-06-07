@@ -383,11 +383,18 @@ typedef struct IrModule {
 bool ir_types_equal(const ir_type_t *a, const ir_type_t *b);
 
 /**
- * Get the size of an IR type.
+ * Get the size of an IR type in bits.
  * @param type IR type
  * @return size in bits
  */
-ssize_t size_of_type(const ir_type_t *type);
+ssize_t size_of_type_bits(const ir_type_t *type);
+
+/**
+ * Get the size of an IR type in bytes.
+ * @param type IR type
+ * @return size in bytes
+ */
+ssize_t size_of_type_bytes(const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(ir_value_t value);
 bool ir_is_integer_type(const ir_type_t *type);

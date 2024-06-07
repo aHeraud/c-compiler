@@ -405,6 +405,79 @@ void test_ir_gen_indirect_store() {
     }));
 }
 
+void test_ir_gen_array_load_constant_index() {
+    // we use 1 as the index, because a[0] would be optimized away during ir generation
+    const char* input = "int foo() {\n"
+                        "    int a[2];\n"
+                        "    int b = a[1];\n"
+                        "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*[i32;2] %0 = alloca [i32;2]",
+        "*i32 %1 = alloca i32",
+        "i64 %2 = ptoi *[i32;2] %0",
+        "i64 %3 = add i64 %2, i64 4",
+        "*i32 %4 = itop i64 %3",
+        "i32 %5 = load *i32 %4",
+        "store i32 %5, *i32 %1",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_array_store_constant_index() {
+    // we use 1 as the index, because a[0] would be optimized away during ir generation
+    const char* input = "int foo() {\n"
+                        "    int a[2];\n"
+                        "    a[1] = 10;\n"
+                        "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*[i32;2] %0 = alloca [i32;2]",
+        "i64 %1 = ptoi *[i32;2] %0",
+        "i64 %2 = add i64 %1, i64 4",
+        "*i32 %3 = itop i64 %2",
+        "i32 %4 = i32 10",
+        "store i32 %4, *i32 %3",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_array_load_variable_index() {
+    const char* input = "int foo() {\n"
+                        "    int a[2];\n"
+                        "    int i = 0;\n"
+                        "    int b = a[i];\n"
+                        "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*[i32;2] %0 = alloca [i32;2]",
+        "*i32 %1 = alloca i32",
+        "*i32 %2 = alloca i32",
+        "store i32 0, *i32 %1",
+        "i32 %3 = load *i32 %1",
+        "i64 %4 = ext i32 %3",
+        "i64 %5 = mul i64 %4, i64 4",
+        "i64 %6 = ptoi *[i32;2] %0",
+        "i64 %7 = add i64 %6, i64 %5",
+        "*i32 %8 = itop i64 %7",
+        "i32 %9 = load *i32 %8",
+        "store i32 %9, *i32 %2",
+        "ret i32 0"
+    }));
+}
+
 void test_ir_gen_if_else_statement() {
     const char* input =
         "int main(int a) {\n"
@@ -508,7 +581,7 @@ void test_ir_gen_varargs_call() {
         "**i8 %3 = alloca *i8",
         "store i32 1, *i32 %0",
         "store f32 1.000000, *f32 %1",
-        "*i8 %4 = bitcast *[i8;6]  @0",
+        "*i8 %4 = bitcast *[i8;6] @0",
         "store *i8 %4, **i8 %3",
         "i32 %5 = load *i32 %0",
         "f32 %6 = load *f32 %1",
@@ -656,6 +729,9 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "address of variable", test_ir_gen_addr_of_variable);
     CU_add_test(suite, "indirect load", test_ir_gen_indirect_load);
     CU_add_test(suite, "indirect store", test_ir_gen_indirect_store);
+    CU_add_test(suite, "array load constant index", test_ir_gen_array_load_constant_index);
+    CU_add_test(suite, "array store constant index", test_ir_gen_array_store_constant_index);
+    CU_add_test(suite, "array load variable index", test_ir_gen_array_load_variable_index);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);

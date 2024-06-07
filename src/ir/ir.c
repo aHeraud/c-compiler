@@ -9,7 +9,12 @@ void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t ins
     vector->buffer[vector->size++] = instruction;
 }
 
-ssize_t size_of_type(const ir_type_t *type) {
+/**
+ * Size of a type in bits
+ * @param type
+ * @return
+ */
+ssize_t size_of_type_bits(const ir_type_t *type) {
     switch (type->kind) {
         case IR_TYPE_BOOL:
             return 1;
@@ -30,7 +35,7 @@ ssize_t size_of_type(const ir_type_t *type) {
         case IR_TYPE_PTR:
             return 64; // this is actually architecture dependent, TODO: determine based on target architecture?
         case IR_TYPE_ARRAY:
-            return type->array.length * size_of_type(type->array.element);
+            return type->array.length * size_of_type_bits(type->array.element);
         case IR_TYPE_STRUCT:
             // TODO
             assert(false && "Unimplemented");
@@ -38,6 +43,10 @@ ssize_t size_of_type(const ir_type_t *type) {
         default:
             return 0;
     }
+}
+
+ssize_t size_of_type_bytes(const ir_type_t *type) {
+    return (size_of_type_bits(type) + 7) / 8;
 }
 
 bool ir_types_equal(const ir_type_t *a, const ir_type_t *b) {
@@ -370,7 +379,7 @@ void ir_validate_visit_instruction(
                         .message = "Truncation result and operand types must be integer or floating point numbers"
                 });
             }
-            if (size_of_type(result_type) >= size_of_type(value_type)) {
+            if (size_of_type_bits(result_type) >= size_of_type_bits(value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
                         .message = "Truncation result type must be smaller than the value being truncated"
@@ -401,7 +410,7 @@ void ir_validate_visit_instruction(
                         .message = "Extension result and operand types must be integer or floating point numbers"
                 });
             }
-            if (size_of_type(result_type) <= size_of_type(value_type)) {
+            if (size_of_type_bits(result_type) <= size_of_type_bits(value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
                         .message = "Extension result type must be larger than the value being extended"

@@ -46,7 +46,7 @@ const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type) {
         case IR_TYPE_ARRAY: {
             char element[256];
             ir_fmt_type(element, sizeof(element), type->array.element);
-            snprintf(buffer, size, "[%s;%lu] ", element, (unsigned long) type->array.length);
+            snprintf(buffer, size, "[%s;%lu]", element, (unsigned long) type->array.length);
             break;
         }
         case IR_TYPE_STRUCT:
