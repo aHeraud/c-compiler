@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "ir/ir.h"
 #include "ir/fmt.h"
 
@@ -70,6 +71,45 @@ const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type) {
     return buffer;
 }
 
+// Format a constant string, escaping control characters
+char* ir_fmt_const_string(const char *str) {
+    char_vector_t string = (char_vector_t) VEC_INIT;
+
+    size_t len = strlen(str);
+    for (int i = 0; i < len; i += 1) {
+        char c = str[i];
+
+        // TODO: This doesn't currently handle escaped backslashes
+        bool prev_escape = i > 0 && str[i - 1] == '\\';
+        bool is_control_char = c == '\n' || c == '\t' || c == '\r' || c == '"' || c == '\\';
+        if (is_control_char && !prev_escape) {
+            VEC_APPEND(&string, '\\');
+            switch (c) {
+                case '\n':
+                    VEC_APPEND(&string, 'n');
+                    break;
+                case '\t':
+                    VEC_APPEND(&string, 't');
+                    break;
+                case '\r':
+                    VEC_APPEND(&string, 'r');
+                    break;
+                case '"':
+                    VEC_APPEND(&string, '"');
+                    break;
+                case '\\':
+                    VEC_APPEND(&string, '\\');
+                    break;
+            }
+        } else {
+            VEC_APPEND(&string, c);
+        }
+    }
+    VEC_APPEND(&string, '\0');
+    VEC_SHRINK(&string, char);
+    return string.buffer;
+}
+
 const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
     switch (constant.kind) {
         case IR_CONST_INT:
@@ -78,9 +118,12 @@ const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
         case IR_CONST_FLOAT:
             snprintf(buffer, size, "%s %Lf", ir_fmt_type(alloca(256), 256, constant.type), constant.f);
             break;
-        case IR_CONST_STRING:
-            snprintf(buffer, size, "%s \"%s\"", ir_fmt_type(alloca(256), 256, constant.type), constant.s);
+        case IR_CONST_STRING: {
+            char *str = ir_fmt_const_string(constant.s);
+            snprintf(buffer, size, "%s \"%s\"", ir_fmt_type(alloca(256), 256, constant.type), str);
+            free(str);
             break;
+        }
     }
     return buffer;
 }
@@ -244,6 +287,19 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
 }
 
 void ir_print_module(FILE *file, const ir_module_t *module) {
+    // Print globals
+    for (size_t i = 0; i < module->globals.size; i++) {
+        ir_global_t *global = module->globals.buffer[i];
+        if (global->initialized) {
+            char value[512];
+            ir_fmt_const(value, sizeof(value), global->value);
+            fprintf(file, "global %s %s = %s\n", FMT_TYPE(global->type), global->name, value);
+        } else {
+            fprintf(file, "global %s %s\n", FMT_TYPE(global->type), global->name);
+        }
+    }
+
+    // Print functions
     for (size_t i = 0; i < module->functions.size; i++) {
         ir_function_definition_t *function = module->functions.buffer[i];
         fprintf(file, "function %s %s", function->name, FMT_TYPE(function->type));

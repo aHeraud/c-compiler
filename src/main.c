@@ -39,12 +39,17 @@ typedef struct Options {
       */
      bool emit_ir;
 
+     /**
+      * --emit-ir-cfg
+      */
+      bool emit_ir_cfg;
+
      string_vector_t input_files;
 } options_t;
 
 options_t parse_and_validate_options(int argc, char** argv);
 void compile(options_t options, const char* input_file_name);
-void print_ir_cfg(const ir_module_t *module);
+void print_ir_cfg(FILE *file, const ir_module_t *module);
 
 int main(int argc, char** argv) {
     options_t options = parse_and_validate_options(argc, argv);
@@ -61,6 +66,7 @@ options_t parse_and_validate_options(int argc, char** argv) {
             .additional_system_include_directories = {NULL, 0, 0},
             .output_file = NULL,
             .emit_ir = false,
+            .emit_ir_cfg = false,
             .input_files = {NULL, 0, 0},
     };
 
@@ -138,6 +144,8 @@ options_t parse_and_validate_options(int argc, char** argv) {
             }
         } else if (strcmp(argv[argi], "--emit-ir") == 0) {
             options.emit_ir = true;
+        } else if (strcmp(argv[argi], "--emit-ir-cfg") == 0) {
+            options.emit_ir_cfg = true;
         } else if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
             printf("Usage: %s [options] <input files>\n", argv[0]);
             printf("Options:\n");
@@ -149,6 +157,7 @@ options_t parse_and_validate_options(int argc, char** argv) {
             printf("                  Add directory to the system include search path.\n");
             printf("  -o <file>       Write output to <file>\n");
             printf("  --emit-ir       Write generated IR to file\n");
+            printf("  --emit-ir-cfg   Write generated IR control flow graphs to file in graphviz format\n");
             exit(0);
         } else {
             append_ptr((void***) &options.input_files.buffer,
@@ -180,7 +189,7 @@ options_t parse_and_validate_options(int argc, char** argv) {
     return options;
 }
 
-void get_output_path(const char *path, const char *extension, char *output, size_t output_size);
+const char *get_output_path(const char *path, const char *extension);
 
 void compile(options_t options, const char* input_file_name) {
     FILE* file = fopen(input_file_name, "r");
@@ -221,7 +230,6 @@ void compile(options_t options, const char* input_file_name) {
         exit(1);
     }
 
-    // TODO: add flag print IR module
     ir_gen_result_t result = generate_ir(translation_unit);
     if (result.errors.size > 0) {
         fprintf(stderr, "Failed to generate IR for file: %s\n", input_file_name);
@@ -231,21 +239,30 @@ void compile(options_t options, const char* input_file_name) {
 
     ir_module_t *ir_module = result.module;
     if (options.emit_ir) {
-        // TODO: write to file (currently just prints to stdout)
-        //char output_path[1024];
-        //get_output_path(input_file_name, "ir", output_path, sizeof(output_path));
-        ir_print_module(stdout, ir_module);
+        const char *output_path = get_output_path(input_file_name, "ir");
+        FILE* output = fopen(output_path, "w+");
+        if (output == NULL) {
+            fprintf(stderr, "Failed to open output file: %s\n", output_path);
+            exit(1);
+        }
+        ir_print_module(output, ir_module);
+        return;
     }
 
-    // TODO: add flag to print control flow graph
-    print_ir_cfg(ir_module);
+    if (options.emit_ir_cfg) {
+        const char *output_path = get_output_path(input_file_name, "dot");
+        FILE* output = fopen(output_path, "w+");
+        if (output == NULL) {
+            fprintf(stderr, "Failed to open output file: %s\n", output_path);
+            exit(1);
+        }
+        print_ir_cfg(output, ir_module);
+        return;
+    }
 
     const char *output_file_name;
     if (options.output_file == NULL) {
-        size_t file_name_len = strlen(input_file_name);
-        char *tmp = malloc(file_name_len + 4);
-        get_output_path(input_file_name, "ll", tmp, file_name_len + 4);
-        output_file_name = tmp;
+        output_file_name = get_output_path(input_file_name, "ll");
     } else {
         output_file_name = options.output_file;
     }
@@ -253,25 +270,42 @@ void compile(options_t options, const char* input_file_name) {
     llvm_gen_module(ir_module, output_file_name);
 }
 
-void get_output_path(const char *path, const char *extension, char *output, size_t output_size) {
-    const char *extension_start = strrchr(path, '.');
-    if (extension_start == NULL || extension_start <= path || extension_start[-1] == '/' || extension_start[-1] == '\\') {
-        // No extension found, append the new extension
-        snprintf(output, output_size, "%s.%s", path, extension);
+const char *get_output_path(const char *path, const char *extension) {
+    // Strip the path to get just the file name
+    // Handle both Unix and Windows path separators
+    const char *file_name = strrchr(path, '/');
+    if (file_name == NULL) {
+        file_name = strrchr(path, '\\');
+    }
+    if (file_name == NULL) {
+        file_name = path;
     } else {
-        size_t bytes = extension_start - path;
-        memcpy(output, path, bytes <= output_size ? bytes : output_size);
+        file_name += 1;
+    }
+
+    size_t output_size = strlen(file_name) + strlen(extension) + 2;
+    char *output = malloc(output_size);
+
+    // Strip the extension, replace it with the new extension
+    const char *extension_start = strrchr(file_name, '.');
+    if (extension_start == NULL || extension_start <= file_name || extension_start[-1] == '/' || extension_start[-1] == '\\') {
+        // No extension found, append the new extension
+        snprintf(output, output_size, "%s.%s", file_name, extension);
+    } else {
+        size_t bytes = extension_start - file_name;
+        memcpy(output, file_name, bytes <= output_size ? bytes : output_size);
         snprintf(output + bytes, output_size - bytes, ".%s", extension);
     }
+
+    return output;
 }
 
-void print_ir_cfg(const ir_module_t *module) {
-    // TODO: free cfgs
+void print_ir_cfg(FILE *file, const ir_module_t *module) {
     ir_control_flow_graph_t *cfgs = malloc(sizeof(ir_control_flow_graph_t) * module->functions.size);
 
     for (size_t i = 0; i < module->functions.size; i++) {
         cfgs[i] = ir_create_control_flow_graph(module->functions.buffer[i]);
     }
 
-    ir_print_control_flow_graph(stdout, cfgs, module->functions.size);
+    ir_print_control_flow_graph(file, cfgs, module->functions.size);
 }
