@@ -185,6 +185,32 @@ bool statement_eq(const statement_t *left, const statement_t *right) {
     }
 }
 
+bool initializer_eq(const initializer_t *left, initializer_t *right) {
+    if (left == NULL || right == NULL) {
+        return left == right;
+    }
+
+    if (left->kind != right->kind) {
+        return false;
+    }
+
+    if (left->kind == INITIALIZER_LIST) {
+        if (left->list->size != right->list->size) {
+            return false;
+        }
+
+        for (size_t i = 0; i < left->list->size; i++) {
+            initializer_list_element_t *left_element = &left->list->buffer[i];
+            initializer_list_element_t *right_element = &right->list->buffer[i];
+
+            // TODO: compare designators
+            return initializer_eq(left_element->initializer, right_element->initializer);
+        }
+    } else {
+        return expression_eq(left->expression, right->expression);
+    }
+}
+
 bool declaration_eq(const declaration_t *left, const declaration_t *right) {
     if (left == NULL || right == NULL) {
         return left == right;
@@ -202,9 +228,5 @@ bool declaration_eq(const declaration_t *left, const declaration_t *right) {
         return false;
     }
 
-    if (left->initializer == NULL || right->initializer == NULL) {
-        return left->initializer == right->initializer;
-    } else {
-        return expression_eq(left->initializer, right->initializer);
-    }
+    return initializer_eq(left->initializer, right->initializer);
 }

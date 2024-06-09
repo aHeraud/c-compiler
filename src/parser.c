@@ -326,13 +326,12 @@ bool _parse_declaration(parser_t *parser, declaration_t *first_declarator, ptr_v
         // We've already parsed a declarator.
         // Check if we still need to parse an initializer, then parse the rest of the init-declarator-list.
         if (accept(parser, TK_ASSIGN, NULL)) {
-            expression_t *expr = malloc(sizeof(expression_t));
-            if (!parse_assignment_expression(parser, expr)) {
-                // TODO: error recovery
-                free(expr);
+            initializer_t *initializer = malloc(sizeof(initializer_t));
+            if (!parse_initializer(parser, initializer)) {
+                free(initializer);
                 return false;
             }
-            first_declarator->initializer = expr;
+            first_declarator->initializer = initializer;
         }
         append_ptr(&declarations->buffer, &declarations->size, &declarations->capacity, first_declarator);
 
@@ -676,19 +675,111 @@ bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *de
 
     token_t *token;
     if (accept(parser, TK_ASSIGN, &token)) {
-        expression_t *expr = malloc(sizeof(expression_t));
-        if (!parse_assignment_expression(parser, expr)) {
-            free(expr);
+        initializer_t *initializer = malloc(sizeof(initializer_t));
+        if (!parse_initializer(parser, initializer)) {
+            free(initializer);
             return false;
         }
-        decl->initializer = expr;
+
+        decl->initializer = initializer;
     }
 
     return true;
 }
 
+bool parse_initializer(parser_t *parser, initializer_t *initializer) {
+    if (accept(parser, TK_LBRACE, NULL)) {
+        initializer_list_t *list = malloc(sizeof(initializer_list_t));
+        if (!parse_initializer_list(parser, list)) {
+            free(list);
+            return false;
+        }
+        *initializer = (initializer_t) {
+            .kind = INITIALIZER_LIST,
+            .list = list,
+        };
+        return require(parser, TK_RBRACE, NULL, "initializer", NULL);
+    } else {
+        expression_t *expr = malloc(sizeof(expression_t));
+        if (!parse_assignment_expression(parser, expr)) {
+            free(expr);
+            return false;
+        }
+        *initializer = (initializer_t) {
+            .kind = INITIALIZER_EXPRESSION,
+            .expression = expr,
+        };
+        return true;
+    }
+}
+
+bool parse_initializer_list(parser_t *parser, initializer_list_t *list) {
+    *list = (initializer_list_t) VEC_INIT;
+    do {
+        initializer_list_element_t element = {
+            .designation = NULL,
+            .initializer = NULL,
+        };
+
+        // optional designation
+        if (peek(parser, TK_LBRACKET) || peek(parser, TK_DOT)) {
+            designator_list_t *designator_list = malloc(sizeof(designator_list_t));
+            if (!parse_designation(parser, designator_list)) {
+                free(designator_list);
+                return false;
+            }
+            element.designation = designator_list;
+        }
+
+        initializer_t *initializer = malloc(sizeof(initializer_t));
+        if (!parse_initializer(parser, initializer)) {
+            free(initializer);
+            return false;
+        }
+
+        element.initializer = initializer;
+        VEC_APPEND(list, element);
+    } while (accept(parser, TK_COMMA, NULL) && !peek(parser, TK_RBRACE));
+
+    return true;
+}
+
+bool parse_designation(parser_t *parser, designator_list_t *list) {
+    *list = (designator_list_t) VEC_INIT;
+    do {
+        if (accept(parser, TK_LBRACKET, NULL)) {
+            expression_t *index = malloc(sizeof(expression_t));
+            if (!parse_conditional_expression(parser, index)) {
+                free(index);
+                return false;
+            }
+            designator_t designator = {
+                .kind = DESIGNATOR_INDEX,
+                .index = index,
+            };
+            if (!require(parser, TK_RBRACKET, NULL, "designation", NULL)) return false;
+            VEC_APPEND(list, designator);
+        } else if (accept(parser, TK_DOT, NULL)) {
+            token_t *identifier;
+            if (!require(parser, TK_IDENTIFIER, &identifier, "designator", NULL)) return false;
+            designator_t designator = {
+                .kind = DESIGNATOR_FIELD,
+                .field = identifier,
+            };
+            VEC_APPEND(list, designator);
+        } else {
+            // Error
+            // This should be unreachable
+            assert(false);
+            return false;
+        }
+    } while (peek(parser, TK_LBRACKET) || peek(parser, TK_DOT));
+
+    return require(parser, TK_ASSIGN, NULL, "designation", NULL);
+}
+
 type_t* get_innermost_incomplete_type(type_t *type) {
-    type_t *current = type;
+    const type_t *current = type;
     while (current->kind == TYPE_POINTER || current->kind == TYPE_ARRAY || current->kind == TYPE_FUNCTION) {
         if (current->kind == TYPE_POINTER && current->pointer.base != NULL) {
             current = current->pointer.base;
@@ -1575,7 +1666,7 @@ bool parse_assignment_expression(parser_t *parser, expression_t *expr) {
     if (!parse_conditional_expression(parser, expr)) {
         return false;
     }
-
+ 
     token_t *token;
     if (accept(parser, TK_ASSIGN, &token) ||
         accept(parser, TK_BITWISE_XOR_ASSIGN, &token) ||

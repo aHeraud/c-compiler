@@ -818,7 +818,13 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
         };
         context->builder = ir_builder_create();
 
-        expression_result_t result = ir_visit_expression(context, declaration->initializer);
+        expression_result_t result;
+        if (declaration->initializer->kind == INITIALIZER_EXPRESSION) {
+            result = ir_visit_expression(context, declaration->initializer->expression);
+        } else {
+            fprintf(stderr, "%s:%d: Codegen for initializer lists unimplemented\n", __FILE__, __LINE__);
+            exit(1);
+        }
         if (result.c_type == NULL) return; // Invalid initializer
 
         // Typecheck/convert the initializer
@@ -900,7 +906,13 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
 
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
-        expression_result_t result = ir_visit_expression(context, declaration->initializer);
+        expression_result_t result;
+        if (declaration->initializer->kind == INITIALIZER_EXPRESSION) {
+            result = ir_visit_expression(context, declaration->initializer->expression);
+        } else {
+            fprintf(stderr, "%s:%d: Codegen for initializer lists unimplemented\n", __FILE__, __LINE__);
+            exit(1);
+        }
 
         // Error occurred while evaluating the initializer
         if (result.kind == EXPR_RESULT_ERR) return;

@@ -717,6 +717,115 @@ void test_parse_invalid_declaration_specifiers() {
     CU_ASSERT_TRUE_FATAL(types_equal(&type, &INT))
 }
 
+void test_parse_initializer_expression_simple() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "14;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    initializer_t initializer;
+    CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_EXPRESSION)
+    CU_ASSERT_TRUE_FATAL(expression_eq(initializer.expression, integer_constant("14")))
+}
+
+void test_parse_initializer_list_array() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "{0, 1, 2}";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    initializer_t initializer;
+    CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_LIST)
+    CU_ASSERT_EQUAL_FATAL(initializer.list->size, 3)
+    for (int i = 0; i < 3; i += 1) {
+        initializer_list_element_t element = initializer.list->buffer[i];
+        CU_ASSERT_PTR_NULL_FATAL(element.designation)
+        CU_ASSERT_TRUE_FATAL(element.initializer->kind == INITIALIZER_EXPRESSION)
+        char buffer[8];
+        sprintf(buffer, "%d", i);
+        CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->expression, integer_constant(buffer)))
+    }
+}
+
+void test_parse_initializer_list_array_trailing_comma() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "{0, 1, 2,}";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    initializer_t initializer;
+    CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_LIST)
+    CU_ASSERT_EQUAL_FATAL(initializer.list->size, 3)
+    for (int i = 0; i < 3; i += 1) {
+        initializer_list_element_t element = initializer.list->buffer[i];
+        CU_ASSERT_PTR_NULL_FATAL(element.designation)
+        CU_ASSERT_TRUE_FATAL(element.initializer->kind == INITIALIZER_EXPRESSION)
+        char buffer[8];
+        sprintf(buffer, "%d", i);
+        CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->expression, integer_constant(buffer)))
+    }
+}
+
+void test_parse_initializer_list_array_index_designator() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "{[0] = 0}";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    initializer_t initializer;
+    CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_LIST)
+    CU_ASSERT_EQUAL_FATAL(initializer.list->size, 1)
+    initializer_list_element_t element = initializer.list->buffer[0];
+    CU_ASSERT_PTR_NOT_NULL_FATAL(element.designation)
+    CU_ASSERT_EQUAL_FATAL(element.designation->size, 1)
+    designator_t designator = element.designation->buffer[0];
+    CU_ASSERT_TRUE_FATAL(designator.kind == DESIGNATOR_INDEX)
+    CU_ASSERT_TRUE_FATAL(expression_eq(designator.index, integer_constant("0")))
+    CU_ASSERT_TRUE_FATAL(element.initializer->kind == INITIALIZER_EXPRESSION)
+    CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->expression, integer_constant("0")))
+}
+
+void test_parse_initializer_list_struct() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "{.a = 0, .b = { .c = 1 }}";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    initializer_t initializer;
+    CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_LIST)
+    CU_ASSERT_EQUAL_FATAL(initializer.list->size, 2)
+
+    initializer_list_element_t element_a = initializer.list->buffer[0];
+    CU_ASSERT_PTR_NOT_NULL_FATAL(element_a.designation)
+    CU_ASSERT_EQUAL_FATAL(element_a.designation->size, 1)
+    designator_t designator_a = element_a.designation->buffer[0];
+    CU_ASSERT_TRUE_FATAL(designator_a.kind == DESIGNATOR_FIELD)
+    CU_ASSERT_STRING_EQUAL_FATAL(designator_a.field->value, "a")
+    CU_ASSERT_TRUE_FATAL(element_a.initializer->kind == INITIALIZER_EXPRESSION)
+    CU_ASSERT_TRUE_FATAL(expression_eq(element_a.initializer->expression, integer_constant("0")))
+
+    initializer_list_element_t element_b = initializer.list->buffer[1];
+    CU_ASSERT_PTR_NOT_NULL_FATAL(element_b.designation)
+    CU_ASSERT_EQUAL_FATAL(element_b.designation->size, 1)
+    designator_t designator_b = element_b.designation->buffer[0];
+    CU_ASSERT_TRUE_FATAL(designator_b.kind == DESIGNATOR_FIELD)
+    CU_ASSERT_STRING_EQUAL_FATAL(designator_b.field->value, "b")
+    CU_ASSERT_TRUE_FATAL(element_b.initializer->kind == INITIALIZER_LIST)
+    CU_ASSERT_EQUAL_FATAL(element_b.initializer->list->size, 1)
+
+    initializer_list_element_t element_c = element_b.initializer->list->buffer[0];
+    CU_ASSERT_PTR_NOT_NULL_FATAL(element_c.designation)
+    CU_ASSERT_EQUAL_FATAL(element_c.designation->size, 1)
+    designator_t designator_c = element_c.designation->buffer[0];
+    CU_ASSERT_TRUE_FATAL(designator_c.kind == DESIGNATOR_FIELD)
+    CU_ASSERT_STRING_EQUAL_FATAL(designator_c.field->value, "c")
+}
+
 void test_parse_empty_declaration() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int;";
@@ -771,13 +880,16 @@ void test_parse_simple_declaration_with_initializer() {
     declaration_t expected = (declaration_t) {
             .type = &INT,
             .identifier = token(TK_IDENTIFIER, "a"),
-            .initializer = binary((binary_expression_t) {
+            .initializer = &(initializer_t) {
+                .kind = INITIALIZER_EXPRESSION,
+                .expression = binary((binary_expression_t) {
                     .type = BINARY_BITWISE,
                     .bitwise_operator = BINARY_BITWISE_AND,
                     .left = integer_constant("1"),
                     .right = integer_constant("1"),
                     .operator = token(TK_AMPERSAND, "&"),
-            }),
+                }),
+            },
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
@@ -798,7 +910,10 @@ void test_parse_declaration_boolean() {
     declaration_t expected = (declaration_t) {
             .type = &BOOL,
             .identifier = token(TK_IDENTIFIER, "a"),
-            .initializer = integer_constant("1"),
+            .initializer = & (initializer_t) {
+                .kind = INITIALIZER_EXPRESSION,
+                .expression = integer_constant("1"),
+            },
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
@@ -840,20 +955,26 @@ void test_parse_compound_declaration() {
     declaration_t expected_b = (declaration_t) {
             .type = &INT,
             .identifier = token(TK_IDENTIFIER, "b"),
-            .initializer = integer_constant("0"),
+            .initializer = & (initializer_t) {
+                .kind = INITIALIZER_EXPRESSION,
+                .expression = integer_constant("0"),
+            },
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[1], &expected_b))
 
     declaration_t expected_c = (declaration_t) {
             .type = &INT,
             .identifier = token(TK_IDENTIFIER, "c"),
-            .initializer = binary((binary_expression_t) {
+            .initializer = & (initializer_t) {
+                .kind = INITIALIZER_EXPRESSION,
+                .expression = binary((binary_expression_t) {
                     .type = BINARY_ARITHMETIC,
                     .arithmetic_operator = BINARY_ARITHMETIC_ADD,
                     .left = make_identifier("d"),
                     .right = integer_constant("1"),
                     .operator = token(TK_PLUS, "+"),
-            }),
+                }),
+            },
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[2], &expected_c))
 }
@@ -993,6 +1114,28 @@ void test_parse_array_declaration() {
             },
     };
     CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "foo")
+    CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected_type))
+}
+
+void test_parse_array_declaration_with_initializer() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "int arr[3] = { 1, 2, 3 };";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = { .size = 0, .capacity = 0, .buffer = NULL, };
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    declaration_t *declaration = declarations.buffer[0];
+    type_t expected_type = {
+        .kind = TYPE_ARRAY,
+        .array = {
+            .element_type = &INT,
+            .size = integer_constant("3"),
+        },
+    };
+    CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "arr")
     CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected_type))
 }
 
@@ -1488,7 +1631,10 @@ void parse_external_declaration_declaration() {
     declaration_t expected = (declaration_t ) {
         .type = &INT,
         .identifier = token(TK_IDENTIFIER, "a"),
-        .initializer = integer_constant("4"),
+        .initializer = & (initializer_t) {
+            .kind = INITIALIZER_EXPRESSION,
+            .expression = integer_constant("4"),
+        },
     };
 
     CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_DECLARATION)
@@ -1650,6 +1796,11 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "assignment expression", test_parse_assignment_expression) ||
         NULL == CU_add_test(pSuite, "int declaration specifiers", test_parse_int_declaration_specifiers) ||
         NULL == CU_add_test(pSuite, "invalid declaration specifiers", test_parse_invalid_declaration_specifiers) ||
+        NULL == CU_add_test(pSuite, "initializer - expression simple", test_parse_initializer_expression_simple) ||
+        NULL == CU_add_test(pSuite, "initializer - array of integers", test_parse_initializer_list_array) ||
+        NULL == CU_add_test(pSuite, "initializer - array of integers with trailing comma", test_parse_initializer_list_array_trailing_comma) ||
+        NULL == CU_add_test(pSuite, "initializer - array index designator", test_parse_initializer_list_array_index_designator) ||
+        NULL == CU_add_test(pSuite, "initializer - struct", test_parse_initializer_list_struct),
         NULL == CU_add_test(pSuite, "declaration - empty", test_parse_empty_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - simple", test_parse_simple_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - simple with initializer", test_parse_simple_declaration_with_initializer) ||
@@ -1660,6 +1811,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "declaration - function (with parameters)", test_parse_function_declaration_with_parameters) ||
         NULL == CU_add_test(pSuite, "declaration - function (returning pointer)", test_parse_function_declaration_returning_pointer) ||
         NULL == CU_add_test(pSuite, "declaration - array", test_parse_array_declaration) ||
+        NULL == CU_add_test(pSuite, "declaration - array with initializer", test_parse_array_declaration_with_initializer) ||
         NULL == CU_add_test(pSuite, "declaration - 2d array", test_parse_2d_array_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - array of functions", test_parse_array_of_functions_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - function pointer", test_parse_function_pointer) ||

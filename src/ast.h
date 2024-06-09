@@ -236,10 +236,44 @@ typedef struct FunctionDefinition {
     statement_t *body;
 } function_definition_t;
 
+typedef struct Initializer initializer_t;
+
+typedef struct Designator {
+    enum {
+        DESIGNATOR_INDEX,
+        DESIGNATOR_FIELD,
+    } kind;
+    union {
+        expression_t *index;
+        token_t *field;
+    };
+} designator_t;
+
+VEC_DEFINE(DesignatorList, designator_list_t, designator_t);
+
+typedef struct InitializerListElement {
+    designator_list_t *designation;
+    initializer_t *initializer;
+} initializer_list_element_t;
+
+VEC_DEFINE(InitializerList, initializer_list_t, initializer_list_element_t);
+
+typedef struct Initializer {
+    enum {
+        INITIALIZER_EXPRESSION,
+        INITIALIZER_LIST,
+    } kind;
+    union {
+        expression_t *expression;
+        initializer_list_t *list;
+    };
+    source_span_t span;
+} initializer_t;
+
 typedef struct Declaration {
     type_t *type;
     token_t *identifier;
-    expression_t *initializer;
+    initializer_t *initializer;
 } declaration_t;
 
 typedef struct BlockItem {
