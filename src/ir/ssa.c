@@ -11,7 +11,7 @@
 
 typedef struct SsaGenContext {
     // Function of the current CFG
-    ir_function_definition_t *function;
+    const ir_function_definition_t *function;
     // Map of variable name -> map of ssa block -> variable name
     hash_table_t current_def;
     // Map of variable name -> variable, just a temporary place to keep track ov variables

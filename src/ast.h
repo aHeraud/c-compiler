@@ -206,7 +206,7 @@ typedef struct Statement {
     } type;
     union {
         struct {
-            token_t *open_brace;
+            const token_t *open_brace;
             ptr_vector_t block_items;
         } compound;
         expression_t *expression;

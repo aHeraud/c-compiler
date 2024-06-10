@@ -66,7 +66,7 @@ void shrink_ptr_vector(void*** buffer, const size_t* size, size_t* capacity) {
 
 void reverse_ptr_vector(void** buffer, size_t size) {
     for (size_t i = 0; i < size / 2; i++) {
-        const void* temp = buffer[i];
+        void* temp = buffer[i];
         buffer[i] = buffer[size - i - 1];
         buffer[size - i - 1] = temp;
     }

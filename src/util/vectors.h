@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #define VEC_DEFINE(name, typedef_name, type) \
 typedef struct name { \
@@ -19,32 +20,44 @@ VEC_DEFINE(PtrVector, ptr_vector_t, void*)
 #define VEC_INIT { .buffer = NULL, .size = 0, .capacity = 0 }
 
 // Append a single element to a vector, growing the vector if necessary.
-#define VEC_APPEND(vec, elem) \
-do { \
-    if ((vec)->size + 1 >= (vec)->capacity) { \
-        (vec)->capacity > 0 ? ((vec)->capacity *= 2) : ((vec)->capacity = 1); \
-        (vec)->buffer = realloc((vec)->buffer, (vec)->capacity * sizeof(elem)); \
-        assert((vec)->buffer != NULL); \
-    } \
-    ((vec)->buffer)[(vec)->size++] = elem; \
+#define VEC_APPEND(vec, elem)                                                               \
+do {                                                                                        \
+    if ((vec)->size + 1 >= (vec)->capacity) {                                               \
+        (vec)->capacity > 0 ? ((vec)->capacity *= 2) : ((vec)->capacity = 1);               \
+        (vec)->buffer = realloc((vec)->buffer, (vec)->capacity * sizeof(elem)); /* NOLINT */\
+        assert((vec)->buffer != NULL);                                                      \
+        if ((vec)->buffer == NULL) {                                                        \
+            fprintf(stderr,                                                                 \
+                    "%s:%d Failed to resize vector, allocation failed (Out of Memory?)",    \
+                    __FILE__, __LINE__);                                                    \
+            exit(1);                                                                        \
+        }                                                                                   \
+    }                                                                                       \
+    ((vec)->buffer)[(vec)->size++] = elem;                                                  \
 } while (0)
 
-#define VEC_FIND(vec, elem) \
-({ \
-    size_t i = -1; \
-    for (; i < (vec)->size; i++) { \
-        if ((vec)->buffer[i] == (elem)) { \
-            break; \
-        } \
-    } \
-    i; \
+#define VEC_FIND(vec, elem)                \
+({                                         \
+    size_t i = -1;                         \
+    for (; i < (vec)->size; i++) {         \
+        if ((vec)->buffer[i] == (elem)) {  \
+            break;                         \
+        }                                  \
+    }                                      \
+    i;                                     \
 })
 
-#define VEC_SHRINK(vec, type) \
-do { \
-    (vec)->buffer = realloc((vec)->buffer, (vec)->size * sizeof(type)); \
-    (vec)->capacity = (vec)->size; \
-    assert(((vec)->buffer) != NULL); \
+#define VEC_SHRINK(vec, type)                                                            \
+do {                                                                                     \
+    (vec)->buffer = realloc((vec)->buffer, (vec)->size * sizeof(type));                  \
+    (vec)->capacity = (vec)->size;                                                       \
+    assert(((vec)->buffer) != NULL);                                                     \
+    if ((vec)->buffer == NULL) {                                                         \
+        fprintf(stderr,                                                                  \
+                    "%s:%d Failed to resize vector, allocation failed (Out of Memory?)", \
+                    __FILE__, __LINE__);                                                 \
+        exit(1);                                                                         \
+    }                                                                                    \
 } while (0)
 
 /**

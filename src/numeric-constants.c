@@ -73,7 +73,7 @@ bool integer_value_fits_in_int_type(unsigned long long value, const type_t *type
 //    (implementation specific, e.g. __int128). If the value of an integer constant is outside the range of
 //    representable values, then the integer constant has no type.
 void decode_integer_constant(const token_t *token, unsigned long long *value, const type_t **type) {
-    char *raw = token->value;
+    const char *raw = token->value;
     char *suffix = NULL;
     *value = strtoull(raw, &suffix, 0);
     if (errno == ERANGE) {

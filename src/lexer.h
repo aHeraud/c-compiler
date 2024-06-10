@@ -415,7 +415,7 @@ typedef struct SourceSpan {
 
 typedef struct Token {
     enum TokenKind kind;
-    char* value;
+    const char* value;
     struct SourcePosition position;
 } token_t;
 
@@ -442,7 +442,7 @@ typedef struct TokenNode {
 } token_node_t;
 
 typedef struct MacroDefinition {
-    char* name;
+    const char* name;
     token_vector_t parameters; // positional parameters, if any
     bool variadic;
     token_vector_t tokens;

@@ -778,7 +778,7 @@ bool parse_designation(parser_t *parser, designator_list_t *list) {
     return require(parser, TK_ASSIGN, NULL, "designation", NULL);
 }
 
-type_t* get_innermost_incomplete_type(type_t *type) {
+const type_t* get_innermost_incomplete_type(const type_t *type) {
     const type_t *current = type;
     while (current->kind == TYPE_POINTER || current->kind == TYPE_ARRAY || current->kind == TYPE_FUNCTION) {
         if (current->kind == TYPE_POINTER && current->pointer.base != NULL) {

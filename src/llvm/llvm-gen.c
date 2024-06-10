@@ -73,7 +73,7 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
         // Get the actual type. The globals IR type is a pointer to the actual type.
         assert(global->type->kind == IR_TYPE_PTR);
         const ir_type_t *ir_type = global->type->ptr.pointee;
-        char *name = global->name;
+        const char *name = global->name;
         if (name[0] == '@') {
             if (isdigit(name[1])) {
                 // Anonymous global variable (e.g. string literal)

@@ -135,8 +135,6 @@ char *gen_label(ir_gen_context_t *context);
 ir_value_t ir_make_const_int(const ir_type_t *type, long long value);
 ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type);
 
-const ir_type_t *ir_get_type_of_value(const ir_value_t value);
-
 /**
  * Helper to insert alloca instructions for local variables at the top of the function.
  */
@@ -323,18 +321,9 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     // Verify that the function was not previously defined with a different signature.
     symbol_t *entry = lookup_symbol(context, function->identifier->value);
     if (entry != NULL) {
-        if (entry->kind != SYMBOL_FUNCTION) {
-            // A symbol with the same name exists, but it is not a function.
-            append_compilation_error(&context->errors, (compilation_error_t) {
-                .kind = ERR_REDEFINITION_OF_SYMBOL,
-                .location = function->identifier->position,
-                .redefinition_of_symbol = {
-                    .redefinition = function->identifier,
-                    .previous_definition = entry->identifier,
-                },
-            });
-        } else if (!ir_types_equal(entry->ir_type, function_type)) {
-            // The function was previously declared with a different signature
+        if (entry->kind != SYMBOL_FUNCTION || !ir_types_equal(entry->ir_type, function_type)) {
+            // A symbol with the same name exists, but it is not a function, or the type signature doesn't match
+            // what was previously declared.
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_REDEFINITION_OF_SYMBOL,
                 .location = function->identifier->position,
@@ -722,6 +711,10 @@ void ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const
             // TODO: handle designators
             fprintf(stderr, "%s:%d: Designators in array initializers are not implemented\n", __FILE__, __LINE__);
         } else {
+            if (i >= type->ptr.pointee->array.length) {
+                // TODO: warn that initializer is longer than array
+                break;
+            }
             ir_value_t index = ir_make_const_int(ir_ptr_int_type(), i);
             ir_var_t element_ptr = temp_var(context, element_ptr_type);
             ir_build_get_array_element_ptr(context->builder, ptr, index, element_ptr);
@@ -2226,7 +2219,9 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
                     },
                 },
             };
-            snprintf(array_length_expr->primary.token.value, 32, "%zu", strlen(literal) + 1);
+            char *val = malloc(32);
+            snprintf(val, 32, "%zu", strlen(literal) + 1);
+            array_length_expr->primary.token.value = val;
 
             // The C type is an array of characters
             type_t *c_type = malloc(sizeof(type_t));
