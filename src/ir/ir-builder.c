@@ -451,6 +451,18 @@ ir_instruction_node_t *ir_build_store(ir_function_builder_t *builder, ir_value_t
     return ir_builder_insert_instruction(builder, instruction);
 }
 
+ir_instruction_node_t *ir_build_get_array_element_ptr(ir_function_builder_t *builder, ir_value_t ptr, ir_value_t index, ir_var_t result) {
+    ir_instruction_t instruction = {
+        .opcode = IR_GET_ARRAY_ELEMENT_PTR,
+        .binary_op = {
+            .left = ptr,
+            .right = index,
+            .result = result,
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
 ir_instruction_node_t *ir_build_trunc(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_TRUNC,

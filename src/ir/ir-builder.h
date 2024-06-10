@@ -92,6 +92,7 @@ ir_instruction_node_t *ir_build_ret_void(ir_function_builder_t *builder);
 ir_instruction_node_t *ir_build_alloca(ir_function_builder_t *builder, const ir_type_t *type, ir_var_t result);
 ir_instruction_node_t *ir_build_load(ir_function_builder_t *builder, ir_value_t ptr, ir_var_t result);
 ir_instruction_node_t *ir_build_store(ir_function_builder_t *builder, ir_value_t ptr, ir_value_t value);
+ir_instruction_node_t *ir_build_get_array_element_ptr(ir_function_builder_t *builder, ir_value_t ptr, ir_value_t index, ir_var_t result);
 
 /* Type Conversion */
 ir_instruction_node_t *ir_build_trunc(ir_function_builder_t *builder, ir_value_t value, ir_var_t result);

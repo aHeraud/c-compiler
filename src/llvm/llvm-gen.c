@@ -472,6 +472,21 @@ void llvm_gen_visit_instruction(
         case IR_MEMCPY:
             assert(false && "Not implemented");
             break;
+        case IR_GET_ARRAY_ELEMENT_PTR: {
+            ir_value_t ptr = instr->binary_op.left;
+            const ir_type_t *ptr_type = ir_get_type_of_value(ptr);
+            assert(ptr_type->kind == IR_TYPE_PTR);
+            const ir_type_t *var_type = ptr_type->ptr.pointee;
+            LLVMValueRef llvm_ptr = ir_to_llvm_value(context, &instr->binary_op.left);
+            LLVMValueRef index = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef indices[2] = {
+                LLVMConstInt(LLVMInt64Type(), 0, false), // first index is to dereference the pointer
+                index // second index is the index of the element we want
+            };
+            LLVMValueRef result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(var_type), llvm_ptr, indices, 2, "");
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            break;
+        }
         case IR_TRUNC: {
             LLVMValueRef result;
             if (ir_is_float_type(ir_get_type_of_value(instr->unary_op.operand))) {

@@ -260,6 +260,9 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
         case IR_MEMCPY:
             snprintf(buffer, size, "memcpy %s, %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
             break;
+        case IR_GET_ARRAY_ELEMENT_PTR:
+            snprintf(buffer, size, "%s = get_array_element_ptr %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            break;
         case IR_TRUNC:
             snprintf(buffer, size, "%s = trunc %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
             break;

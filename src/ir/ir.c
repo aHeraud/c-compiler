@@ -356,6 +356,43 @@ void ir_validate_visit_instruction(
             }
             break;
         }
+        case IR_GET_ARRAY_ELEMENT_PTR: {
+            ir_validate_visit_value(variables, errors, instruction, instruction->binary_op.left);
+            ir_validate_visit_value(variables, errors, instruction, instruction->binary_op.right);
+            ir_validate_visit_variable(variables, errors, instruction, instruction->binary_op.result);
+            // The left operand must be a pointer, and the right operand must be an integer
+            if (ir_get_type_of_value(instruction->binary_op.left)->kind != IR_TYPE_PTR) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                        .instruction = instruction,
+                        .message = "get_array_element_ptr left operand must be a pointer"
+                });
+            }
+            if (!ir_is_integer_type(ir_get_type_of_value(instruction->binary_op.right))) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                        .instruction = instruction,
+                        .message = "get_array_element_ptr right operand must be an integer"
+                });
+            }
+            // The result must be a pointer to the element type of the array
+            if (instruction->binary_op.result.type->kind != IR_TYPE_PTR) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                        .instruction = instruction,
+                        .message = "get_array_element_ptr result must be a pointer"
+                });
+            } else {
+                const ir_type_t *element_type = ir_get_type_of_value(instruction->binary_op.left)->ptr.pointee;
+                if (element_type->kind == IR_TYPE_ARRAY) {
+                    element_type = element_type->array.element;
+                }
+                if (!ir_types_equal(instruction->binary_op.result.type->ptr.pointee, element_type)) {
+                    append_ir_validation_error(errors, (ir_validation_error_t) {
+                            .instruction = instruction,
+                            .message = "get_array_element_ptr result type does not match the element type of the source array"
+                    });
+                }
+            }
+            break;
+        }
         case IR_TRUNC: {
             // The result type must be smaller than the value being truncated
             // Both the result and the value must be integers, or both must be floating point numbers
@@ -572,6 +609,7 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
         case IR_LE:
         case IR_GT:
         case IR_GE:
+        case IR_GET_ARRAY_ELEMENT_PTR:
             if (instr->binary_op.left.kind == IR_VALUE_VAR) uses[count++] = &instr->binary_op.left.var;
             if (instr->binary_op.right.kind == IR_VALUE_VAR) uses[count++] = &instr->binary_op.right.var;
             break;
@@ -634,6 +672,7 @@ ir_var_t *ir_get_def(ir_instruction_t *instr) {
         case IR_LE:
         case IR_GT:
         case IR_GE:
+        case IR_GET_ARRAY_ELEMENT_PTR:
             return &instr->binary_op.result;
         case IR_ASSIGN:
             return &instr->assign.result;

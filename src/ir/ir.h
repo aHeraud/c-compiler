@@ -231,6 +231,8 @@ typedef enum IrOpcode {
     IR_LOAD,
     IR_STORE,
     IR_MEMCPY,
+    IR_MEMSET,
+    IR_GET_ARRAY_ELEMENT_PTR,
 
     /* Type Conversion */
     IR_TRUNC,
@@ -247,14 +249,20 @@ typedef enum IrValueKind {
     IR_VALUE_VAR,
 } ir_value_kind_t;
 
+typedef struct IrConst ir_const_t;
 typedef struct IrConst {
     enum {
+        IR_CONST_ARRAY,
         IR_CONST_INT,
         IR_CONST_FLOAT,
-        IR_CONST_STRING
+        IR_CONST_STRING,
     } kind;
     const ir_type_t *type;
     union {
+        struct {
+            ir_const_t *values;
+            size_t length;
+        } array;
         long long i;
         long double f;
         const char* s;
@@ -295,6 +303,7 @@ typedef struct IrInstruction {
          * - arithmetic: add, sub, mul, div, mod
          * - logical: and, or, shl, shr, xor
          * - comparison: eq, ne, lt, le, gt, ge
+         * - memory: get_array_element_ptr
          */
         struct {
             ir_value_t left;

@@ -240,7 +240,7 @@ void compile(options_t options, const char* input_file_name) {
     ir_module_t *ir_module = result.module;
     if (options.emit_ir) {
         const char *output_path = get_output_path(input_file_name, "ir");
-        FILE* output = fopen(output_path, "w+");
+        FILE* output = fopen(output_path, "w");
         if (output == NULL) {
             fprintf(stderr, "Failed to open output file: %s\n", output_path);
             exit(1);
@@ -251,7 +251,7 @@ void compile(options_t options, const char* input_file_name) {
 
     if (options.emit_ir_cfg) {
         const char *output_path = get_output_path(input_file_name, "dot");
-        FILE* output = fopen(output_path, "w+");
+        FILE* output = fopen(output_path, "w");
         if (output == NULL) {
             fprintf(stderr, "Failed to open output file: %s\n", output_path);
             exit(1);

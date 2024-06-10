@@ -705,6 +705,78 @@ void ir_visit_while_statement(ir_gen_context_t *context, const statement_t *stat
     ir_build_nop(context->builder, end_label);
 }
 
+void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer);
+
+void ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer) {
+    const ir_type_t *type = ir_get_type_of_value(ptr);
+    assert(type->kind == IR_TYPE_PTR);
+    assert(type->ptr.pointee->kind == IR_TYPE_ARRAY);
+    const ir_type_t *element_type = type->ptr.pointee->array.element;
+    const ir_type_t *element_ptr_type = get_ir_ptr_type(element_type);
+
+    // TODO: if the initializer is constant and contiguous, we can declare it as a global constant and memcpy it
+    // For now this just lazily generates code to initialize the array
+    for (size_t i = 0; i < initializer->size; i += 1) {
+        initializer_list_element_t element = initializer->buffer[i];
+        if (element.designation != NULL) {
+            // TODO: handle designators
+            fprintf(stderr, "%s:%d: Designators in array initializers are not implemented\n", __FILE__, __LINE__);
+        } else {
+            ir_value_t index = ir_make_const_int(ir_ptr_int_type(), i);
+            ir_var_t element_ptr = temp_var(context, element_ptr_type);
+            ir_build_get_array_element_ptr(context->builder, ptr, index, element_ptr);
+            ir_visit_initializer(context, ir_value_for_var(element_ptr), c_type->array.element_type, element.initializer);
+        }
+    }
+}
+
+void ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
+    const ir_type_t *ir_type = ir_get_type_of_value(ptr);
+    assert(ir_type->kind == IR_TYPE_PTR);
+    switch (ir_type->ptr.pointee->kind) {
+        case IR_TYPE_ARRAY: {
+            ir_visit_array_initializer(context, ptr, c_type, initializer_list);
+            break;
+        }
+        case IR_TYPE_STRUCT: {
+            // TODO
+            fprintf(stderr, "%s:%d: Codegen for struct initializer lists unimplemented\n", __FILE__, __LINE__);
+            exit(1);
+        }
+        default: {
+            fprintf(stderr, "%s:%d: Invalid type for initializer list\n", __FILE__, __LINE__);
+            exit(1);
+        }
+    }
+}
+
+void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer) {
+    switch (initializer->kind) {
+        case INITIALIZER_EXPRESSION: {
+            expression_result_t result =  ir_visit_expression(context, initializer->expression);
+
+            // Error occurred while evaluating the initializer
+            if (result.kind == EXPR_RESULT_ERR) return;
+
+            // If the initializer is an lvalue, load the value
+            // TODO: not sure that this is correct
+            if (result.is_lvalue) result = get_rvalue(context, result);
+
+            // Verify that the types are compatible, convert if necessary
+            result = convert_to_type(context, result.value, result.c_type, var_ctype);
+            if (result.kind == EXPR_RESULT_ERR) return;
+
+            // Store the result in the allocated storage
+            ir_build_store(context->builder, ptr, result.value);
+            break;
+        }
+        case INITIALIZER_LIST: {
+            ir_visit_initializer_list(context, ptr, var_ctype, initializer->list);
+            break;
+        }
+    }
+}
+
 void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t *declaration) {
     assert(context != NULL && "Context must not be NULL");
     assert(declaration != NULL && "Declaration must not be NULL");
@@ -906,29 +978,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
 
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
-        expression_result_t result;
-        if (declaration->initializer->kind == INITIALIZER_EXPRESSION) {
-            result = ir_visit_expression(context, declaration->initializer->expression);
-        } else {
-            fprintf(stderr, "%s:%d: Codegen for initializer lists unimplemented\n", __FILE__, __LINE__);
-            exit(1);
-        }
-
-        // Error occurred while evaluating the initializer
-        if (result.kind == EXPR_RESULT_ERR) return;
-
-        // Incompatible types
-        if (result.c_type == NULL) return;
-
-        // If the initializer is an lvalue, load the value
-        // TODO: not sure that this is correct
-        if (result.is_lvalue) result = get_rvalue(context, result);
-
-        // Verify that the types are compatible, convert if necessary
-        result = convert_to_type(context, result.value, result.c_type, declaration->type);
-
-        // Store the result in the allocated storage
-        ir_build_store(context->builder, ir_value_for_var(symbol->ir_ptr), result.value);
+        ir_visit_initializer(context, ir_value_for_var(symbol->ir_ptr), symbol->c_type, declaration->initializer);
     }
 }
 
