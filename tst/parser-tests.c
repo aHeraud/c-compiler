@@ -1621,6 +1621,67 @@ void test_parse_while_statement_with_empty_body() {
     CU_ASSERT_EQUAL_FATAL(node.while_.body->type, STATEMENT_EMPTY)
 }
 
+void test_parse_for_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input =
+        "for (int i = 0; i < 10; i = i + 1) {\n"
+        "    a = a + i;\n"
+        "}";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
+
+    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_FOR)
+    CU_ASSERT_EQUAL_FATAL(node.for_.initializer.kind, FOR_INIT_DECLARATION)
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.for_.initializer.declarations)
+
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.for_.condition)
+    CU_ASSERT_EQUAL_FATAL(node.for_.condition->type, EXPRESSION_BINARY)
+
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.for_.post)
+    CU_ASSERT_EQUAL_FATAL(node.for_.post->type, EXPRESSION_BINARY)
+
+    CU_ASSERT_EQUAL_FATAL(node.for_.body->type, STATEMENT_COMPOUND)
+}
+
+void test_parse_for_statement_no_optional_parts() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "for (;;);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
+
+    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_FOR)
+    CU_ASSERT_EQUAL_FATAL(node.for_.initializer.kind, FOR_INIT_EMPTY)
+    CU_ASSERT_PTR_NULL_FATAL(node.for_.condition)
+    CU_ASSERT_PTR_NULL_FATAL(node.for_.post)
+    CU_ASSERT_EQUAL_FATAL(node.for_.body->type, STATEMENT_EMPTY)
+}
+
+void test_parse_for_statement_expr_initializer() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "for (i = 0;;);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
+
+    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_FOR)
+    CU_ASSERT_EQUAL_FATAL(node.for_.initializer.kind, FOR_INIT_EXPRESSION)
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.for_.initializer.expression)
+}
+
 void parse_external_declaration_declaration() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int a = 4;";
@@ -1828,6 +1889,9 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement) ||
         NULL == CU_add_test(pSuite, "while statement", test_parse_while_statement) ||
         NULL == CU_add_test(pSuite, "while statement with empty body", test_parse_while_statement_with_empty_body) ||
+        NULL == CU_add_test(pSuite, "for statement", test_parse_for_statement) ||
+        NULL == CU_add_test(pSuite, "for statement with no optional parts", test_parse_for_statement_no_optional_parts) ||
+        NULL == CU_add_test(pSuite, "for statement with expression initializer", test_parse_for_statement_expr_initializer) ||
         NULL == CU_add_test(pSuite, "external declaration - declaration", parse_external_declaration_declaration) ||
         NULL == CU_add_test(pSuite, "external declaration - prototype (var args)", parse_external_definition_prototype_var_args) ||
         NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||

@@ -700,6 +700,26 @@ void test_ir_while_loop() {
     }));
 }
 
+void ir_gen_for_loop_empty() {
+    const char* input =
+        "int main() {\n"
+        "    for (;;);\n"
+        "    return 0;\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    // You would expect to see the loop end label and a return 0 instruction here, but the ir-generator has
+    // detected that it was un-reachable and removed it.
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "l0: nop",
+        "br l0",
+    }));
+}
+
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -740,5 +760,6 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "conditional expr (void)", test_ir_gen_conditional_expr_void);
     CU_add_test(suite, "conditional expr", test_ir_gen_conditional_expr_returning_int);
     CU_add_test(suite, "while loop", test_ir_while_loop);
+    CU_add_test(suite, "for loop (empty)", ir_gen_for_loop_empty);
     return CUE_SUCCESS;
 }

@@ -203,6 +203,7 @@ typedef struct Statement {
         STATEMENT_IF,
         STATEMENT_RETURN,
         STATEMENT_WHILE,
+        STATEMENT_FOR,
     } type;
     union {
         struct {
@@ -225,6 +226,23 @@ typedef struct Statement {
             expression_t *condition;
             statement_t *body;
         } while_;
+        struct {
+            const token_t *keyword;
+            struct {
+                enum {
+                    FOR_INIT_DECLARATION,
+                    FOR_INIT_EXPRESSION,
+                    FOR_INIT_EMPTY,
+                } kind;
+                union {
+                    ptr_vector_t *declarations;
+                    expression_t *expression;
+                };
+            } initializer;
+            expression_t *condition;
+            expression_t *post;
+            statement_t *body;
+        } for_;
     };
     token_t *terminator;
 } statement_t;

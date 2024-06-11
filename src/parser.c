@@ -69,6 +69,13 @@ bool any_token_kind_equals(token_kind_t kind, size_t count, ...) {
 #define ANY_NON_NULL(...) any_non_null(sizeof((void*[]){__VA_ARGS__}) / sizeof(void*), __VA_ARGS__)
 #define TOKEN_KIND_ONE_OF(value, ...) any_token_kind_equals(value, sizeof((token_kind_t[]){__VA_ARGS__}) / sizeof(token_kind_t), __VA_ARGS__)
 
+const token_kind_t DECLARATION_SPECIFIER_TOKENS[] = {
+    TK_TYPEDEF, TK_EXTERN, TK_STATIC, TK_AUTO, TK_REGISTER, // storage-class-specifier
+    TK_VOID, TK_CHAR, TK_SHORT, TK_INT, TK_LONG, TK_FLOAT, TK_DOUBLE, TK_SIGNED, TK_UNSIGNED, TK_BOOL, TK_COMPLEX, TK_STRUCT, TK_UNION, TK_ENUM, // type-specifiers
+    TK_CONST, TK_RESTRICT, TK_VOLATILE, // type-qualifiers
+    TK_INLINE, // function-specifier
+};
+
 void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
     source_position_t position = error->token->position;
     fprintf(stream, "%s:%d:%d: error: ", position.path, position.line, position.column);
@@ -1424,6 +1431,8 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
         return parse_return_statement(parser, stmt, begin);
     } else if (accept(parser, TK_WHILE, &begin)) {
         return parse_while_statement(parser, stmt, begin);
+    } else if (accept(parser, TK_FOR, &begin)) {
+        return parse_for_statement(parser, stmt, begin);
     } else {
         return parse_expression_statement(parser, stmt);
     }
@@ -1597,6 +1606,98 @@ bool parse_while_statement(parser_t* parser, statement_t *statement, token_t *ke
     return true;
 }
 
+bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyword) {
+    if (!require(parser, TK_LPAREN, NULL, "for-statement", NULL)) return false;
+
+    statement->type = STATEMENT_FOR;
+    statement->for_.keyword = keyword;
+
+    // Parse the initializer
+    // It can be:
+    // 1. A declaration
+    // 2. An expression statement
+    // 3. Or just a semicolon (special case of the above)
+
+    // If the next-token is a declaration specifier, then it must be a declaration
+    bool is_declaration = false;
+    for (int i = 0; i < sizeof (DECLARATION_SPECIFIER_TOKENS) / sizeof (token_kind_t); i += 1) {
+        if (peek(parser, DECLARATION_SPECIFIER_TOKENS[i])) {
+            is_declaration = true;
+            break;
+        }
+    }
+
+    if (is_declaration) {
+        // This is a declaration
+        statement->for_.initializer.kind = FOR_INIT_DECLARATION;
+        statement->for_.initializer.declarations = malloc(sizeof(ptr_vector_t));
+        *statement->for_.initializer.declarations = (ptr_vector_t ) VEC_INIT;
+        if (!parse_declaration(parser, statement->for_.initializer.declarations)) {
+            free(statement->for_.initializer.declarations);
+            statement->for_.initializer.declarations = NULL;
+            return false;
+        }
+    } else {
+        // This should be an expression statement, or an empty statement
+        const token_t *start = next_token(parser);
+        statement->for_.initializer.kind = FOR_INIT_EXPRESSION;
+        statement_t *initializer = malloc(sizeof(statement_t));
+        if (!parse_statement(parser, initializer)) {
+            free(initializer);
+            return false;
+        } else {
+            if (initializer->type == STATEMENT_EMPTY) {
+                statement->for_.initializer.kind = FOR_INIT_EMPTY;
+            } else if (initializer->type == STATEMENT_EXPRESSION) {
+                statement->for_.initializer.expression = initializer->expression;
+            } else {
+                // Parsed some other statement, which is an error
+                append_parse_error(&parser->errors, (parse_error_t) {
+                    .token = start,
+                    .previous_token = NULL,
+                    .production_name = "for-statement",
+                    .previous_production_name = NULL,
+                    .type = PARSE_ERROR_EXPECTED_EXPRESSION,
+                });
+                return false;
+            }
+        }
+    }
+
+    // Parse the expression for the condition
+    if (!accept(parser, TK_SEMICOLON, NULL)) {
+        statement->for_.condition = malloc(sizeof(expression_t));
+        if (!parse_expression(parser, statement->for_.condition)) {
+            free(statement->for_.condition);
+            return false;
+        }
+        if (!require(parser, TK_SEMICOLON, NULL, "for-statement", "expression")) return false;
+    } else {
+        statement->for_.condition = NULL;
+    }
+
+    // Parse the post-expression
+    if (!accept(parser, TK_RPAREN, NULL)) {
+        statement->for_.post = malloc(sizeof(expression_t));
+        if (!parse_expression(parser, statement->for_.post)) {
+            free(statement->for_.post);
+            return false;
+        }
+        if (!require(parser, TK_RPAREN, NULL, "for-statement", "expression")) return false;
+    } else {
+        statement->for_.post = NULL;
+    }
+
+    statement_t *body = malloc(sizeof(statement_t));
+    if (!parse_statement(parser, body)) {
+        free(body);
+        return false;
+    }
+
+    statement->for_.body = body;
+    return true;
+}
+
 bool parse_expression_statement(parser_t *parser, statement_t *stmt) {
     token_t *terminator; // hasta la vista baby
     expression_t *expr = malloc(sizeof(expression_t));
@@ -1611,9 +1712,9 @@ bool parse_expression_statement(parser_t *parser, statement_t *stmt) {
     }
 
     *stmt = (statement_t) {
-            .type = STATEMENT_EXPRESSION,
-            .expression = expr,
-            .terminator = terminator,
+        .type = STATEMENT_EXPRESSION,
+        .expression = expr,
+        .terminator = terminator,
     };
 
     return true;
