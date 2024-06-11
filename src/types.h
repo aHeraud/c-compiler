@@ -138,6 +138,13 @@ const type_t *type_after_integer_promotion(const type_t *type);
  */
 const type_t *get_common_type(const type_t *a, const type_t *b);
 
+/**
+ * Get a type that is a pointer to the given type.
+ * @param inner The type of the object the pointer points to
+ * @return A type that is a pointer to the given type
+ */
+const type_t *get_ptr_type(const type_t *inner);
+
 // Static type objects for common types
 
 static const type_t VOID = {

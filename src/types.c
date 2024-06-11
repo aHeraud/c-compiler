@@ -182,3 +182,17 @@ const type_t *get_common_type(const type_t *a, const type_t *b) {
         }
     }
 }
+
+const type_t *get_ptr_type(const type_t *inner) {
+    type_t *ptr = malloc(sizeof(type_t));
+    *ptr = (type_t) {
+        .kind = TYPE_POINTER,
+        .is_volatile = false,
+        .is_const = false,
+        .storage_class = STORAGE_CLASS_AUTO,
+        .pointer = {
+            .base = inner,
+        },
+    };
+    return ptr;
+}

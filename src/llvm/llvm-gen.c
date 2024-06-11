@@ -479,11 +479,17 @@ void llvm_gen_visit_instruction(
             const ir_type_t *var_type = ptr_type->ptr.pointee;
             LLVMValueRef llvm_ptr = ir_to_llvm_value(context, &instr->binary_op.left);
             LLVMValueRef index = ir_to_llvm_value(context, &instr->binary_op.right);
-            LLVMValueRef indices[2] = {
-                LLVMConstInt(LLVMInt64Type(), 0, false), // first index is to dereference the pointer
-                index // second index is the index of the element we want
-            };
-            LLVMValueRef result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(var_type), llvm_ptr, indices, 2, "");
+            LLVMValueRef result;
+            if (var_type->kind == IR_TYPE_ARRAY) {
+                LLVMValueRef indices[2] = {
+                    LLVMConstInt(LLVMInt64Type(), 0, false), // dereference the array address
+                    index // second index is the index of the element we want
+                };
+                result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(var_type), llvm_ptr, indices, 2, "");
+            } else {
+                LLVMValueRef indices[1] = { index };
+                result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(var_type), llvm_ptr, indices, 1, "");
+            }
             hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
         }

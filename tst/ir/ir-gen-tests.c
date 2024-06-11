@@ -419,11 +419,9 @@ void test_ir_gen_array_load_constant_index() {
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*[i32;2] %0 = alloca [i32;2]",
         "*i32 %1 = alloca i32",
-        "i64 %2 = ptoi *[i32;2] %0",
-        "i64 %3 = add i64 %2, i64 4",
-        "*i32 %4 = itop i64 %3",
-        "i32 %5 = load *i32 %4",
-        "store i32 %5, *i32 %1",
+        "*i32 %2 = get_array_element_ptr *[i32;2] %0, i32 1",
+        "i32 %3 = load *i32 %2",
+        "store i32 %3, *i32 %1",
         "ret i32 0"
     }));
 }
@@ -441,11 +439,9 @@ void test_ir_gen_array_store_constant_index() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*[i32;2] %0 = alloca [i32;2]",
-        "i64 %1 = ptoi *[i32;2] %0",
-        "i64 %2 = add i64 %1, i64 4",
-        "*i32 %3 = itop i64 %2",
-        "i32 %4 = i32 10",
-        "store i32 %4, *i32 %3",
+        "*i32 %1 = get_array_element_ptr *[i32;2] %0, i32 1",
+        "i32 %2 = i32 10",
+        "store i32 %2, *i32 %1",
         "ret i32 0"
     }));
 }
@@ -467,14 +463,29 @@ void test_ir_gen_array_load_variable_index() {
         "*i32 %2 = alloca i32",
         "store i32 0, *i32 %1",
         "i32 %3 = load *i32 %1",
-        "i64 %4 = ext i32 %3",
-        "i64 %5 = mul i64 %4, i64 4",
-        "i64 %6 = ptoi *[i32;2] %0",
-        "i64 %7 = add i64 %6, i64 %5",
-        "*i32 %8 = itop i64 %7",
-        "i32 %9 = load *i32 %8",
-        "store i32 %9, *i32 %2",
+        "*i32 %4 = get_array_element_ptr *[i32;2] %0, i32 %3",
+        "i32 %5 = load *i32 %4",
+        "store i32 %5, *i32 %2",
         "ret i32 0"
+    }));
+}
+
+void test_ir_gen_array_index_on_ptr() {
+    const char* input = "int foo(int *a) {\n"
+                        "    return a[0];\n"
+                        "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "**i32 %0 = alloca *i32",
+        "store *i32 a, **i32 %0",
+        "*i32 %1 = load **i32 %0",
+        "*i32 %2 = get_array_element_ptr *i32 %1, i32 0",
+        "i32 %3 = load *i32 %2",
+        "ret i32 %3"
     }));
 }
 
@@ -752,6 +763,7 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "array load constant index", test_ir_gen_array_load_constant_index);
     CU_add_test(suite, "array store constant index", test_ir_gen_array_store_constant_index);
     CU_add_test(suite, "array load variable index", test_ir_gen_array_load_variable_index);
+    CU_add_test(suite, "array load ptr", test_ir_gen_array_index_on_ptr);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);
