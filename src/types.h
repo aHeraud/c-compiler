@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include "lexer.h"
+#include "parser/lexer.h"
 
 typedef struct Type type_t;
 typedef struct Expression expression_t;

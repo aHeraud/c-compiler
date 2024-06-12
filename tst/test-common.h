@@ -5,8 +5,8 @@
 #include <string.h>
 #include "CUnit/Basic.h"
 
-#include "lexer.h"
-#include "parser.h"
+#include "parser/lexer.h"
+#include "parser/parser.h"
 
 token_kind_t* token_kind_array(token_t* tokens, size_t size);
 const char** token_value_array(token_t* tokens, size_t size);

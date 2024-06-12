@@ -1,7 +1,7 @@
 #ifndef C_COMPILER_PREPROCESSOR_H
 #define C_COMPILER_PREPROCESSOR_H
 
-#include "lexer.h"
+#include "parser/lexer.h"
 
 typedef struct MacroParameters {
     token_vector_t* list;

@@ -1,5 +1,5 @@
 #include <malloc.h>
-#include "lexer.h"
+#include "parser/lexer.h"
 #include "util/vectors.h"
 #include "test-common.h"
 

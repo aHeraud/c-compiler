@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include "lexer.h"
+#include "parser/lexer.h"
 #include "types.h"
 
 typedef struct Statement statement_t;

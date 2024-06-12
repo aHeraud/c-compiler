@@ -22,7 +22,7 @@
 #include <assert.h>
 
 #include "parser.h"
-#include "lexer.h"
+#include "parser/lexer.h"
 
 bool any_non_null(size_t count, ...) {
     va_list args;

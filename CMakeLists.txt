@@ -32,16 +32,16 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 include_directories(src)
 
 add_library(cclib STATIC
-        src/lexer.h src/lexer.c
-        src/preprocessor.h src/preprocessor.c
+        src/parser/lexer.h src/parser/lexer.c
+        src/parser/preprocessor.h src/parser/preprocessor.c
         src/util/read-lines.h src/util/read-lines.c
         src/util/vectors.h src/util/vectors.c
-        src/parser.c src/parser.h
+        src/parser/parser.c src/parser/parser.h
         src/ast.h src/ast.c
         src/util/hashtable.c src/util/hashtable.h
         src/util/strings.c src/util/strings.h
         src/types.c src/types.h
-        src/numeric-constants.h src/numeric-constants.c
+        src/parser/numeric-constants.h src/parser/numeric-constants.c
         src/ir/ir.h src/ir/ir.c
         src/ir/ir-builder.h src/ir/ir-builder.c
         src/ir/ir-gen.h src/ir/ir-gen.c
@@ -61,7 +61,8 @@ set(CUNIT_DISABLE_TESTS TRUE)
 set(CUNIT_DISABLE_EXAMPLES TRUE)
 add_git_submodule("dependencies/cunit")
 add_executable(unit-tests
-        src/util/read-lines.h src/util/vectors.h src/lexer.h src/parser.h
+        src/util/read-lines.h src/util/vectors.h
+        src/parser/lexer.h src/parser/parser.h
         tst/test-main.c
         tst/tests.h
         tst/util/read-lines-test.c

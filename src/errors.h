@@ -2,7 +2,6 @@
 #define C_COMPILER_ERRORS_H
 
 #include "ast.h"
-#include "lexer.h"
 #include "types.h"
 
 typedef enum CompilationErrorKind {
@@ -97,5 +96,6 @@ typedef struct CompilationErrorVector {
 } compilation_error_vector_t;
 
 void append_compilation_error(compilation_error_vector_t *errors, compilation_error_t error);
+void print_compilation_error(const compilation_error_t *error);
 
 #endif //C_COMPILER_ERRORS_H

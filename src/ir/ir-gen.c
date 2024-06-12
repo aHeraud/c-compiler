@@ -9,7 +9,7 @@
 #include "ir/ir-builder.h"
 #include "ir/cfg.h"
 #include "ir/fmt.h"
-#include "numeric-constants.h"
+#include "parser/numeric-constants.h"
 #include "errors.h"
 #include "util/strings.h"
 

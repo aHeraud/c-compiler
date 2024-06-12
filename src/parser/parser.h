@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include "ast.h"
-#include "lexer.h"
+#include "parser/lexer.h"
 
 typedef struct ParseError {
     const token_t *token;

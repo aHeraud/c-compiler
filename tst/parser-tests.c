@@ -2,7 +2,7 @@
 #include "CUnit/Basic.h"
 #include "ast.h"
 #include "tests.h"
-#include "parser.h"
+#include "parser/parser.h"
 #include "types.h"
 #include "test-common.h"
 

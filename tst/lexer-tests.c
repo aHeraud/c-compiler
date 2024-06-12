@@ -1,7 +1,7 @@
 #include <malloc.h>
 #include "CUnit/Basic.h"
 #include "tests.h"
-#include "lexer.h"
+#include "parser/lexer.h"
 
 static lexer_global_context_t create_context() {
     return (lexer_global_context_t) {

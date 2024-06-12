@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <stdio.h>
 
-#include "lexer.h"
+#include "parser/lexer.h"
 #include "types.h"
 
 bool integer_value_fits_in_int_type(unsigned long long value, const type_t *type) {

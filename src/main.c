@@ -2,8 +2,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include "util/vectors.h"
-#include "lexer.h"
-#include "parser.h"
+#include "parser/lexer.h"
+#include "parser/parser.h"
 #include "ir/ir-gen.h"
 #include "ir/cfg.h"
 #include "ir/fmt.h"
@@ -232,8 +232,11 @@ void compile(options_t options, const char* input_file_name) {
 
     ir_gen_result_t result = generate_ir(translation_unit);
     if (result.errors.size > 0) {
-        fprintf(stderr, "Failed to generate IR for file: %s\n", input_file_name);
-        // TODO: print errors
+        for (size_t i = 0; i < result.errors.size; i++) {
+            compilation_error_t error = result.errors.buffer[i];
+            print_compilation_error(&error);
+        }
+        fprintf(stderr, "Compilation failed, %zu errors\n", result.errors.size);
         exit(1);
     }
 

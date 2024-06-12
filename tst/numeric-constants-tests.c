@@ -1,8 +1,8 @@
 #include <limits.h>
 #include "CUnit/CUnit.h"
-#include "lexer.h"
+#include "parser/lexer.h"
 #include "types.h"
-#include "numeric-constants.h"
+#include "parser/numeric-constants.h"
 
 #include "tests.h"
 
