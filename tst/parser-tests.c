@@ -717,6 +717,76 @@ void test_parse_invalid_declaration_specifiers() {
     CU_ASSERT_TRUE_FATAL(types_equal(&type, &INT))
 }
 
+void test_parse_struct_definition() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "struct Foo { int a; float b[10]; }";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    type_t type;
+    CU_ASSERT_TRUE_FATAL(parse_declaration_specifiers(&parser, &type))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    CU_ASSERT_EQUAL_FATAL(type.kind, TYPE_STRUCT_OR_UNION)
+    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.is_union, false)
+    CU_ASSERT_STRING_EQUAL_FATAL(type.struct_or_union.identifier->value, "Foo")
+    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.fields.size, 2)
+
+    struct_field_t *field = type.struct_or_union.fields.buffer[0];
+    CU_ASSERT_STRING_EQUAL_FATAL(field->identifier->value, "a")
+    CU_ASSERT_TRUE_FATAL(types_equal(field->type, &INT))
+    CU_ASSERT_TRUE_FATAL(field->bitfield_width == NULL)
+
+    field = type.struct_or_union.fields.buffer[1];
+    CU_ASSERT_STRING_EQUAL_FATAL(field->identifier->value, "b")
+    CU_ASSERT_TRUE_FATAL(types_equal(field->type, array_of(&FLOAT, integer_constant("10"))))
+    CU_ASSERT_TRUE_FATAL(field->bitfield_width == NULL)
+}
+
+void test_parse_union_definition() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "union Foo { int i; float f; }";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    type_t type;
+    CU_ASSERT_TRUE_FATAL(parse_declaration_specifiers(&parser, &type))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    CU_ASSERT_EQUAL_FATAL(type.kind, TYPE_STRUCT_OR_UNION)
+    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.is_union, true)
+    CU_ASSERT_STRING_EQUAL_FATAL(type.struct_or_union.identifier->value, "Foo")
+    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.fields.size, 2)
+}
+
+void test_parse_struct_definition_with_bitfields() {
+    lexer_global_context_t context = create_lexer_context();
+    // both named and anonymous bitfields
+    char *input = "struct Foo { int a : 1; int : 7; };";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    type_t type;
+    CU_ASSERT_TRUE_FATAL(parse_declaration_specifiers(&parser, &type))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+
+    CU_ASSERT_EQUAL_FATAL(type.kind, TYPE_STRUCT_OR_UNION)
+    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.is_union, false)
+    CU_ASSERT_STRING_EQUAL_FATAL(type.struct_or_union.identifier->value, "Foo")
+    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.fields.size, 2)
+
+    struct_field_t *field = type.struct_or_union.fields.buffer[0];
+    CU_ASSERT_STRING_EQUAL_FATAL(field->identifier->value, "a")
+    CU_ASSERT_TRUE_FATAL(types_equal(field->type, &INT))
+    CU_ASSERT_TRUE_FATAL(field->bitfield_width != NULL)
+    CU_ASSERT_TRUE_FATAL(expression_eq(field->bitfield_width, integer_constant("1")))
+
+    field = type.struct_or_union.fields.buffer[1];
+    CU_ASSERT_PTR_NULL_FATAL(field->identifier)
+    CU_ASSERT_TRUE_FATAL(types_equal(field->type, &INT))
+    CU_ASSERT_TRUE_FATAL(field->bitfield_width != NULL)
+    CU_ASSERT_TRUE_FATAL(expression_eq(field->bitfield_width, integer_constant("7")))
+}
+
 void test_parse_initializer_expression_simple() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "14;";
@@ -1857,6 +1927,9 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "assignment expression", test_parse_assignment_expression) ||
         NULL == CU_add_test(pSuite, "int declaration specifiers", test_parse_int_declaration_specifiers) ||
         NULL == CU_add_test(pSuite, "invalid declaration specifiers", test_parse_invalid_declaration_specifiers) ||
+        NULL == CU_add_test(pSuite, "struct definition", test_parse_struct_definition) ||
+        NULL == CU_add_test(pSuite, "union definition", test_parse_union_definition) ||
+        NULL == CU_add_test(pSuite, "struct with bitfields", test_parse_struct_definition_with_bitfields) ||
         NULL == CU_add_test(pSuite, "initializer - expression simple", test_parse_initializer_expression_simple) ||
         NULL == CU_add_test(pSuite, "initializer - array of integers", test_parse_initializer_list_array) ||
         NULL == CU_add_test(pSuite, "initializer - array of integers with trailing comma", test_parse_initializer_list_array_trailing_comma) ||

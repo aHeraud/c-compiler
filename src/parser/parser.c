@@ -448,9 +448,10 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
     token_t *signed_ = NULL;
     token_t *unsigned_ = NULL;
     token_t *complex_ = NULL;
-    token_t *struct_ = NULL;
-    token_t *union_ = NULL;
+    token_t *struct_or_union = NULL;
     token_t *enum_ = NULL;
+
+    struct_t *struct_type = NULL;
 
     while (true) {
         token_t *token;
@@ -492,7 +493,7 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             is_volatile = true;
         } else if (accept(parser, TK_VOID, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           double_, signed_, unsigned_, complex_, struct_, union_, enum_);
+                                                           double_, signed_, unsigned_, complex_, struct_or_union, enum_);
             if (void_ != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, void_));
             } else {
@@ -500,7 +501,7 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_CHAR, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           double_, complex_, struct_, union_, enum_);
+                                                           double_, complex_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
@@ -508,21 +509,21 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_SHORT, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, char_, short_, long_, long_long, float_, double_,
-                                                           bool_, complex_, struct_, union_, enum_);
+                                                           bool_, complex_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 short_ = token;
             }
         } else if (accept(parser, TK_INT, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, int_, float_, double_, complex_, struct_, union_, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, int_, float_, double_, complex_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 int_ = token;
             }
         } else if (accept(parser, TK_LONG, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, long_long, float_, double_, struct_, union_, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, long_long, float_, double_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else if (long_ != NULL) {
@@ -536,7 +537,7 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_FLOAT, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           signed_, unsigned_, struct_, union_, enum_);
+                                                           signed_, unsigned_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
@@ -544,21 +545,21 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_DOUBLE, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_long, float_,
-                                                           double_, signed_, unsigned_, struct_, union_, enum_);
+                                                           double_, signed_, unsigned_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 double_ = token;
             }
         } else if (accept(parser, TK_SIGNED, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_, struct_, union_, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 signed_ = token;
             }
         } else if (accept(parser, TK_UNSIGNED, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_, struct_, union_, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
@@ -566,25 +567,28 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_BOOL, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           double_, signed_, unsigned_, complex_, struct_, union_, enum_);
+                                                           double_, signed_, unsigned_, complex_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 bool_ = token;
             }
         } else if (accept(parser, TK_COMPLEX, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_long, signed_, unsigned_, struct_, union_, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_long, signed_, unsigned_, struct_or_union, enum_);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 complex_ = token;
             }
-        } else if (accept(parser, TK_STRUCT, &token)) {
-            assert(false && "Parsing of struct/union/enum not yet implemented");
-        } else if (accept(parser, TK_UNION, &token)) {
-            assert(false && "Parsing of struct/union/enum not yet implemented");
+        } else if (peek(parser, TK_STRUCT) || peek(parser, TK_UNION)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
+                                                           double_, signed_, unsigned_, complex_, struct_or_union, enum_);
+            struct_type = malloc(sizeof(struct_t));
+            if (!parse_struct_or_union_specifier(parser, &struct_or_union, struct_type)) {
+                return false;
+            }
         } else if (accept(parser, TK_ENUM, &token)) {
-            assert(false && "Parsing of struct/union/enum not yet implemented");
+            assert(false && "Parsing of enums not yet implemented");
         } else {
             break;
         }
@@ -616,7 +620,10 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
         }
     }
 
-    if (ANY_NON_NULL(bool_, char_, short_, int_, long_long, signed_, unsigned_)) {
+    if (struct_or_union != NULL) {
+        type->kind = TYPE_STRUCT_OR_UNION;
+        type->struct_or_union = *struct_type;
+    } else if (ANY_NON_NULL(bool_, char_, short_, int_, long_long, signed_, unsigned_)) {
         type->kind = TYPE_INTEGER;
         type->integer.is_signed = unsigned_ == NULL;
         if (bool_ != NULL) {
@@ -662,6 +669,93 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
         type->kind = TYPE_INTEGER;
         type->integer.size = INTEGER_TYPE_INT;
         type->integer.is_signed = true;
+    }
+
+    return true;
+}
+
+bool parse_struct_declarator(parser_t *parser, type_t base_type, struct_field_t *field) {
+    declaration_t declarator;
+    if (!peek(parser, TK_COLON)) {
+        if (!parse_declarator(parser, base_type, &declarator)) return false;
+        field->identifier = declarator.identifier;
+        field->type = declarator.type;
+        field->bitfield_width = NULL;
+    } else {
+        // anonymous bitfield
+        field->identifier = NULL;
+        type_t *type = malloc(sizeof(type_t));
+        *type = base_type;
+        field->type = type;
+    }
+
+    if (accept(parser, TK_COLON, NULL)) {
+        expression_t *expr = malloc(sizeof(expression_t));
+        if (!parse_expression(parser, expr)) {
+            free(expr);
+            return false;
+        }
+        field->bitfield_width = expr;
+    }
+
+    return true;
+}
+
+bool parse_struct_declaration(parser_t *parser, struct_t *struct_type) {
+    type_t base_type;
+    if (!parse_specifier_qualifier_list(parser, &base_type)) {
+        return false;
+    }
+
+    do {
+        struct_field_t *field = malloc(sizeof(struct_field_t));
+        if (!parse_struct_declarator(parser, base_type, field)) {
+            free(field);
+            return false;
+        }
+        field->index = struct_type->fields.size;
+        VEC_APPEND(&struct_type->fields, field);
+    } while (accept(parser, TK_COMMA, NULL));
+
+    return require(parser, TK_SEMICOLON, NULL, "struct-declaration", NULL);
+}
+
+bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct_t *struct_type) {
+    bool is_union = false;
+    if (accept(parser, TK_UNION, keyword)) {
+        is_union = true;
+    } else if (!require(parser, TK_STRUCT, keyword, "struct-or-union-specifier", NULL)) {
+        return false;
+    }
+
+    token_t *identifier = NULL;
+    accept(parser, TK_IDENTIFIER, &identifier);
+    *struct_type = (struct_t) {
+        .fields = VEC_INIT,
+        .is_union = is_union,
+        .identifier = identifier,
+    };
+
+    if (accept(parser, TK_LBRACE, NULL)) {
+        while (!accept(parser, TK_RBRACE, NULL)) {
+            if (!parse_struct_declaration(parser, struct_type)) {
+                return false;
+            }
+        }
+    } else if (identifier == NULL) {
+        // This is an incomplete struct/union type, which is not allowed for anonymous structs/unions
+        // (i.e. a struct/union without a tag).
+        append_parse_error(&parser->errors, (parse_error_t) {
+            .token = next_token(parser),
+            .previous_token = *keyword,
+            .production_name = "struct-or-union-specifier",
+            .previous_production_name = NULL,
+            .type = PARSE_ERROR_EXPECTED_TOKEN,
+            .expected_token = {
+                .expected_count = 1,
+                .expected = TK_IDENTIFIER,
+            },
+        });
     }
 
     return true;
@@ -890,7 +984,7 @@ bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *declara
     }
 
     // Move the base type to the heap
-    type_t *base = malloc(sizeof(token_t));
+    type_t *base = malloc(sizeof(type_t));
     *base = base_type;
 
     if (type == NULL) {
@@ -1314,7 +1408,7 @@ bool parse_abstract_declarator(parser_t *parser, type_t base_type, type_t **type
     }
 
     // Move the base type to the heap
-    type_t *base = malloc(sizeof(token_t));
+    type_t *base = malloc(sizeof(type_t));
     *base = base_type;
 
     if (type == NULL) {

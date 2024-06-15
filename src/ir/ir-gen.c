@@ -810,7 +810,7 @@ void ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const 
             ir_visit_array_initializer(context, ptr, c_type, initializer_list);
             break;
         }
-        case IR_TYPE_STRUCT: {
+        case IR_TYPE_STRUCT_OR_UNION: {
             // TODO
             fprintf(stderr, "%s:%d: Codegen for struct initializer lists unimplemented\n", __FILE__, __LINE__);
             exit(1);

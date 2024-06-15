@@ -616,7 +616,7 @@ LLVMTypeRef ir_to_llvm_type(const ir_type_t *type) {
             return LLVMPointerType(ir_to_llvm_type(type->ptr.pointee), 0);
         case IR_TYPE_ARRAY:
             return LLVMArrayType(ir_to_llvm_type(type->array.element), type->array.length);
-        case IR_TYPE_STRUCT:
+        case IR_TYPE_STRUCT_OR_UNION:
             assert(false && "Not implemented");
             break;
         case IR_TYPE_FUNCTION: {

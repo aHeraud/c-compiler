@@ -78,6 +78,8 @@ bool parse_expression(parser_t *parser, expression_t *expr);
 
 bool parse_declaration(parser_t *parser, ptr_vector_t *declarations);
 bool parse_declaration_specifiers(parser_t *parser, type_t *type);
+bool parse_specifier_qualifier_list(parser_t *parser, type_t *type);
+bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct_t *struct_type);
 //bool init_declarator_list(parser_t* parser, ast_node_t* node);
 bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *decl);
 bool parse_initializer(parser_t *parser, initializer_t *initializer);

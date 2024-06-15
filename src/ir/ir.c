@@ -36,7 +36,7 @@ ssize_t size_of_type_bits(const ir_type_t *type) {
             return 64; // this is actually architecture dependent, TODO: determine based on target architecture?
         case IR_TYPE_ARRAY:
             return type->array.length * size_of_type_bits(type->array.element);
-        case IR_TYPE_STRUCT:
+        case IR_TYPE_STRUCT_OR_UNION:
             // TODO
             assert(false && "Unimplemented");
             exit(1);
@@ -85,7 +85,7 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b) {
         case IR_TYPE_PTR: {
             return ir_types_equal(a->ptr.pointee, b->ptr.pointee);
         }
-        case IR_TYPE_STRUCT: {
+        case IR_TYPE_STRUCT_OR_UNION: {
             // TODO
             assert(false && "Unimplemented");
         }
@@ -347,7 +347,7 @@ void ir_validate_visit_instruction(
             // Result must be an array, struct, or pointer
             if (instruction->unary_op.result.type->kind != IR_TYPE_PTR &&
                 instruction->unary_op.result.type->kind != IR_TYPE_ARRAY &&
-                instruction->unary_op.result.type->kind != IR_TYPE_STRUCT
+                instruction->unary_op.result.type->kind != IR_TYPE_STRUCT_OR_UNION
             ) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,

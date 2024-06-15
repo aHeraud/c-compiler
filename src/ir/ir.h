@@ -145,7 +145,7 @@ typedef enum IrTypeKind {
     IR_TYPE_F64,
     IR_TYPE_PTR,
     IR_TYPE_ARRAY,
-    IR_TYPE_STRUCT,
+    IR_TYPE_STRUCT_OR_UNION,
     IR_TYPE_FUNCTION
 } ir_type_kind_t;
 
@@ -166,6 +166,20 @@ typedef struct IrTypeFunction {
     size_t num_params;
     bool is_variadic;
 } ir_type_function_t;
+
+typedef struct IrStructField {
+    int index;
+    const char* name;
+    const ir_type_t *type;
+} ir_struct_field;
+
+VEC_DEFINE(IrStructFieldPtrVector, ir_struct_field_ptr_vector_t, ir_struct_field*);
+
+typedef struct IrTypeStruct {
+    const char *name;
+    ir_struct_field_ptr_vector_t fields;
+    hash_table_t *field_map; // Map from field name -> field
+} ir_type_struct_t;
 
 typedef struct IrType {
     ir_type_kind_t kind;
@@ -345,6 +359,11 @@ typedef struct IrInstruction {
             ir_value_t ptr;
             ir_value_t value;
         } store;
+        struct {
+            ir_value_t ptr;
+            ir_value_t value;
+            ir_value_t length;
+        } memset;
     };
 } ir_instruction_t;
 

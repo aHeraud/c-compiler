@@ -50,7 +50,7 @@ const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type) {
             snprintf(buffer, size, "[%s;%lu]", element, (unsigned long) type->array.length);
             break;
         }
-        case IR_TYPE_STRUCT:
+        case IR_TYPE_STRUCT_OR_UNION:
             // TODO
             assert(false && "Unimplemented");
             exit(1);

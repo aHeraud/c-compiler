@@ -15,6 +15,7 @@ typedef enum TypeKind {
     TYPE_POINTER,
     TYPE_FUNCTION,
     TYPE_ARRAY,
+    TYPE_STRUCT_OR_UNION,
 } type_kind_t;
 
 typedef enum IntegerType {
@@ -68,6 +69,21 @@ typedef struct ParameterTypeList {
     size_t length;
 } parameter_type_list_t;
 
+typedef struct Field {
+    int index;
+    const token_t *identifier;
+    const type_t *type;
+    const expression_t *bitfield_width; // only present for bitfields
+} struct_field_t;
+
+VEC_DEFINE(FieldPtrVector, field_ptr_vector_t, struct_field_t*);
+
+typedef struct Struct {
+    const token_t *identifier; // null for anonymous structs
+    field_ptr_vector_t fields;
+    bool is_union;
+} struct_t;
+
 /**
  * Represents a C type.
  */
@@ -96,6 +112,7 @@ typedef struct Type {
             const type_t *element_type;
             expression_t *size;
         } array;
+        struct_t struct_or_union;
     };
 } type_t;
 
