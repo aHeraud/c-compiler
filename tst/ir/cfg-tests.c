@@ -182,7 +182,7 @@ void test_cfg_linearize() {
 }
 
 int cfg_tests_init_suite() {
-    CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
+    CU_pSuite suite = CU_add_suite("CFG Tests", NULL, NULL);
     if (suite == NULL) {
         return CU_get_error();
     }

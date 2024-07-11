@@ -39,6 +39,12 @@ void print_compilation_error(const compilation_error_t *error) {
                     error->redefinition_of_symbol.redefinition->value);
             break;
         }
+        case ERR_REDEFINITION_OF_TAG: {
+            fprintf(stderr, ERROR_PREFIX "Redefinition oftag '%s'\n",
+                    error->location.path, error->location.line, error->location.column,
+                    error->redefinition_of_tag.redefinition->value);
+            break;
+        }
         case ERR_INVALID_INITIALIZER_TYPE: {
             fprintf(stderr, ERROR_PREFIX "Invalid initializer type\n",
                     error->location.path, error->location.line, error->location.column);

@@ -291,6 +291,16 @@ void test_parse_postfix_expression_member_access() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
+void test_parse_type_name_function_pointer() {
+    lexer_global_context_t context = create_lexer_context();
+    char* input = "int (*)(void)";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    type_t *type;
+    CU_ASSERT_TRUE_FATAL(parse_type_name(&parser, &type))
+}
+
 void test_parse_unary_sizeof_constant() {
     lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof 1";
@@ -1386,6 +1396,50 @@ void test_parse_complex_declaration() {
     CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "bar");
 }
 
+void test_parse_empty_global_declaration() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "int;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    translation_unit_t translation_unit;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &translation_unit));
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF) // should have consumed the entire input
+}
+
+void test_parse_struct_type_declaration() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "struct Foo { int a; };";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    translation_unit_t translation_unit;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &translation_unit));
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF) // should have consumed the entire input
+}
+
+void test_abstract_declarator_pointer_int() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "*"; // int token has already been parsed
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    type_t *result;
+    CU_ASSERT_TRUE_FATAL(parse_abstract_declarator(&parser, INT, &result))
+    CU_ASSERT_TRUE_FATAL(result->kind == TYPE_POINTER);
+    CU_ASSERT_TRUE_FATAL(result->pointer.base->kind == TYPE_INTEGER);
+}
+
+void test_abstract_declarator_function_pointer() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "(*)(void)"; // int token has already been parsed
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    type_t *result;
+    CU_ASSERT_TRUE_FATAL(parse_abstract_declarator(&parser, INT, &result))
+    CU_ASSERT_TRUE_FATAL(result->kind == TYPE_POINTER)
+    CU_ASSERT_TRUE_FATAL(result->pointer.base->kind == TYPE_FUNCTION)
+}
+
 void test_parse_function_prototype_void() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "float foo(void);";
@@ -1906,6 +1960,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "postfix expression - array subscript", test_parse_postfix_expression_array_subscript) ||
         NULL == CU_add_test(pSuite, "postfix expression - multiple postfix expressions", test_parse_postfix_expression_2d_array_subscript) ||
         NULL == CU_add_test(pSuite, "postfix expression - member access", test_parse_postfix_expression_member_access) ||
+        NULL == CU_add_test(pSuite, "type name - function pointer", test_parse_type_name_function_pointer) ||
         NULL == CU_add_test(pSuite, "unary expression - sizeof constant", test_parse_unary_sizeof_constant) ||
         NULL == CU_add_test(pSuite, "unary expression - sizeof (type)", test_parse_unary_sizeof_type) ||
         NULL == CU_add_test(pSuite, "unary expression - sizeof (more complicated type)", test_parse_unary_sizeof_function_pointer_type) ||
@@ -1934,7 +1989,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "initializer - array of integers", test_parse_initializer_list_array) ||
         NULL == CU_add_test(pSuite, "initializer - array of integers with trailing comma", test_parse_initializer_list_array_trailing_comma) ||
         NULL == CU_add_test(pSuite, "initializer - array index designator", test_parse_initializer_list_array_index_designator) ||
-        NULL == CU_add_test(pSuite, "initializer - struct", test_parse_initializer_list_struct),
+        NULL == CU_add_test(pSuite, "initializer - struct", test_parse_initializer_list_struct) ||
         NULL == CU_add_test(pSuite, "declaration - empty", test_parse_empty_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - simple", test_parse_simple_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - simple with initializer", test_parse_simple_declaration_with_initializer) ||
@@ -1950,6 +2005,10 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "declaration - array of functions", test_parse_array_of_functions_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - function pointer", test_parse_function_pointer) ||
         NULL == CU_add_test(pSuite, "declaration - complex", test_parse_complex_declaration) ||
+        NULL == CU_add_test(pSuite, "declaration - empty", test_parse_empty_global_declaration) ||
+        NULL == CU_add_test(pSuite, "declaration - struct type", test_parse_struct_type_declaration) ||
+        NULL == CU_add_test(pSuite, "abstract declaration - pointer to int", test_abstract_declarator_pointer_int) ||
+        NULL == CU_add_test(pSuite, "abstract declaration - function pointer", test_abstract_declarator_function_pointer) ||
         NULL == CU_add_test(pSuite, "function prototype (void)", test_parse_function_prototype_void) ||
         NULL == CU_add_test(pSuite, "function prototype", test_parse_function_prototype) ||
         NULL == CU_add_test(pSuite, "empty statement", test_parse_empty_statement) ||

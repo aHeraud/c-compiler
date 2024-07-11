@@ -393,6 +393,52 @@ void ir_validate_visit_instruction(
             }
             break;
         }
+        case IR_GET_STRUCT_MEMBER_PTR: {
+            ir_validate_visit_value(variables, errors, instruction, instruction->binary_op.left);
+            ir_validate_visit_value(variables, errors, instruction, instruction->binary_op.right);
+            ir_validate_visit_variable(variables, errors, instruction, instruction->binary_op.result);
+            // The left operand must be a pointer to a struct or union
+            if (ir_get_type_of_value(instruction->binary_op.left)->kind != IR_TYPE_PTR ||
+                ir_get_type_of_value(instruction->binary_op.left)->ptr.pointee->kind != IR_TYPE_STRUCT_OR_UNION) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                        .instruction = instruction,
+                        .message = "get_struct_member_ptr left operand must be a pointer to a struct or union"
+                });
+                break;
+            }
+
+            const ir_type_t *struct_type = ir_get_type_of_value(instruction->binary_op.left)->ptr.pointee;
+
+            // The right operand must be a constant integer (field index)
+            if (instruction->binary_op.right.kind != IR_VALUE_CONST || instruction->binary_op.right.constant.kind != IR_CONST_INT) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                        .instruction = instruction,
+                        .message = "get_struct_member_ptr right operand (field index) must be a constant int"
+                });
+                break;
+            }
+
+            // The field index must be in range
+            int index = instruction->binary_op.right.constant.i;
+            if (struct_type->struct_or_union.fields.size <= index) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                    .instruction = instruction,
+                    .message = "get_struct_member_ptr right operand (field index) does not reference field in the struct type"
+                });
+                break;
+            }
+
+            // The result must be a pointer to the field type
+            const ir_struct_field_t *field = struct_type->struct_or_union.fields.buffer[index];
+            if (instruction->binary_op.result.type->kind != IR_TYPE_PTR ||
+                !ir_types_equal(field->type, instruction->binary_op.result.type->ptr.pointee)) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                    .instruction = instruction,
+                    .message = "get_struct_member_ptr result type must be a pointer with a base type which matches the field type"
+                });
+            }
+            break;
+        }
         case IR_TRUNC: {
             // The result type must be smaller than the value being truncated
             // Both the result and the value must be integers, or both must be floating point numbers
@@ -610,6 +656,7 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
         case IR_GT:
         case IR_GE:
         case IR_GET_ARRAY_ELEMENT_PTR:
+        case IR_GET_STRUCT_MEMBER_PTR:
             if (instr->binary_op.left.kind == IR_VALUE_VAR) uses[count++] = &instr->binary_op.left.var;
             if (instr->binary_op.right.kind == IR_VALUE_VAR) uses[count++] = &instr->binary_op.right.var;
             break;
@@ -673,6 +720,7 @@ ir_var_t *ir_get_def(ir_instruction_t *instr) {
         case IR_GT:
         case IR_GE:
         case IR_GET_ARRAY_ELEMENT_PTR:
+        case IR_GET_STRUCT_MEMBER_PTR:
             return &instr->binary_op.result;
         case IR_ASSIGN:
             return &instr->assign.result;

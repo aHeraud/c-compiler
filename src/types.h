@@ -82,6 +82,7 @@ typedef struct Struct {
     const token_t *identifier; // null for anonymous structs
     field_ptr_vector_t fields;
     bool is_union;
+    bool has_body;
 } struct_t;
 
 /**

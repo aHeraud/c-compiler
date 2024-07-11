@@ -51,9 +51,9 @@ const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type) {
             break;
         }
         case IR_TYPE_STRUCT_OR_UNION:
-            // TODO
-            assert(false && "Unimplemented");
-            exit(1);
+            // This just prints the name of the struct, not the full definition
+            snprintf(buffer, size, "%s.%s", type->struct_or_union.is_union ? "union" : "struct", type->struct_or_union.id);
+            break;
         case IR_TYPE_FUNCTION: {
             char param_list[512] = { 0 };
             char *curr = param_list;
@@ -262,6 +262,9 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
             break;
         case IR_GET_ARRAY_ELEMENT_PTR:
             snprintf(buffer, size, "%s = get_array_element_ptr %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            break;
+        case IR_GET_STRUCT_MEMBER_PTR:
+            snprintf(buffer, size, "%s = get_struct_member_ptr %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
             break;
         case IR_TRUNC:
             snprintf(buffer, size, "%s = trunc %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));

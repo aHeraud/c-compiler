@@ -15,6 +15,7 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
     ERR_INVALID_ASSIGNMENT_TARGET,
     ERR_REDEFINITION_OF_SYMBOL,
+    ERR_REDEFINITION_OF_TAG,
     ERR_INVALID_INITIALIZER_TYPE,
     ERR_GLOBAL_INITIALIZER_NOT_CONSTANT,
     ERR_INVALID_IF_CONDITION_TYPE,
@@ -29,6 +30,8 @@ typedef enum CompilationErrorKind {
     ERR_UNARY_INDIRECTION_OPERAND_NOT_PTR_TYPE,
     ERR_INVALID_SUBSCRIPT_TARGET,
     ERR_INVALID_SUBSCRIPT_TYPE,
+    ERR_INVALID_MEMBER_ACCESS_TARGET,
+    ERR_INVALID_STRUCT_FIELD_REFERENCE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -51,6 +54,10 @@ typedef struct CompilationError {
             const token_t *redefinition;
             const token_t *previous_definition;
         } redefinition_of_symbol;
+        struct {
+            const token_t *redefinition;
+            const token_t *previous_definition;
+        } redefinition_of_tag;
         struct {
             const token_t *target;
             const type_t *lhs_type;
@@ -86,6 +93,14 @@ typedef struct CompilationError {
         struct {
             const type_t *type;
         } invalid_conversion_to_boolean;
+        struct {
+            const type_t *type;
+            token_t operator;
+        } invalid_member_access_target;
+        struct {
+            const type_t *type;
+            token_t field;
+        } invalid_struct_field_reference;
     };
 } compilation_error_t;
 

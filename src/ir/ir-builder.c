@@ -463,6 +463,27 @@ ir_instruction_node_t *ir_build_get_array_element_ptr(ir_function_builder_t *bui
     return ir_builder_insert_instruction(builder, instruction);
 }
 
+ir_instruction_node_t *ir_build_get_struct_member_ptr(ir_function_builder_t *builder, ir_value_t ptr, int index, ir_var_t result) {
+    ir_value_t index_val = {
+        .kind = IR_VALUE_CONST,
+        .constant = {
+            .kind = IR_CONST_INT,
+            .type = &IR_I32,
+            .i = index
+        }
+    };
+
+    ir_instruction_t instruction = {
+        .opcode = IR_GET_STRUCT_MEMBER_PTR,
+        .binary_op = {
+            .left = ptr,
+            .right = index_val,
+            .result = result
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
 ir_instruction_node_t *ir_build_trunc(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_TRUNC,

@@ -290,6 +290,7 @@ typedef struct Initializer {
 
 typedef struct Declaration {
     type_t *type;
+    // May be null, if this declaration only declares a tag
     token_t *identifier;
     initializer_t *initializer;
 } declaration_t;

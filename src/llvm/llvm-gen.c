@@ -22,6 +22,9 @@ typedef struct LLVMGenContext {
     LLVMBasicBlockRef llvm_block;
     LLVMBuilderRef llvm_builder;
 
+    // Map of ir struct id to llvm type
+    hash_table_t llvm_struct_types_map;
+
     // Mapping of IR function names to LLVM values
     hash_table_t llvm_function_map;
     // Mapping of IR global variables to LLVM values
@@ -35,7 +38,7 @@ typedef struct LLVMGenContext {
     ir_ssa_control_flow_graph_t *ir_cfg;
 } llvm_gen_context_t;
 
-LLVMTypeRef ir_to_llvm_type(const ir_type_t *type);
+LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type);
 LLVMValueRef ir_to_llvm_value(const llvm_gen_context_t *context, const ir_value_t *value);
 LLVMValueRef llvm_get_or_add_function(llvm_gen_context_t *context, const char* name, LLVMTypeRef fn_type);
 
@@ -63,6 +66,7 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
         .llvm_module = LLVMModuleCreateWithName(module->name),
         .llvm_builder = LLVMCreateBuilder(),
         .llvm_function_map = hash_table_create_string_keys(128),
+        .llvm_struct_types_map = hash_table_create_string_keys(128),
         .global_var_map = hash_table_create_string_keys(128),
         .incomplete_phi_nodes = VEC_INIT,
     };
@@ -82,7 +86,7 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
                 name += 1;
             }
         }
-        LLVMValueRef llvm_global = LLVMAddGlobal(context.llvm_module, ir_to_llvm_type(ir_type), name);
+        LLVMValueRef llvm_global = LLVMAddGlobal(context.llvm_module, ir_to_llvm_type(&context, ir_type), name);
         // TODO: don't set values for un-initialized static globals?
         LLVMValueRef value;
         switch (global->value.kind) {
@@ -91,11 +95,11 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
                 break;
             }
             case IR_CONST_INT: {
-                value = LLVMConstInt(ir_to_llvm_type(ir_type), global->value.i, true);
+                value = LLVMConstInt(ir_to_llvm_type(&context, ir_type), global->value.i, true);
                 break;
             }
             case IR_CONST_FLOAT: {
-                value = LLVMConstReal(ir_to_llvm_type(ir_type), global->value.f);
+                value = LLVMConstReal(ir_to_llvm_type(&context, ir_type), global->value.f);
                 break;
             }
         }
@@ -124,7 +128,7 @@ void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
 void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_definition_t *function) {
     // Create the function
     context->llvm_function =
-        llvm_get_or_add_function(context, function->name, ir_to_llvm_type(function->type));
+        llvm_get_or_add_function(context, function->name, ir_to_llvm_type(context, function->type));
     LLVMSetLinkage(context->llvm_function, LLVMExternalLinkage);
 
     context->local_var_map = hash_table_create_string_keys(128);
@@ -184,7 +188,7 @@ void llvm_gen_visit_basic_block(llvm_gen_context_t *context, const ir_ssa_basic_
     // Add phi nodes
     for (int i = 0; i < block->phi_nodes.size; i += 1) {
         ir_phi_node_t *phi = &block->phi_nodes.buffer[i];
-        LLVMValueRef llvm_phi = LLVMBuildPhi(context->llvm_builder, ir_to_llvm_type(phi->var.type), "");
+        LLVMValueRef llvm_phi = LLVMBuildPhi(context->llvm_builder, ir_to_llvm_type(context, phi->var.type), "");
         hash_table_insert(&context->local_var_map, phi->var.name, llvm_phi);
         // We need to add the phi node arguments later, since we may not have filled the incoming blocks yet.
         VEC_APPEND(&context->incomplete_phi_nodes, ((incomplete_phi_node_t) { .phi = phi, .block = block, .llvm_phi = llvm_phi }));
@@ -426,7 +430,7 @@ void llvm_gen_visit_instruction(
             break;
         }
         case IR_CALL: {
-            LLVMTypeRef fn_type = ir_to_llvm_type(instr->call.function.type);
+            LLVMTypeRef fn_type = ir_to_llvm_type(context, instr->call.function.type);
             LLVMValueRef fn = llvm_get_or_add_function(context, instr->call.function.name, fn_type);
             LLVMValueRef *args = malloc(instr->call.num_args * sizeof(LLVMValueRef));
             for (int i = 0; i < instr->call.num_args; i += 1) {
@@ -448,7 +452,7 @@ void llvm_gen_visit_instruction(
             break;
         }
         case IR_ALLOCA: {
-            LLVMValueRef result = LLVMBuildAlloca(context->llvm_builder, ir_to_llvm_type(instr->alloca.type), "");
+            LLVMValueRef result = LLVMBuildAlloca(context->llvm_builder, ir_to_llvm_type(context, instr->alloca.type), "");
             hash_table_insert(&context->local_var_map, instr->alloca.result.name, result);
             break;
         }
@@ -457,7 +461,7 @@ void llvm_gen_visit_instruction(
             const ir_type_t *ptr_type = ir_get_type_of_value(ptr);
             LLVMValueRef result = LLVMBuildLoad2(
                 context->llvm_builder,
-                ir_to_llvm_type(ptr_type->ptr.pointee),
+                ir_to_llvm_type(context, ptr_type->ptr.pointee),
                 ir_to_llvm_value(context, &ptr),
                 ""
             );
@@ -485,11 +489,24 @@ void llvm_gen_visit_instruction(
                     LLVMConstInt(LLVMInt64Type(), 0, false), // dereference the array address
                     index // second index is the index of the element we want
                 };
-                result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(var_type), llvm_ptr, indices, 2, "");
+                result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(context, var_type), llvm_ptr, indices, 2, "");
             } else {
                 LLVMValueRef indices[1] = { index };
-                result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(var_type), llvm_ptr, indices, 1, "");
+                result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(context, var_type), llvm_ptr, indices, 1, "");
             }
+            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            break;
+        }
+        case IR_GET_STRUCT_MEMBER_PTR: {
+            ir_value_t ptr = instr->binary_op.left;
+            const ir_type_t *ptr_type = ir_get_type_of_value(ptr);
+            assert(ptr_type->kind == IR_TYPE_PTR && ptr_type->ptr.pointee->kind == IR_TYPE_STRUCT_OR_UNION);
+            const ir_type_t *struct_type = ptr_type->ptr.pointee;
+            LLVMValueRef llvm_ptr = ir_to_llvm_value(context, &instr->binary_op.left);
+            ir_value_t index_value = instr->binary_op.right;
+            assert(index_value.kind == IR_VALUE_CONST && index_value.constant.kind == IR_CONST_INT);
+            int index = index_value.constant.i;
+            LLVMValueRef result = LLVMBuildStructGEP2(context->llvm_builder, ir_to_llvm_type(context, struct_type), llvm_ptr, index, "");
             hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
         }
@@ -498,12 +515,12 @@ void llvm_gen_visit_instruction(
             if (ir_is_float_type(ir_get_type_of_value(instr->unary_op.operand))) {
                 result = LLVMBuildFPTrunc(context->llvm_builder,
                     ir_to_llvm_value(context, &instr->unary_op.operand),
-                    ir_to_llvm_type(instr->unary_op.result.type),
+                    ir_to_llvm_type(context, instr->unary_op.result.type),
                     "");
             } else {
                 result = LLVMBuildTrunc(context->llvm_builder,
                     ir_to_llvm_value(context, &instr->unary_op.operand),
-                    ir_to_llvm_type(instr->unary_op.result.type),
+                    ir_to_llvm_type(context, instr->unary_op.result.type),
                     "");
             }
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
@@ -514,18 +531,18 @@ void llvm_gen_visit_instruction(
             if (ir_is_float_type(ir_get_type_of_value(instr->unary_op.operand))) {
                 result = LLVMBuildFPExt(context->llvm_builder,
                     ir_to_llvm_value(context, &instr->unary_op.operand),
-                    ir_to_llvm_type(instr->unary_op.result.type),
+                    ir_to_llvm_type(context, instr->unary_op.result.type),
                     "");
             } else {
                 if (ir_is_signed_integer_type(ir_get_type_of_value(instr->unary_op.operand))) {
                     result = LLVMBuildSExt(context->llvm_builder,
                         ir_to_llvm_value(context, &instr->unary_op.operand),
-                        ir_to_llvm_type(instr->unary_op.result.type),
+                        ir_to_llvm_type(context, instr->unary_op.result.type),
                         "");
                 } else {
                     result = LLVMBuildZExt(context->llvm_builder,
                         ir_to_llvm_value(context, &instr->unary_op.operand),
-                        ir_to_llvm_type(instr->unary_op.result.type),
+                        ir_to_llvm_type(context, instr->unary_op.result.type),
                         "");
                 }
             }
@@ -536,9 +553,9 @@ void llvm_gen_visit_instruction(
             LLVMValueRef operand = ir_to_llvm_value(context, &instr->unary_op.operand);
             LLVMValueRef result;
             if (ir_is_signed_integer_type(instr->unary_op.result.type)) {
-                result = LLVMBuildFPToSI(context->llvm_builder, operand, ir_to_llvm_type(instr->unary_op.result.type), "");
+                result = LLVMBuildFPToSI(context->llvm_builder, operand, ir_to_llvm_type(context, instr->unary_op.result.type), "");
             } else {
-                result = LLVMBuildFPToUI(context->llvm_builder, operand, ir_to_llvm_type(instr->unary_op.result.type), "");
+                result = LLVMBuildFPToUI(context->llvm_builder, operand, ir_to_llvm_type(context, instr->unary_op.result.type), "");
             }
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
@@ -547,9 +564,9 @@ void llvm_gen_visit_instruction(
             LLVMValueRef operand = ir_to_llvm_value(context, &instr->unary_op.operand);
             LLVMValueRef result;
             if (ir_is_signed_integer_type(ir_get_type_of_value(instr->unary_op.operand))) {
-                result = LLVMBuildSIToFP(context->llvm_builder, operand, ir_to_llvm_type(instr->unary_op.result.type), "");
+                result = LLVMBuildSIToFP(context->llvm_builder, operand, ir_to_llvm_type(context, instr->unary_op.result.type), "");
             } else {
-                result = LLVMBuildUIToFP(context->llvm_builder, operand, ir_to_llvm_type(instr->unary_op.result.type), "");
+                result = LLVMBuildUIToFP(context->llvm_builder, operand, ir_to_llvm_type(context, instr->unary_op.result.type), "");
             }
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
@@ -557,7 +574,7 @@ void llvm_gen_visit_instruction(
         case IR_PTOI: {
             LLVMValueRef result = LLVMBuildPtrToInt(context->llvm_builder,
                 ir_to_llvm_value(context, &instr->unary_op.operand),
-                ir_to_llvm_type(instr->unary_op.result.type),
+                ir_to_llvm_type(context, instr->unary_op.result.type),
                 "");
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
@@ -565,7 +582,7 @@ void llvm_gen_visit_instruction(
         case IR_ITOP: {
             LLVMValueRef result = LLVMBuildIntToPtr(context->llvm_builder,
                 ir_to_llvm_value(context, &instr->unary_op.operand),
-                ir_to_llvm_type(instr->unary_op.result.type),
+                ir_to_llvm_type(context, instr->unary_op.result.type),
                 "");
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
@@ -573,7 +590,7 @@ void llvm_gen_visit_instruction(
         case IR_BITCAST: {
             LLVMValueRef result = LLVMBuildBitCast(context->llvm_builder,
                 ir_to_llvm_value(context, &instr->unary_op.operand),
-                ir_to_llvm_type(instr->unary_op.result.type),
+                ir_to_llvm_type(context, instr->unary_op.result.type),
                 "");
             hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
             break;
@@ -590,7 +607,7 @@ void llvm_gen_visit_instruction(
     }
 }
 
-LLVMTypeRef ir_to_llvm_type(const ir_type_t *type) {
+LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type) {
     switch (type->kind) {
         case IR_TYPE_VOID:
             return LLVMVoidType();
@@ -613,18 +630,41 @@ LLVMTypeRef ir_to_llvm_type(const ir_type_t *type) {
         case IR_TYPE_F64:
             return LLVMDoubleType();
         case IR_TYPE_PTR:
-            return LLVMPointerType(ir_to_llvm_type(type->ptr.pointee), 0);
+            return LLVMPointerType(ir_to_llvm_type(context, type->ptr.pointee), 0);
         case IR_TYPE_ARRAY:
-            return LLVMArrayType(ir_to_llvm_type(type->array.element), type->array.length);
-        case IR_TYPE_STRUCT_OR_UNION:
-            assert(false && "Not implemented");
-            break;
+            return LLVMArrayType(ir_to_llvm_type(context, type->array.element), type->array.length);
+        case IR_TYPE_STRUCT_OR_UNION: {
+            // If we've already seen this type then it should be in the struct type map
+            LLVMTypeRef llvm_type = NULL;
+            if (hash_table_lookup(&context->llvm_struct_types_map, type->struct_or_union.id, (void**) &llvm_type)) {
+                return llvm_type;
+            }
+
+            // We need to build the llvm type
+            if (type->struct_or_union.is_union) {
+                // not yet implemented
+                fprintf(stderr, "%s:%d error: llvm codegen for union types not yet implemented\n", __FILE__, __LINE__);
+                exit(1);
+            }
+
+            int element_count = type->struct_or_union.fields.size;
+            LLVMTypeRef *element_types = malloc(element_count * sizeof(element_types));
+            for (int i = 0; i < element_count; i += 1) {
+                element_types[i] = ir_to_llvm_type(context, type->struct_or_union.fields.buffer[i]->type);
+            }
+            llvm_type = LLVMStructType(element_types, element_count, false);
+
+            // Add the new type to the map
+            hash_table_insert(&context->llvm_struct_types_map, type->struct_or_union.id, llvm_type);
+
+            return llvm_type;
+        }
         case IR_TYPE_FUNCTION: {
             LLVMTypeRef *param_types = malloc(type->function.num_params * sizeof(LLVMTypeRef));
             for (int i = 0; i < type->function.num_params; i += 1) {
-                param_types[i] = ir_to_llvm_type(type->function.params[i]);
+                param_types[i] = ir_to_llvm_type(context, type->function.params[i]);
             }
-            return LLVMFunctionType(ir_to_llvm_type(type->function.return_type), param_types, type->function.num_params, type->function.is_variadic);
+            return LLVMFunctionType(ir_to_llvm_type(context, type->function.return_type), param_types, type->function.num_params, type->function.is_variadic);
         }
     }
 }
@@ -635,9 +675,9 @@ LLVMValueRef ir_to_llvm_value(const llvm_gen_context_t *context, const ir_value_
             const ir_type_t *ir_type = value->constant.type;
             switch (value->constant.kind) {
                 case IR_CONST_INT:
-                    return LLVMConstInt(ir_to_llvm_type(ir_type), value->constant.i, false);
+                    return LLVMConstInt(ir_to_llvm_type(context, ir_type), value->constant.i, false);
                 case IR_CONST_FLOAT:
-                    return LLVMConstReal(ir_to_llvm_type(ir_type), value->constant.f);
+                    return LLVMConstReal(ir_to_llvm_type(context, ir_type), value->constant.f);
                 case IR_CONST_STRING:
                     assert(false && "Not implemented");
                     break;

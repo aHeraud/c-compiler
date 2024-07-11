@@ -731,6 +731,112 @@ void ir_gen_for_loop_empty() {
     }));
 }
 
+void ir_gen_declare_struct_type_global_scope() {
+    const char* input = "struct Foo { int a; };\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+}
+
+void ir_gen_declare_struct_default_initializer() {
+    const char* input = "int main() {"
+                        "    struct Foo { int a; } foo;"
+                        "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*struct.Foo_0 %0 = alloca struct.Foo_0",
+        "ret i32 0"
+    }));
+}
+
+void ir_gen_struct_set_field() {
+    const char* input =
+        "int main() {\n"
+        "    struct Foo { int a; } foo;\n"
+        "    foo.a = 4;\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*struct.Foo_0 %0 = alloca struct.Foo_0",
+        "*i32 %1 = get_struct_member_ptr *struct.Foo_0 %0, i32 0",
+        "i32 %2 = i32 4", // TODO: this shouldn't be a variable, just a constant in the store instruction
+        "store i32 %2, *i32 %1",
+        "ret i32 0"
+    }));
+}
+
+void ir_gen_struct_ptr_set_field() {
+    const char* input =
+        "struct Foo { int a; };"
+        "int main(struct Foo *foo) {\n"
+        "    foo->a = 1;\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "**struct.Foo_0 %0 = alloca *struct.Foo_0",
+        "store *struct.Foo_0 foo, **struct.Foo_0 %0",
+        "*struct.Foo_0 %1 = load **struct.Foo_0 %0",
+        "*i32 %2 = get_struct_member_ptr *struct.Foo_0 %1, i32 0",
+        "i32 %3 = i32 1",
+        "store i32 %3, *i32 %2",
+        "ret i32 0"
+    }));
+}
+
+void ir_gen_struct_read_field() {
+    const char* input =
+        "int main() {\n"
+        "    struct Foo { int a; } foo;\n"
+        "    int a = foo.a;"
+        "    return 0;"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*struct.Foo_0 %0 = alloca struct.Foo_0",
+        "*i32 %1 = alloca i32",
+        "*i32 %2 = get_struct_member_ptr *struct.Foo_0 %0, i32 0",
+        "i32 %3 = load *i32 %2",
+        "store i32 %3, *i32 %1",
+        "ret i32 0"
+    }));
+}
+
+void ir_gen_struct_ptr_read_field() {
+    const char* input =
+        "struct Foo { int a; };"
+        "int main(struct Foo *foo) {\n"
+        "    int a = foo->a;\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "**struct.Foo_0 %0 = alloca *struct.Foo_0",
+        "*i32 %1 = alloca i32",
+        "store *struct.Foo_0 foo, **struct.Foo_0 %0",
+        "*struct.Foo_0 %2 = load **struct.Foo_0 %0",
+        "*i32 %3 = get_struct_member_ptr *struct.Foo_0 %2, i32 0",
+        "i32 %4 = load *i32 %3",
+        "store i32 %4, *i32 %1",
+        "ret i32 0"
+    }));
+}
+ 
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -773,5 +879,11 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "conditional expr", test_ir_gen_conditional_expr_returning_int);
     CU_add_test(suite, "while loop", test_ir_while_loop);
     CU_add_test(suite, "for loop (empty)", ir_gen_for_loop_empty);
+    CU_add_test(suite, "declare struct type (global scope)", ir_gen_declare_struct_type_global_scope);
+    CU_add_test(suite, "declare struct default initializer (local scope)", ir_gen_declare_struct_default_initializer);
+    CU_add_test(suite, "struct set field", ir_gen_struct_set_field);
+    CU_add_test(suite, "struct pointer set field", ir_gen_struct_ptr_set_field);
+    CU_add_test(suite, "struct read field", ir_gen_struct_read_field);
+    CU_add_test(suite, "struct pointer read field", ir_gen_struct_ptr_read_field);
     return CUE_SUCCESS;
 }

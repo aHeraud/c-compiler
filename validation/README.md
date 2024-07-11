@@ -5,4 +5,5 @@ The harness will return a non-zero exit code if any test fails.
 
 ## Test Structure
 
-Each test contains a main function. A zero exit code from the main function indicates success, and a non-zero exit code indicates failure, unless an expected exit code is specified in a file named `exit.expected` in the test directory.
+Each test contains a main function in a file named `main.c`. A zero exit code from the main function indicates success, and a non-zero exit code indicates failure, unless an expected exit code is specified in a file named `exit.expected` in the test directory.
+If the test directory contains a file named `stdout.expected`, then the output that the test prints to stdout will be compared to the contents of the file, and the test will fail unless they match.

@@ -23,7 +23,7 @@
 /// - f32, f64: floating point numbers
 /// - ptr(pointee): pointer to another type
 /// - array(length, type): fixed size array of another type
-/// - struct(fields): struct with named fields of various types
+/// - struct(fields): struct/union with named fields of various types
 /// - function(return_type, args): function with return type and argument types
 ///
 /// ## IR Values
@@ -171,14 +171,15 @@ typedef struct IrStructField {
     int index;
     const char* name;
     const ir_type_t *type;
-} ir_struct_field;
+} ir_struct_field_t;
 
-VEC_DEFINE(IrStructFieldPtrVector, ir_struct_field_ptr_vector_t, ir_struct_field*);
+VEC_DEFINE(IrStructFieldPtrVector, ir_struct_field_ptr_vector_t, ir_struct_field_t*);
 
 typedef struct IrTypeStruct {
-    const char *name;
+    const char* id;
     ir_struct_field_ptr_vector_t fields;
-    hash_table_t *field_map; // Map from field name -> field
+    hash_table_t field_map; // Map from field name -> field
+    bool is_union;
 } ir_type_struct_t;
 
 typedef struct IrType {
@@ -187,6 +188,7 @@ typedef struct IrType {
         ir_type_ptr_t ptr;
         ir_type_array_t array;
         ir_type_function_t function;
+        ir_type_struct_t struct_or_union;
     };
 } ir_type_t;
 
@@ -247,6 +249,7 @@ typedef enum IrOpcode {
     IR_MEMCPY,
     IR_MEMSET,
     IR_GET_ARRAY_ELEMENT_PTR,
+    IR_GET_STRUCT_MEMBER_PTR,
 
     /* Type Conversion */
     IR_TRUNC,
@@ -263,7 +266,6 @@ typedef enum IrValueKind {
     IR_VALUE_VAR,
 } ir_value_kind_t;
 
-typedef struct IrConst ir_const_t;
 typedef struct IrConst {
     enum {
         IR_CONST_ARRAY,
@@ -274,7 +276,7 @@ typedef struct IrConst {
     const ir_type_t *type;
     union {
         struct {
-            ir_const_t *values;
+            struct IrConst *values;
             size_t length;
         } array;
         long long i;
@@ -317,7 +319,7 @@ typedef struct IrInstruction {
          * - arithmetic: add, sub, mul, div, mod
          * - logical: and, or, shl, shr, xor
          * - comparison: eq, ne, lt, le, gt, ge
-         * - memory: get_array_element_ptr
+         * - memory: get_array_element_ptr, get_struct_member_ptr
          */
         struct {
             ir_value_t left;
@@ -405,6 +407,9 @@ void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t ins
 typedef struct IrModule {
     const char* name;
     ir_global_ptr_vector_t globals;
+    // Struct/union type definitions
+    // Map of name (IR name, not source name) -> type
+    hash_table_t type_map;
     ir_function_ptr_vector_t functions;
 } ir_module_t;
 

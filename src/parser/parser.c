@@ -323,7 +323,7 @@ bool _parse_declaration(parser_t *parser, declaration_t *first_declarator, ptr_v
 
     if (first_declarator == NULL && accept(parser, TK_SEMICOLON, NULL)) {
         // This is a declaration without an identifier, e.g. "int;", or "typedef float;".
-        // This is legal, but useless.
+        // This is legal, but useless (unless it declares a struct/union or enum type).
         // TODO: warning for empty declaration
         return true;
     }
@@ -734,9 +734,11 @@ bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct
         .fields = VEC_INIT,
         .is_union = is_union,
         .identifier = identifier,
+        .has_body = false,
     };
 
     if (accept(parser, TK_LBRACE, NULL)) {
+        struct_type->has_body = true;
         while (!accept(parser, TK_RBRACE, NULL)) {
             if (!parse_struct_declaration(parser, struct_type)) {
                 return false;
@@ -2966,6 +2968,28 @@ bool parse_external_declaration(parser_t *parser, external_declaration_t *extern
     type_t type;
     if (!parse_declaration_specifiers(parser, &type)) {
         return false;
+    }
+
+    if (accept(parser, TK_SEMICOLON, NULL)) {
+        type_t *type_ptr = malloc(sizeof(type_t));
+        *type_ptr = type;
+        declaration_t *declaration = malloc(sizeof(declaration_t));
+        *declaration = (declaration_t) {
+            .type = type_ptr,
+            .identifier = NULL,
+            .initializer = NULL,
+        };
+        declaration_t **list = malloc(sizeof (declaration_t**));
+        list[0] = declaration;
+        *external_declaration = (external_declaration_t) {
+            .type = EXTERNAL_DECLARATION_DECLARATION,
+            .declaration = {
+                .declarations = list,
+                .length = 1,
+            }
+        };
+        // Empty declaration (e.g. `int;`)
+        return true;
     }
 
     declaration_t *decl = malloc(sizeof(declaration_t));

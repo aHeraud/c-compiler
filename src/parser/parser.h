@@ -107,7 +107,7 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
 //bool parameter_list(parser_t* parser, ast_node_t* node);
 //bool parameter_declaration(parser_t* parser, ast_node_t* node);
 //bool identifier_list(parser_t* parser, ast_node_t* node);
-//bool type_name(parser_t* parser, ast_node_t* node);
+bool parse_type_name(parser_t *parser, type_t **type_out);
 //bool abstract_declarator(parser_t* parser, ast_node_t* node);
 bool parse_abstract_declarator(parser_t *parser, type_t base_type, type_t **type_out);
 //bool initializer(parser_t* parser, ast_node_t* node);
