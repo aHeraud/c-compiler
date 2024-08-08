@@ -21,6 +21,7 @@ typedef struct IrGenContext {
 
     hash_table_t global_map;
     hash_table_t function_definition_map;
+    hash_table_t tag_uid_map;
 
     // State for the current function being visited
     ir_function_definition_t *function;
@@ -147,6 +148,12 @@ tag_t *lookup_tag_in_current_scope(const ir_gen_context_t *context, const char *
     return NULL;
 }
 
+tag_t *lookup_tag_by_uid(const ir_gen_context_t *context, const char *uid) {
+    tag_t *tag = NULL;
+    hash_table_lookup(&context->tag_uid_map, uid, (void**) &tag);
+    return tag;
+}
+
 void declare_symbol(ir_gen_context_t *context, symbol_t *symbol) {
     assert(context != NULL && symbol != NULL);
     bool inserted = hash_table_insert(&context->current_scope->symbols, symbol->identifier->value, (void*) symbol);
@@ -156,6 +163,7 @@ void declare_symbol(ir_gen_context_t *context, symbol_t *symbol) {
 void declare_tag(ir_gen_context_t *context, const tag_t *tag) {
     assert(context != NULL && tag != NULL);
     assert(hash_table_insert(&context->current_scope->tags, tag->identifier->value, (void*) tag));
+    assert(hash_table_insert(&context->tag_uid_map, tag->uid, (void*) tag));
 
     // also add the type to the module
     assert(!hash_table_lookup(&context->module->type_map, tag->uid, NULL)); // should be unique
@@ -296,6 +304,7 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
         .module = malloc(sizeof(ir_module_t)),
         .global_map = hash_table_create_string_keys(256),
         .function_definition_map = hash_table_create_string_keys(256),
+        .tag_uid_map = hash_table_create_string_keys(256),
         .function = NULL,
         .builder = NULL,
         .errors = (compilation_error_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },
@@ -316,6 +325,7 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
     // Cleanup (note that this doesn't free the pointers stored in the hash tables).
     hash_table_destroy(&context.global_map);
     hash_table_destroy(&context.function_definition_map);
+    hash_table_destroy(&context.tag_uid_map);
 
     ir_gen_result_t result = {
         .module = context.module,
@@ -901,17 +911,15 @@ bool is_tag_incomplete_type(const tag_t *tag) {
     return tag->ir_type == NULL;
 }
 
-const tag_t *tag_for_declaration(ir_gen_context_t *context, const declaration_t *declaration) {
-    assert(declaration->type->kind == TYPE_STRUCT_OR_UNION); // TODO: enum
+const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type) {
+    assert(c_type->kind == TYPE_STRUCT_OR_UNION); // TODO: enum
 
     // From section 6.7.2.2 of C99 standard
-
-
     // Is this declaring a new tag, modifying a forward declaration, or just referencing an existing one?
 
-    bool incomplete_type = !declaration->type->struct_or_union.has_body;
+    bool incomplete_type = !c_type->struct_or_union.has_body;
+    const token_t *identifier = c_type->struct_or_union.identifier;
 
-    const token_t *identifier = declaration->type->struct_or_union.identifier;
     if (identifier == NULL) {
         // anonymous tag, generate a unique identifier
         char *name = malloc(24);
@@ -937,7 +945,7 @@ const tag_t *tag_for_declaration(ir_gen_context_t *context, const declaration_t 
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_REDEFINITION_OF_TAG,
             .redefinition_of_tag = {
-                .redefinition = declaration->identifier,
+                .redefinition = identifier,
                 .previous_definition = tag->identifier,
             },
         });
@@ -977,9 +985,9 @@ const tag_t *tag_for_declaration(ir_gen_context_t *context, const declaration_t 
         declare_tag(context, tag);
 
         // Visit the struct/union body to build the IR type, and update the tag
-        const ir_type_t *ir_type = get_ir_struct_type(context, declaration->type, id);
+        const ir_type_t *ir_type = get_ir_struct_type(context, c_type, id);
         tag->ir_type = ir_type;
-        tag->c_type = declaration->type;
+        tag->c_type = c_type;
 
         return tag;
     }
@@ -994,7 +1002,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
     // Does this declare or reference a tag? (TODO: also support enums)
     const tag_t *tag = NULL;
     if (declaration->type->kind == TYPE_STRUCT_OR_UNION) {
-        tag = tag_for_declaration(context, declaration);
+        tag = tag_for_declaration(context, declaration->type);
     }
 
     if (declaration->identifier == NULL) {
@@ -1166,7 +1174,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
     // Does this declare or reference a tag? (TODO: also support enums)
     const tag_t *tag = NULL;
     if (declaration->type->kind == TYPE_STRUCT_OR_UNION) {
-        tag = tag_for_declaration(context, declaration);
+        tag = tag_for_declaration(context, declaration->type);
     }
 
     if (declaration->identifier == NULL) {
@@ -1189,10 +1197,13 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         return;
     }
 
+    const type_t *c_type;
     const ir_type_t *ir_type;
     if (tag == NULL) {
+        c_type = declaration->type;
         ir_type = get_ir_type(context, declaration->type);
     } else {
+        c_type = tag->c_type;
         ir_type = tag->ir_type;
     }
 
@@ -1202,7 +1213,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         .kind = SYMBOL_LOCAL_VARIABLE, // TODO: handle global/static variables
         .identifier = declaration->identifier,
         .name = declaration->identifier->value,
-        .c_type = declaration->type,
+        .c_type = c_type,
         .ir_type = ir_type,
         .ir_ptr = (ir_var_t) {
             .name = temp_name(context),
@@ -1366,17 +1377,23 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         }
 
         // Implicit conversion to the parameter type
-        // Variadic arguments are _NOT_ converted, they are just passed as is
+        // Variadic arguments are _NOT_ converted to a specific type, but chars, shorts, and floats are promoted
         // Array arguments are passed as pointers
         if (i < function.c_type->function.parameter_list->length) {
             const type_t *param_type = function.c_type->function.parameter_list->parameters[i]->type;
             if (param_type->kind == TYPE_ARRAY) param_type = get_ptr_type(param_type->array.element_type);
-
             arg = convert_to_type(context, arg.value, arg.c_type, param_type);
-
-            // Conversion was invalid
-            if (arg.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+        } else {
+            if (arg.c_type->kind == TYPE_INTEGER) {
+                const type_t *new_type = type_after_integer_promotion(arg.c_type);
+                arg = convert_to_type(context, arg.value, arg.c_type, new_type);
+            } else if (arg.c_type->kind == TYPE_FLOATING && arg.c_type->floating == FLOAT_TYPE_FLOAT) {
+                arg = convert_to_type(context, arg.value, arg.c_type, &DOUBLE);
+            }
         }
+
+        // Conversion was invalid
+        if (arg.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
         args[i] = arg.value;
     }
@@ -2426,6 +2443,8 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
     }
 
     const ir_type_t *struct_type = ir_get_type_of_value(base_ptr)->ptr.pointee;
+    const tag_t *tag = lookup_tag_by_uid(context, struct_type->struct_or_union.id);
+    assert(tag != NULL);
 
     // Look up the field in the struct definition to find its index
     const ir_struct_field_t *ir_field = NULL;
@@ -2443,10 +2462,10 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
     }
 
     // Lookup the field in the c type (guaranteed to exist if its in the corresponding ir struct type).
-    const type_t *c_struct_type = target.c_type;
-    if (c_struct_type->kind == TYPE_POINTER) c_struct_type = c_struct_type->pointer.base;
-    // This might be an incomplete type, so we will look up the tag
-    c_struct_type = lookup_tag(context, c_struct_type->struct_or_union.identifier->value)->c_type;
+    const type_t *c_struct_type = tag->c_type;
+    // if (c_struct_type->kind == TYPE_POINTER) c_struct_type = c_struct_type->pointer.base;
+    // // This might be an incomplete type, so we will look up the tag
+    // c_struct_type = lookup_tag(context, c_struct_type->struct_or_union.identifier->value)->c_type;
     const struct_field_t *c_field = c_struct_type->struct_or_union.fields.buffer[ir_field->index];
 
     ir_var_t result = temp_var(context, get_ir_ptr_type(ir_field->type));
@@ -2801,6 +2820,7 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
     }
 }
 
+// This should only be called when creating the declaration/tag
 const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_type, const char *id) {
     assert(c_type != NULL && c_type->kind == TYPE_STRUCT_OR_UNION);
 
@@ -2813,9 +2833,17 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
         const struct_field_t *c_field = c_type->struct_or_union.fields.buffer[i];
         assert(c_field->index == i); // assuming they're in order
         ir_struct_field_t *ir_field = malloc(sizeof(ir_struct_field_t));
+        const ir_type_t *ir_field_type = NULL;
+        if (c_field->type->kind == TYPE_STRUCT_OR_UNION) {
+            const tag_t *tag = tag_for_declaration(context, c_field->type);
+            ir_field_type = tag->ir_type;
+        } else {
+            ir_field_type = get_ir_type(context, c_field->type);
+        }
+
         *ir_field = (ir_struct_field_t) {
             .name = c_field->identifier->value,
-            .type = get_ir_type(context, c_field->type),
+            .type = ir_field_type,
             .index = c_field->index,
         };
         hash_table_insert(&field_map, ir_field->name, ir_field);

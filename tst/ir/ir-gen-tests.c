@@ -567,15 +567,49 @@ void test_ir_gen_function_arg_promotion() {
     }));
 }
 
+void test_ir_gen_function_vararg_promotion() {
+    const char* input =
+        "int printf(const char *fmt, ...);\n"
+        "int main() {\n"
+        "    float a = 1.0f;\n"
+        "    char b = 75;\n"
+        "    short c = 1024;\n"
+        "    printf(\"%f, %d, %d\\n\", a, b, c);\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*f32 %0 = alloca f32",
+        "*i8 %1 = alloca i8",
+        "*i16 %3 = alloca i16",
+        "store f32 1.000000, *f32 %0",
+        "store i8 75, *i8 %1",
+        "store i16 1024, *i16 %3",
+        "*i8 %5 = bitcast *[i8;12] @0",
+        "f32 %6 = load *f32 %0",
+        "f64 %7 = ext f32 %6",
+        "i8 %8 = load *i8 %1",
+        "i32 %9 = ext i8 %8",
+        "i16 %10 = load *i16 %3",
+        "i32 %11 = ext i16 %10",
+        "i32 %12 = call printf(*i8 %5, f64 %7, i32 %9, i32 %11)",
+        "ret i32 0"
+    }));
+}
+
 void test_ir_gen_varargs_call() {
     // Test calling a function with a variable number of arguments
     // Important! The varargs arguments are _NOT_ converted to the type of the last named argument, they are just
-    // passed as is.
+    // passed as is after integer/float promotion.
     const char* input =
         "void foo(int a, ...);\n"
         "int main() {\n"
         "    int a = 1;\n"
-        "    float b = 1.0;\n"
+        "    double b = 1.0;\n"
         "    char* c = \"hello\";\n"
         "    foo(a, b, c);\n"
         "    return 0;\n"
@@ -588,16 +622,16 @@ void test_ir_gen_varargs_call() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*i32 %0 = alloca i32",
-        "*f32 %1 = alloca f32",
-        "**i8 %3 = alloca *i8",
+        "*f64 %1 = alloca f64",
+        "**i8 %2 = alloca *i8",
         "store i32 1, *i32 %0",
-        "store f32 1.000000, *f32 %1",
-        "*i8 %4 = bitcast *[i8;6] @0",
-        "store *i8 %4, **i8 %3",
-        "i32 %5 = load *i32 %0",
-        "f32 %6 = load *f32 %1",
-        "*i8 %7 = load **i8 %3",
-        "call foo(i32 %5, f32 %6, *i8 %7)",
+        "store f64 1.000000, *f64 %1",
+        "*i8 %3 = bitcast *[i8;6] @0",
+        "store *i8 %3, **i8 %2",
+        "i32 %4 = load *i32 %0",
+        "f64 %5 = load *f64 %1",
+        "*i8 %6 = load **i8 %2",
+        "call foo(i32 %4, f64 %5, *i8 %6)",
         "ret i32 0"
     }));
 }
@@ -836,6 +870,47 @@ void ir_gen_struct_ptr_read_field() {
         "ret i32 0"
     }));
 }
+
+void ir_gen_struct_definition_scoping() {
+    const char *input =
+        "struct Foo { int a; };\n"
+        "struct Foo foo;\n"
+        "int main() {\n"
+        "    struct Foo { double b; };\n" // hides the Foo tag declared in the global scope
+        "    foo.a = 1;\n"                // the type of foo is Foo { int a; } so this still works
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = get_struct_member_ptr *struct.Foo_0 @1, i32 0",
+        "i32 %1 = i32 1",
+        "store i32 %1, *i32 %0",
+        "ret i32 0"
+    }));
+}
+
+void ir_gen_anonymous_struct() {
+    const char* input =
+        "int main() {\n"
+        "    struct { int a; } foo;\n"
+        "    foo.a = 0;\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*struct.__anon_tag_0_0 %0 = alloca struct.__anon_tag_0_0",
+        "*i32 %1 = get_struct_member_ptr *struct.__anon_tag_0_0 %0, i32 0",
+        "i32 %2 = i32 0",
+        "store i32 %2, *i32 %1",
+        "ret i32 0"
+    }));
+}
  
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
@@ -873,6 +948,7 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);
+    CU_add_test(suite, "test_ir_gen_function_vararg_promotion", test_ir_gen_function_vararg_promotion);
     CU_add_test(suite, "implicit return (void)", test_ir_gen_implicit_return_void);
     CU_add_test(suite, "varargs call", test_ir_gen_varargs_call);
     CU_add_test(suite, "conditional expr (void)", test_ir_gen_conditional_expr_void);
@@ -885,5 +961,7 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "struct pointer set field", ir_gen_struct_ptr_set_field);
     CU_add_test(suite, "struct read field", ir_gen_struct_read_field);
     CU_add_test(suite, "struct pointer read field", ir_gen_struct_ptr_read_field);
+    CU_add_test(suite, "struct definition scoping", ir_gen_struct_definition_scoping);
+    CU_add_test(suite, "anonymous struct", ir_gen_anonymous_struct);
     return CUE_SUCCESS;
 }
