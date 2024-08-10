@@ -32,6 +32,7 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 include_directories(src)
 
 add_library(cclib STATIC
+        src/target.h src/target.c
         src/parser/lexer.h src/parser/lexer.c
         src/parser/preprocessor.h src/parser/preprocessor.c
         src/util/read-lines.h src/util/read-lines.c
@@ -50,6 +51,7 @@ add_library(cclib STATIC
         src/llvm/llvm-gen.h src/llvm/llvm-gen.c
         src/ir/ssa.h src/ir/ssa.c
         src/ir/fmt.h src/ir/fmt.c
+        src/ir/arch.h src/ir/arch.c
 )
 
 add_executable(cc src/main.c)

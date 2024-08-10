@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include "target.h"
+#include "ir/arch.h"
 #include "util/vectors.h"
 #include "parser/lexer.h"
 #include "parser/parser.h"
@@ -26,25 +29,36 @@ typedef struct Options {
      * -isystem <dir>, --system-include-directory <dir>, --system-include-directory=<dir>
      * Add <dir> to the system include search path.
      */
-     string_vector_t additional_system_include_directories;
+    string_vector_t additional_system_include_directories;
 
-     /**
-      * Write output to file (default: <input>.ll)
-      */
-     const char* output_file;
+    /**
+     * Target-triplet, defaults to "native".
+     * Components are <machine>-<vendor>-<operating
+     */
+    const char* target;
 
-     /**
-      * --emit-ir
-      * Write generated IR to file (default: <input>.ir)
-      */
-     bool emit_ir;
+    /**
+     * List supported targets and exit.
+     */
+    bool list_targets;
 
-     /**
-      * --emit-ir-cfg
-      */
-      bool emit_ir_cfg;
+    /**
+     * Write output to file (default: <input>.ll)
+     */
+    const char* output_file;
 
-     string_vector_t input_files;
+    /**
+     * --emit-ir
+     * Write generated IR to file (default: <input>.ir)
+     */
+    bool emit_ir;
+
+    /**
+     * --emit-ir-cfg
+     */
+    bool emit_ir_cfg;
+
+    string_vector_t input_files;
 } options_t;
 
 options_t parse_and_validate_options(int argc, char** argv);
@@ -65,6 +79,8 @@ options_t parse_and_validate_options(int argc, char** argv) {
             .additional_include_directories = {NULL, 0, 0},
             .additional_system_include_directories = {NULL, 0, 0},
             .output_file = NULL,
+            .target = NULL,
+            .list_targets = false,
             .emit_ir = false,
             .emit_ir_cfg = false,
             .input_files = {NULL, 0, 0},
@@ -146,6 +162,17 @@ options_t parse_and_validate_options(int argc, char** argv) {
             options.emit_ir = true;
         } else if (strcmp(argv[argi], "--emit-ir-cfg") == 0) {
             options.emit_ir_cfg = true;
+        } else if (strncmp(argv[argi], "--target", 8) == 0) {
+            if (argv[argi][8] == '=') {
+                options.target = argv[argi] + 9;
+            } else if (argi + 1 < argc) {
+                options.target = argv[argi++];
+            } else {
+                fprintf(stderr, "Missing value for argument --target\n");
+                exit(1);
+            }
+        } else if (strcmp(argv[argi], "--list-targets") == 0) {
+            options.list_targets = true;
         } else if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
             printf("Usage: %s [options] <input files>\n", argv[0]);
             printf("Options:\n");
@@ -155,6 +182,8 @@ options_t parse_and_validate_options(int argc, char** argv) {
             printf("                  include directories.\n");
             printf("  -isystem<dir>, --system-include-directory=<dir>\n");
             printf("                  Add directory to the system include search path.\n");
+            printf("  --target        Target tripple, defaults to host platform if not specified\n");
+            printf("  --list-targets  List the supported targets and exit\n");
             printf("  -o <file>       Write output to <file>\n");
             printf("  --emit-ir       Write generated IR to file\n");
             printf("  --emit-ir-cfg   Write generated IR control flow graphs to file in graphviz format\n");
@@ -192,6 +221,14 @@ options_t parse_and_validate_options(int argc, char** argv) {
 const char *get_output_path(const char *path, const char *extension);
 
 void compile(options_t options, const char* input_file_name) {
+    if (options.target == NULL || strcmp(options.target, "native") == 0) options.target = get_native_target();
+    const target_t *target = get_target(options.target);
+    if (target == NULL) {
+        fprintf(stderr, "Target %s not supported, run with --list-targets to list all supported targets\n",
+            options.target);
+        exit(1);
+    }
+
     FILE* file = fopen(input_file_name, "r");
     if (file == NULL) {
         fprintf(stderr, "Failed to open file: %s\n", input_file_name);
@@ -230,7 +267,7 @@ void compile(options_t options, const char* input_file_name) {
         exit(1);
     }
 
-    ir_gen_result_t result = generate_ir(translation_unit);
+    ir_gen_result_t result = generate_ir(translation_unit, target->arch->ir_arch);
     if (result.errors.size > 0) {
         for (size_t i = 0; i < result.errors.size; i++) {
             compilation_error_t error = result.errors.buffer[i];
@@ -270,7 +307,7 @@ void compile(options_t options, const char* input_file_name) {
         output_file_name = options.output_file;
     }
 
-    llvm_gen_module(ir_module, output_file_name);
+    llvm_gen_module(ir_module, target, output_file_name);
 }
 
 const char *get_output_path(const char *path, const char *extension) {

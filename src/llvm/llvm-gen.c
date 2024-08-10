@@ -22,6 +22,9 @@ typedef struct LLVMGenContext {
     LLVMBasicBlockRef llvm_block;
     LLVMBuilderRef llvm_builder;
 
+    // Target information
+    const target_t *target;
+
     // Map of ir struct id to llvm type
     hash_table_t llvm_struct_types_map;
 
@@ -60,7 +63,7 @@ LLVMBasicBlockRef llvm_get_or_create_basic_block(llvm_gen_context_t *context, co
     return llvm_block;
 }
 
-void llvm_gen_module(const ir_module_t *module, const char* output_filename) {
+void llvm_gen_module(const ir_module_t *module, const target_t *target, const char* output_filename) {
     // init
     llvm_gen_context_t context = {
         .llvm_module = LLVMModuleCreateWithName(module->name),

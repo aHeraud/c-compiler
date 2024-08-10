@@ -207,6 +207,35 @@ static const ir_type_t IR_F32 = { .kind = IR_TYPE_F32 };
 static const ir_type_t IR_F64 = { .kind = IR_TYPE_F64 };
 static const ir_type_t IR_PTR_CHAR = { .kind = IR_TYPE_PTR, .ptr = { .pointee = &IR_I8 } };
 
+#define BYTE_SIZE 8
+
+/**
+ * Architecture details needed for ir codegen.
+ * The ir itself is mostly architecture agnostic, with the exception of pointer <--> int conversions due to
+ * different pointer sizes, and type sizes (mostly potential differences in unpacked struct/union types due to
+ * alignment requirements).
+ * Additionally, a few things are needed to correctly translate the input program into ir:
+ * 1. What ir type each c primitive (e.g. char/short/int/long) maps to
+ * 2. The size of a pointer on the target arch
+ */
+typedef struct IrArch {
+    const char *name;
+    const ir_type_t *uchar;
+    const ir_type_t *schar;
+    const ir_type_t *ushort;
+    const ir_type_t *sshort;
+    const ir_type_t *uint;
+    const ir_type_t *sint;
+    const ir_type_t *ulong;
+    const ir_type_t *slong;
+    const ir_type_t *ulonglong;
+    const ir_type_t *slonglong;
+    const ir_type_t *_float;
+    const ir_type_t *_double;
+    const ir_type_t *_long_double;
+    const ir_type_t *ptr_int_type;
+} ir_arch_t;
+
 typedef enum IrOpcode {
     IR_NOP,
 
@@ -258,7 +287,7 @@ typedef enum IrOpcode {
     IR_ITOF,
     IR_PTOI,
     IR_ITOP,
-    IR_BITCAST
+    IR_BITCAST,
 } ir_opcode_t;
 
 typedef enum IrValueKind {
@@ -405,7 +434,8 @@ typedef struct IrGlobalPtrVector {
 void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t instruction);
 
 typedef struct IrModule {
-    const char* name;
+    const char *name;
+    const ir_arch_t *arch;
     ir_global_ptr_vector_t globals;
     // Struct/union type definitions
     // Map of name (IR name, not source name) -> type
@@ -420,14 +450,14 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b);
  * @param type IR type
  * @return size in bits
  */
-ssize_t size_of_type_bits(const ir_type_t *type);
+ssize_t size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type);
 
 /**
  * Get the size of an IR type in bytes.
  * @param type IR type
  * @return size in bytes
  */
-ssize_t size_of_type_bytes(const ir_type_t *type);
+ssize_t size_of_type_bytes(const ir_arch_t *arch, const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(ir_value_t value);
 bool ir_is_integer_type(const ir_type_t *type);
@@ -446,7 +476,7 @@ typedef struct IrValidationErrorVector {
     size_t capacity;
 } ir_validation_error_vector_t;
 
-ir_validation_error_vector_t ir_validate_function(const ir_function_definition_t *function);
+ir_validation_error_vector_t ir_validate_function(const ir_module_t *module, const ir_function_definition_t *function);
 
 /**
  * Returns a pointer to each variable reference in the instruction.

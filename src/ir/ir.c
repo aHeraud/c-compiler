@@ -1,6 +1,8 @@
 #include <string.h>
 #include "ir/ir.h"
 
+#include "arch.h"
+
 void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t instruction) {
     if (vector->size == vector->capacity) {
         vector->capacity = vector->capacity * 2 + 1;
@@ -14,7 +16,7 @@ void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t ins
  * @param type
  * @return
  */
-ssize_t size_of_type_bits(const ir_type_t *type) {
+ssize_t size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type) {
     switch (type->kind) {
         case IR_TYPE_BOOL:
             return 1;
@@ -33,9 +35,9 @@ ssize_t size_of_type_bits(const ir_type_t *type) {
         case IR_TYPE_F64:
             return 64;
         case IR_TYPE_PTR:
-            return 64; // this is actually architecture dependent, TODO: determine based on target architecture?
+            return size_of_type_bits(arch, arch->ptr_int_type);
         case IR_TYPE_ARRAY:
-            return type->array.length * size_of_type_bits(type->array.element);
+            return type->array.length * size_of_type_bits(arch, type->array.element);
         case IR_TYPE_STRUCT_OR_UNION:
             // TODO
             assert(false && "Unimplemented");
@@ -45,8 +47,8 @@ ssize_t size_of_type_bits(const ir_type_t *type) {
     }
 }
 
-ssize_t size_of_type_bytes(const ir_type_t *type) {
-    return (size_of_type_bits(type) + 7) / 8;
+ssize_t size_of_type_bytes(const ir_arch_t *arch, const ir_type_t *type) {
+    return (size_of_type_bits(arch, type) + BYTE_SIZE - 1) / BYTE_SIZE;
 }
 
 bool ir_types_equal(const ir_type_t *a, const ir_type_t *b) {
@@ -184,6 +186,7 @@ void ir_validate_visit_value(hash_table_t *vars, ir_validation_error_vector_t *e
 }
 
 void ir_validate_visit_instruction(
+        const ir_module_t *module,
         const ir_function_definition_t *function,
         hash_table_t *variables,
         ir_validation_error_vector_t *errors,
@@ -462,7 +465,7 @@ void ir_validate_visit_instruction(
                         .message = "Truncation result and operand types must be integer or floating point numbers"
                 });
             }
-            if (size_of_type_bits(result_type) >= size_of_type_bits(value_type)) {
+            if (size_of_type_bits(module->arch, result_type) >= size_of_type_bits(module->arch, value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
                         .message = "Truncation result type must be smaller than the value being truncated"
@@ -493,7 +496,7 @@ void ir_validate_visit_instruction(
                         .message = "Extension result and operand types must be integer or floating point numbers"
                 });
             }
-            if (size_of_type_bits(result_type) <= size_of_type_bits(value_type)) {
+            if (size_of_type_bits(module->arch, result_type) <= size_of_type_bits(module->arch, value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
                         .message = "Extension result type must be larger than the value being extended"
@@ -580,7 +583,7 @@ void ir_validate_visit_instruction(
     }
 }
 
-ir_validation_error_vector_t ir_validate_function(const ir_function_definition_t *function) {
+ir_validation_error_vector_t ir_validate_function(const ir_module_t *module, const ir_function_definition_t *function) {
     ir_validation_error_vector_t errors = { .buffer = NULL, .size = 0, .capacity = 0 };
     hash_table_t labels = hash_table_create_string_keys(64);
     hash_table_t variables = hash_table_create_string_keys(128);
@@ -600,7 +603,7 @@ ir_validation_error_vector_t ir_validate_function(const ir_function_definition_t
             }
             hash_table_insert(&labels, instr->label, (void*) instr);
         }
-        ir_validate_visit_instruction(function, &variables, &errors, instr);
+        ir_validate_visit_instruction(module, function, &variables, &errors, instr);
     }
 
     // Second pass: Check that all branch targets are valid
@@ -677,8 +680,7 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
         case IR_RET:
             if (instr->ret.has_value && instr->ret.value.kind == IR_VALUE_VAR) uses[count++] = &instr->ret.value.var;
             break;
-        case IR_ALLOCA:
-            break;
+        case IR_ALLOCA: break;
         case IR_STORE:
             if (instr->store.value.kind == IR_VALUE_VAR) uses[count++] = &instr->store.value.var;
             if (instr->store.ptr.kind == IR_VALUE_VAR) uses[count++] = &instr->store.ptr.var;

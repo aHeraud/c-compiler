@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "ast.h"
+#include "ir/arch.h"
 #include "ir/ir-gen.h"
 #include "ir/ir.h"
 #include "ir/ir-builder.h"
@@ -18,6 +19,7 @@ typedef struct Symbol symbol_t;
 
 typedef struct IrGenContext {
     ir_module_t *module;
+    const ir_arch_t *arch;
 
     hash_table_t global_map;
     hash_table_t function_definition_map;
@@ -191,7 +193,7 @@ const type_t *c_ptr_int_type();
 /**
  * Get the IR integer type that is the same width as a pointer.
  */
-const ir_type_t *ir_ptr_int_type();
+const ir_type_t *ir_ptr_int_type(const ir_gen_context_t *context);
 
 /**
  * Convert an IR value from one type to another.
@@ -299,9 +301,10 @@ expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const 
 expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const expression_t *expr);
 
-ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
+ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir_arch_t *arch) {
     ir_gen_context_t context = {
         .module = malloc(sizeof(ir_module_t)),
+        .arch = arch,
         .global_map = hash_table_create_string_keys(256),
         .function_definition_map = hash_table_create_string_keys(256),
         .tag_uid_map = hash_table_create_string_keys(256),
@@ -315,6 +318,7 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit) {
 
     *context.module = (ir_module_t) {
         .name = "module", // TODO: get the name of the input file?
+        .arch = arch,
         .functions = (ir_function_ptr_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },
         .type_map = hash_table_create_string_keys(128),
         .globals = (ir_global_ptr_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },
@@ -488,7 +492,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
 
     // There were no semantic errors, so the generated IR should be valid.
     // Validate the IR to catch any bugs in the compiler.
-    ir_validation_error_vector_t errors = ir_validate_function(context->function);
+    ir_validation_error_vector_t errors = ir_validate_function(context->module, context->function);
     if (errors.size > 0) {
         // We will just print the first error and exit for now.
         const char* error_message = errors.buffer[0].message;
@@ -851,7 +855,7 @@ void ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const
                 // TODO: warn that initializer is longer than array
                 break;
             }
-            ir_value_t index = ir_make_const_int(ir_ptr_int_type(), i);
+            ir_value_t index = ir_make_const_int(ir_ptr_int_type(context), i);
             ir_var_t element_ptr = temp_var(context, element_ptr_type);
             ir_build_get_array_element_ptr(context->builder, ptr, index, element_ptr);
             ir_visit_initializer(context, ir_value_for_var(element_ptr), c_type->array.element_type, element.initializer);
@@ -1539,53 +1543,13 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
             return EXPR_ERR;
         }
 
+        assert(pointer_operand.kind == EXPR_RESULT_VALUE); // todo
+        assert(pointer_operand.kind == EXPR_RESULT_VALUE);
+        ir_var_t result = temp_var(context, ir_get_type_of_value(pointer_operand.value));
+        ir_build_get_array_element_ptr(context->builder, pointer_operand.value, integer_operand.value, result);
+
         // The result type is the same as the pointer type.
         result_type = pointer_operand.c_type;
-
-        ir_value_t result;
-
-        // Extend/truncate the integer to the size of a pointer.
-        integer_operand = convert_to_type(context, integer_operand.value, integer_operand.c_type, c_ptr_int_type());
-
-        // Size of the pointee type
-        ssize_t stride = size_of_type_bits(get_ir_type(context, pointer_operand.c_type->pointer.base));
-
-        if (integer_operand.value.kind == IR_VALUE_CONST && pointer_operand.value.kind == IR_VALUE_CONST) {
-            // constant folding
-            long long val = is_addition ? pointer_operand.value.constant.i + (integer_operand.value.constant.i * stride)
-                                           : pointer_operand.value.constant.i - (integer_operand.value.constant.i * stride);
-            result = (ir_value_t) {
-                .kind = IR_VALUE_CONST,
-                .constant = (ir_const_t) {
-                    .kind = IR_CONST_INT,
-                    .type = ir_result_type,
-                    .i = val,
-                }
-            };
-        } else {
-            // Multiply the integer by the size of the pointee type.
-            ir_value_t size_constant = (ir_value_t) {
-                .kind = IR_VALUE_CONST,
-                .constant = (ir_const_t) {
-                    .kind = IR_CONST_INT,
-                    .type = get_ir_type(context,c_ptr_int_type()),
-                    .i = stride
-                }
-            };
-            ir_var_t temp = temp_var(context, get_ir_type(context,c_ptr_int_type()));
-            ir_build_mul(context->builder, integer_operand.value, size_constant, temp);
-            ir_value_t temp_val = (ir_value_t) { .kind = IR_VALUE_VAR, .var = temp };
-
-            // Generate a temp variable to store the result.
-            ir_var_t temp2 = temp_var(context, ir_result_type);
-
-            // Add/sub the operands
-            is_addition ? ir_build_add(context->builder, pointer_operand.value, temp_val, temp2)
-                        : ir_build_sub(context->builder, pointer_operand.value, temp_val, temp2);
-
-            result = ir_value_for_var(temp2);
-        }
-
 
         return (expression_result_t) {
             .kind = EXPR_RESULT_VALUE,
@@ -1593,7 +1557,7 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
             .is_lvalue = false,
             .is_string_literal = false,
             .addr_of = false,
-            .value = result,
+            .value = ir_value_for_var(result),
         };
     } else {
         // Invalid operand types.
@@ -2711,38 +2675,47 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
                     case INTEGER_TYPE_BOOL:
                         return &IR_BOOL;
                     case INTEGER_TYPE_CHAR:
-                        return &IR_I8;
+                        return context->arch->schar;
                     case INTEGER_TYPE_SHORT:
-                        return &IR_I16;
+                        return context->arch->sshort;
                     case INTEGER_TYPE_INT:
-                        return &IR_I32;
+                        return context->arch->sint;
+                    case INTEGER_TYPE_LONG:
+                        return context->arch->slong;
+                    case INTEGER_TYPE_LONG_LONG:
+                        return context->arch->slonglong;
                     default:
-                        // long, long long
-                        return &IR_I64;
+                        return context->arch->sint;
                 }
             } else {
                 switch (c_type->integer.size) {
                     case INTEGER_TYPE_BOOL:
                         return &IR_BOOL;
                     case INTEGER_TYPE_CHAR:
-                        return &IR_U8;
+                        return context->arch->uchar;
                     case INTEGER_TYPE_SHORT:
-                        return &IR_U16;
+                        return context->arch->ushort;
                     case INTEGER_TYPE_INT:
-                        return &IR_U32;
+                        return context->arch->uint;
+                    case INTEGER_TYPE_LONG:
+                        return context->arch->ulong;
+                    case INTEGER_TYPE_LONG_LONG:
+                        return context->arch->ulonglong;
                     default:
-                        // long, long long
-                        return &IR_U64;
+                        return context->arch->uint;
                 }
             }
         }
         case TYPE_FLOATING: {
             switch (c_type->floating) {
                 case FLOAT_TYPE_FLOAT:
-                    return &IR_F32;
+                    return context->arch->_float;
+                case FLOAT_TYPE_DOUBLE:
+                    return context->arch->_double;
+                case FLOAT_TYPE_LONG_DOUBLE:
+                    return context->arch->_long_double;
                 default:
-                    // double, long double
-                    return &IR_F64;
+                    return context->arch->_double;
             }
         }
         case TYPE_POINTER: {
@@ -3009,10 +2982,10 @@ expression_result_t convert_to_type(
             }
 
             // int -> int conversion
-            if (size_of_type_bits(source_type) > size_of_type_bits(result_type)) {
+            if (size_of_type_bits(context->arch, source_type) > size_of_type_bits(context->arch, result_type)) {
                 // Truncate
                 ir_build_trunc(context->builder, value, result);
-            } else if (size_of_type_bits(source_type) < size_of_type_bits(result_type)) {
+            } else if (size_of_type_bits(context->arch, source_type) < size_of_type_bits(context->arch, result_type)) {
                 // Extend
                 ir_build_ext(context->builder, value, result);
             } else {
@@ -3088,10 +3061,10 @@ expression_result_t convert_to_type(
             }
 
             // float -> float conversion
-            if (size_of_type_bits(source_type) > size_of_type_bits(result_type)) {
+            if (size_of_type_bits(context->arch, source_type) > size_of_type_bits(context->arch, result_type)) {
                 // Truncate
                 ir_build_trunc(context->builder, value, result);
-            } else if (size_of_type_bits(source_type) < size_of_type_bits(result_type)) {
+            } else if (size_of_type_bits(context->arch, source_type) < size_of_type_bits(context->arch, result_type)) {
                 // Extend
                 ir_build_ext(context->builder, value, result);
             } else {
@@ -3169,7 +3142,7 @@ expression_result_t convert_to_type(
 
             // int -> ptr
             // If the source is smaller than the target, we need to extend it
-            if (size_of_type_bits(source_type) < size_of_type_bits(get_ir_type(context, c_ptr_int_type()))) {
+            if (size_of_type_bits(context->arch, source_type) < size_of_type_bits(context->arch, get_ir_type(context, c_ptr_int_type()))) {
                 ir_var_t temp = temp_var(context, get_ir_type(context,c_ptr_int_type()));
                 ir_build_ext(context->builder, value, temp);
                 value = ir_value_for_var(temp);
@@ -3284,9 +3257,9 @@ void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t
     }
 }
 
-const ir_type_t *ir_ptr_int_type() {
+const ir_type_t *ir_ptr_int_type(const ir_gen_context_t *context) {
     // TODO: arch dependent
-    return &IR_I64;
+    return context->arch->ptr_int_type;
 }
 
 ir_value_t ir_make_const_int(const ir_type_t *type, long long value) {

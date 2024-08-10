@@ -551,7 +551,7 @@ ir_instruction_node_t *ir_build_ptoi(ir_function_builder_t *builder, ir_value_t 
 }
 
 ir_instruction_node_t *ir_build_bitcast(ir_function_builder_t *builder, ir_value_t value, ir_var_t result) {
-ir_instruction_t instruction = {
+    ir_instruction_t instruction = {
         .opcode = IR_BITCAST,
         .unary_op = {
             .operand = value,
