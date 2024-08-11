@@ -42,7 +42,7 @@ typedef struct LLVMGenContext {
 } llvm_gen_context_t;
 
 LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type);
-LLVMValueRef ir_to_llvm_value(const llvm_gen_context_t *context, const ir_value_t *value);
+LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *value);
 LLVMValueRef llvm_get_or_add_function(llvm_gen_context_t *context, const char* name, LLVMTypeRef fn_type);
 
 void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_definition_t *function);
@@ -68,6 +68,7 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
     llvm_gen_context_t context = {
         .llvm_module = LLVMModuleCreateWithName(module->name),
         .llvm_builder = LLVMCreateBuilder(),
+        .target = target,
         .llvm_function_map = hash_table_create_string_keys(128),
         .llvm_struct_types_map = hash_table_create_string_keys(128),
         .global_var_map = hash_table_create_string_keys(128),
@@ -509,7 +510,17 @@ void llvm_gen_visit_instruction(
             ir_value_t index_value = instr->binary_op.right;
             assert(index_value.kind == IR_VALUE_CONST && index_value.constant.kind == IR_CONST_INT);
             int index = index_value.constant.i;
-            LLVMValueRef result = LLVMBuildStructGEP2(context->llvm_builder, ir_to_llvm_type(context, struct_type), llvm_ptr, index, "");
+
+            LLVMValueRef result = NULL;
+            if (struct_type->struct_or_union.is_union) {
+                // This is a union, so the field we want to access always has an offset of 0
+                // const ir_struct_field_t *field = struct_type->struct_or_union.fields.buffer[index];
+                // LLVMTypeRef llvm_field_type = ir_to_llvm_type(context, field->type);
+                // LLVM pointers are untyped, so we can just return the pointer as is
+                result = llvm_ptr;
+            } else {
+                result = LLVMBuildStructGEP2(context->llvm_builder, ir_to_llvm_type(context, struct_type), llvm_ptr, index, "");
+            }
             hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
             break;
         }
@@ -643,20 +654,22 @@ LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type) 
                 return llvm_type;
             }
 
-            // We need to build the llvm type
+            // We need to create the LLVM type
             if (type->struct_or_union.is_union) {
-                // not yet implemented
-                fprintf(stderr, "%s:%d error: llvm codegen for union types not yet implemented\n", __FILE__, __LINE__);
-                exit(1);
+                // If the type is a union, we will just represent it as an array of bytes, where the size is equal
+                // to the size of the largest field
+                int size = ir_size_of_type_bytes(context->target->arch->ir_arch, type);
+                llvm_type = LLVMArrayType(LLVMInt8Type(), size);
+            } else {
+                // Build the LLVM struct type
+                int element_count = type->struct_or_union.fields.size;
+                LLVMTypeRef *element_types = malloc(element_count * sizeof(element_types));
+                for (int i = 0; i < element_count; i += 1) {
+                    element_types[i] = ir_to_llvm_type(context, type->struct_or_union.fields.buffer[i]->type);
+                }
+                // Note: packed = true here because the IR struct definition has already had padding applied
+                llvm_type = LLVMStructType(element_types, element_count, true);
             }
-
-            int element_count = type->struct_or_union.fields.size;
-            LLVMTypeRef *element_types = malloc(element_count * sizeof(element_types));
-            for (int i = 0; i < element_count; i += 1) {
-                element_types[i] = ir_to_llvm_type(context, type->struct_or_union.fields.buffer[i]->type);
-            }
-            // Note: packed = true here because the IR struct definition has already had padding applied
-            llvm_type = LLVMStructType(element_types, element_count, true);
 
             // Add the new type to the map
             hash_table_insert(&context->llvm_struct_types_map, type->struct_or_union.id, llvm_type);
@@ -673,7 +686,7 @@ LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type) 
     }
 }
 
-LLVMValueRef ir_to_llvm_value(const llvm_gen_context_t *context, const ir_value_t *value) {
+LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *value) {
     switch (value->kind) {
         case IR_VALUE_CONST: {
             const ir_type_t *ir_type = value->constant.type;

@@ -1,8 +1,6 @@
 #include <string.h>
 #include "ir/ir.h"
 
-#include "arch.h"
-
 void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t instruction) {
     if (vector->size == vector->capacity) {
         vector->capacity = vector->capacity * 2 + 1;
@@ -40,6 +38,16 @@ ssize_t ir_size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type) {
         case IR_TYPE_ARRAY:
             return type->array.length * ir_size_of_type_bits(arch, type->array.element);
         case IR_TYPE_STRUCT_OR_UNION: {
+            if (type->struct_or_union.is_union) {
+                // If the type is a union, then the size is the size of the largest field
+                int max = 0;
+                for (int i = 0; i < type->struct_or_union.fields.size; i += 1) {
+                    int size = ir_size_of_type_bytes(arch, type->struct_or_union.fields.buffer[i]->type);
+                    if (size > max) max = size;
+                }
+                return max * BYTE_SIZE;
+            }
+
             int size_bytes = 0;
             for (int i = 0; i < type->struct_or_union.fields.size; i += 1) {
                 size_bytes += ir_size_of_type_bytes(arch, type->struct_or_union.fields.buffer[i]->type);
@@ -178,6 +186,7 @@ int ir_get_alignment(const ir_arch_t *arch, const ir_type_t *type) {
 }
 
 ir_type_struct_t ir_pad_struct(const ir_arch_t *arch, const ir_type_struct_t *source) {
+    assert(source != NULL && !source->is_union);
     ir_type_struct_t result = {
         .id = source->id,
         .field_map = hash_table_create_string_keys(64),

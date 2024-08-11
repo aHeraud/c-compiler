@@ -2835,7 +2835,7 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
         .field_map = field_map,
         .is_union = c_type->struct_or_union.is_union,
     };
-    if (!c_type->struct_or_union.packed) definition = ir_pad_struct(context->arch, &definition);
+    if (!c_type->struct_or_union.packed && !c_type->struct_or_union.is_union) definition = ir_pad_struct(context->arch, &definition);
 
     ir_type_t *ir_type = malloc(sizeof(ir_type_t));
     *ir_type = (ir_type_t) {
