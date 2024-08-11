@@ -83,6 +83,7 @@ typedef struct Struct {
     field_ptr_vector_t fields;
     bool is_union;
     bool has_body;
+    bool packed; // if true, no padding should be added, defaults to false
 } struct_t;
 
 /**

@@ -2426,13 +2426,19 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
     }
 
     // Lookup the field in the c type (guaranteed to exist if its in the corresponding ir struct type).
+    // Note that if padding was added between fields, the field indexes will not be equal, and we will have to find the
+    // field with a matching identifier.
     const type_t *c_struct_type = tag->c_type;
-    // if (c_struct_type->kind == TYPE_POINTER) c_struct_type = c_struct_type->pointer.base;
-    // // This might be an incomplete type, so we will look up the tag
-    // c_struct_type = lookup_tag(context, c_struct_type->struct_or_union.identifier->value)->c_type;
-    const struct_field_t *c_field = c_struct_type->struct_or_union.fields.buffer[ir_field->index];
+    const struct_field_t *c_field = NULL;
+    for (int i = 0; i < c_struct_type->struct_or_union.fields.size; i += 1) {
+        if (strcmp(ir_field->name, c_struct_type->struct_or_union.fields.buffer[i]->identifier->value) == 0) {
+            c_field = c_struct_type->struct_or_union.fields.buffer[i];
+            break;
+        }
+    }
+    assert(c_field != NULL);
 
-    ir_var_t result = temp_var(context, get_ir_ptr_type(ir_field->type));
+    const ir_var_t result = temp_var(context, get_ir_ptr_type(ir_field->type));
     ir_build_get_struct_member_ptr(context->builder, target.value, ir_field->index, result);
 
     return (expression_result_t) {
@@ -2823,17 +2829,19 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
         VEC_APPEND(&fields, ir_field);
     }
 
+    ir_type_struct_t definition = {
+        .id = id,
+        .fields = fields,
+        .field_map = field_map,
+        .is_union = c_type->struct_or_union.is_union,
+    };
+    if (!c_type->struct_or_union.packed) definition = ir_pad_struct(context->arch, &definition);
+
     ir_type_t *ir_type = malloc(sizeof(ir_type_t));
     *ir_type = (ir_type_t) {
         .kind = IR_TYPE_STRUCT_OR_UNION,
-        .struct_or_union = {
-            .id = id,
-            .fields = fields,
-            .field_map = field_map,
-            .is_union = c_type->struct_or_union.is_union,
-        },
+        .struct_or_union = definition,
     };
-
     return ir_type;
 }
 
@@ -2982,10 +2990,10 @@ expression_result_t convert_to_type(
             }
 
             // int -> int conversion
-            if (size_of_type_bits(context->arch, source_type) > size_of_type_bits(context->arch, result_type)) {
+            if (ir_size_of_type_bits(context->arch, source_type) > ir_size_of_type_bits(context->arch, result_type)) {
                 // Truncate
                 ir_build_trunc(context->builder, value, result);
-            } else if (size_of_type_bits(context->arch, source_type) < size_of_type_bits(context->arch, result_type)) {
+            } else if (ir_size_of_type_bits(context->arch, source_type) < ir_size_of_type_bits(context->arch, result_type)) {
                 // Extend
                 ir_build_ext(context->builder, value, result);
             } else {
@@ -3061,10 +3069,10 @@ expression_result_t convert_to_type(
             }
 
             // float -> float conversion
-            if (size_of_type_bits(context->arch, source_type) > size_of_type_bits(context->arch, result_type)) {
+            if (ir_size_of_type_bits(context->arch, source_type) > ir_size_of_type_bits(context->arch, result_type)) {
                 // Truncate
                 ir_build_trunc(context->builder, value, result);
-            } else if (size_of_type_bits(context->arch, source_type) < size_of_type_bits(context->arch, result_type)) {
+            } else if (ir_size_of_type_bits(context->arch, source_type) < ir_size_of_type_bits(context->arch, result_type)) {
                 // Extend
                 ir_build_ext(context->builder, value, result);
             } else {
@@ -3142,7 +3150,7 @@ expression_result_t convert_to_type(
 
             // int -> ptr
             // If the source is smaller than the target, we need to extend it
-            if (size_of_type_bits(context->arch, source_type) < size_of_type_bits(context->arch, get_ir_type(context, c_ptr_int_type()))) {
+            if (ir_size_of_type_bits(context->arch, source_type) < ir_size_of_type_bits(context->arch, get_ir_type(context, c_ptr_int_type()))) {
                 ir_var_t temp = temp_var(context, get_ir_type(context,c_ptr_int_type()));
                 ir_build_ext(context->builder, value, temp);
                 value = ir_value_for_var(temp);

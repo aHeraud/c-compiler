@@ -655,7 +655,8 @@ LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type) 
             for (int i = 0; i < element_count; i += 1) {
                 element_types[i] = ir_to_llvm_type(context, type->struct_or_union.fields.buffer[i]->type);
             }
-            llvm_type = LLVMStructType(element_types, element_count, false);
+            // Note: packed = true here because the IR struct definition has already had padding applied
+            llvm_type = LLVMStructType(element_types, element_count, true);
 
             // Add the new type to the map
             hash_table_insert(&context->llvm_struct_types_map, type->struct_or_union.id, llvm_type);

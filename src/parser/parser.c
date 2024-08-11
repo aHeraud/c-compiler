@@ -735,6 +735,7 @@ bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct
         .is_union = is_union,
         .identifier = identifier,
         .has_body = false,
+        .packed = false,
     };
 
     if (accept(parser, TK_LBRACE, NULL)) {

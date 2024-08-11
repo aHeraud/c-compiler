@@ -207,33 +207,108 @@ static const ir_type_t IR_F32 = { .kind = IR_TYPE_F32 };
 static const ir_type_t IR_F64 = { .kind = IR_TYPE_F64 };
 static const ir_type_t IR_PTR_CHAR = { .kind = IR_TYPE_PTR, .ptr = { .pointee = &IR_I8 } };
 
+// Some architectures do have byte sizes that aren't 8-bits, but we will only support 8-bit bytes to keep things
+// simple. Most code assumes that char/uint8_t are exactly 8-bits anyways (the posix standard requires CHAR_BIT == 8).
 #define BYTE_SIZE 8
 
 /**
  * Architecture details needed for ir codegen.
- * The ir itself is mostly architecture agnostic, with the exception of pointer <--> int conversions due to
+ * The ir itself architecture agnostic, with the exception of pointer <--> int conversions due to
  * different pointer sizes, and type sizes (mostly potential differences in unpacked struct/union types due to
  * alignment requirements).
- * Additionally, a few things are needed to correctly translate the input program into ir:
+ * A few things are needed to correctly translate the input program into ir:
  * 1. What ir type each c primitive (e.g. char/short/int/long) maps to
  * 2. The size of a pointer on the target arch
+ * 3. The alignment requirements for different ir types (for struct/union padding)
+ *    In practice, types are all self-aligned (alignment = size of the type in bytes) on the most common architectures
+ *    (x86, arm, risc-v, mips (?)), though this is probably not always true for dsps/embedded systems.
  */
 typedef struct IrArch {
+    /**
+     * Architecture name, e.g. "x86_64" or "aarch64"
+     */
     const char *name;
+    /**
+     * IR type corresponding to the c type `unsigned char`
+     */
     const ir_type_t *uchar;
+    /**
+     * IR type corresponding to the c type `signed char`
+     */
     const ir_type_t *schar;
+    /**
+     * IR type corresponding to the c type `unsigned short`
+     */
     const ir_type_t *ushort;
+    /**
+     * IR type corresponding to the c type `signed short`
+     */
     const ir_type_t *sshort;
+    /**
+     * IR type corresponding to the c type `unsigned int`
+     */
     const ir_type_t *uint;
+    /**
+     * IR type corresponding to the c type `signed int`
+     */
     const ir_type_t *sint;
+    /**
+     * IR type corresponding to the c type `unsigned long`
+     */
     const ir_type_t *ulong;
+    /**
+     * IR type corresponding to the c type `signed long`
+     */
     const ir_type_t *slong;
+    /**
+     * IR type corresponding to the c type `unsigned long long`
+     */
     const ir_type_t *ulonglong;
+    /**
+     * IR type corresponding to the c type `signed long long`
+     */
     const ir_type_t *slonglong;
+    /**
+     * IR type corresponding to the c type `float`
+     */
     const ir_type_t *_float;
+    /**
+     * IR type corresponding to the c type `double`
+     */
     const ir_type_t *_double;
+    /**
+     * IR type corresponding to the c type `long double`
+     */
     const ir_type_t *_long_double;
+    /**
+     * The unsigned int type with the same size as a pointer on the target architecture.
+     * Needed to determine the size of pointers mainly.
+     */
     const ir_type_t *ptr_int_type;
+    /**
+     * Alignment of 8-bit integers (in bytes)
+     */
+    const int int8_alignment;
+    /**
+     * Alignment of 16-bit integers (in bytes)
+     */
+    const int int16_alignment;
+    /**
+     * Alignment of 32-bit integers (in bytes)
+     */
+    const int int32_alignment;
+    /**
+     * Alignment of 64-bit integers (in bytes)
+     */
+    const int int64_alignment;
+    /**
+     * Alignment of 32-bit floats (in bytes)
+     */
+    const int f32_alignment;
+    /**
+     * Alignment of 64-bit floats (in bytes)
+     */
+    const int f64_alignment;
 } ir_arch_t;
 
 typedef enum IrOpcode {
@@ -361,7 +436,6 @@ typedef struct IrInstruction {
          * - bitwise: not
          * - type conversion: trunc, ext, ftoi, itof, ptoi, itop, bitcast
          * - memory: load, memcpy
-         *
          */
         struct {
             ir_value_t operand;
@@ -450,20 +524,39 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b);
  * @param type IR type
  * @return size in bits
  */
-ssize_t size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type);
+ssize_t ir_size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type);
 
 /**
  * Get the size of an IR type in bytes.
  * @param type IR type
  * @return size in bytes
  */
-ssize_t size_of_type_bytes(const ir_arch_t *arch, const ir_type_t *type);
+ssize_t ir_size_of_type_bytes(const ir_arch_t *arch, const ir_type_t *type);
+
+/**
+ * Get the alignment of an IR type in bytes.
+ * @param arch target architecture
+ * @param type ir type
+ * @return alignment of the type in bytes
+ */
+int ir_get_alignment(const ir_arch_t *arch, const ir_type_t *type);
 
 const ir_type_t *ir_get_type_of_value(ir_value_t value);
 bool ir_is_integer_type(const ir_type_t *type);
 bool ir_is_signed_integer_type(const ir_type_t *type);
 bool ir_is_float_type(const ir_type_t *type);
 bool ir_is_scalar_type(const ir_type_t *type);
+
+/**
+ * Add padding to a struct so that all members start at an offset that is a multiple of their
+ * architecture-specific alignment requirements.
+ * For more details on how struct padding works, read "The Lost Art of Structure Packing" by Eric S. Raymond:
+ * http://www.catb.org/esr/structure-packing/.
+ * @param arch target architecture
+ * @param source un-padded struct type (will not be modified)
+ * @return Returns a new struct type with padding between members
+ */
+ir_type_struct_t ir_pad_struct(const ir_arch_t *arch, const ir_type_struct_t *source);
 
 typedef struct IrValidationError {
     const struct IrInstruction *instruction;

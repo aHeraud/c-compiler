@@ -13,10 +13,11 @@ void append_ir_instruction(ir_instruction_vector_t *vector, ir_instruction_t ins
 
 /**
  * Size of a type in bits
- * @param type
- * @return
+ * @param arch target architecture
+ * @param type ir type
+ * @return size of the type in bits
  */
-ssize_t size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type) {
+ssize_t ir_size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type) {
     switch (type->kind) {
         case IR_TYPE_BOOL:
             return 1;
@@ -35,20 +36,23 @@ ssize_t size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type) {
         case IR_TYPE_F64:
             return 64;
         case IR_TYPE_PTR:
-            return size_of_type_bits(arch, arch->ptr_int_type);
+            return ir_size_of_type_bits(arch, arch->ptr_int_type);
         case IR_TYPE_ARRAY:
-            return type->array.length * size_of_type_bits(arch, type->array.element);
-        case IR_TYPE_STRUCT_OR_UNION:
-            // TODO
-            assert(false && "Unimplemented");
-            exit(1);
+            return type->array.length * ir_size_of_type_bits(arch, type->array.element);
+        case IR_TYPE_STRUCT_OR_UNION: {
+            int size_bytes = 0;
+            for (int i = 0; i < type->struct_or_union.fields.size; i += 1) {
+                size_bytes += ir_size_of_type_bytes(arch, type->struct_or_union.fields.buffer[i]->type);
+            }
+            return size_bytes * BYTE_SIZE;
+        }
         default:
             return 0;
     }
 }
 
-ssize_t size_of_type_bytes(const ir_arch_t *arch, const ir_type_t *type) {
-    return (size_of_type_bits(arch, type) + BYTE_SIZE - 1) / BYTE_SIZE;
+ssize_t ir_size_of_type_bytes(const ir_arch_t *arch, const ir_type_t *type) {
+    return (ir_size_of_type_bits(arch, type) + BYTE_SIZE - 1) / BYTE_SIZE;
 }
 
 bool ir_types_equal(const ir_type_t *a, const ir_type_t *b) {
@@ -139,6 +143,93 @@ bool ir_is_float_type(const ir_type_t *type) {
 
 bool ir_is_scalar_type(const ir_type_t *type) {
     return ir_is_integer_type(type) || ir_is_float_type(type) || type->kind == IR_TYPE_PTR;
+}
+
+int ir_get_alignment(const ir_arch_t *arch, const ir_type_t *type) {
+    switch (type->kind) {
+    case IR_TYPE_VOID:
+    case IR_TYPE_BOOL:
+    case IR_TYPE_U8:
+    case IR_TYPE_I8:
+        return arch->int8_alignment;
+    case IR_TYPE_U16:
+    case IR_TYPE_I16:
+        return arch->int16_alignment;
+    case IR_TYPE_U32:
+    case IR_TYPE_I32:
+        return arch->int32_alignment;
+    case IR_TYPE_I64:
+    case IR_TYPE_U64:
+        return arch->int64_alignment;
+    case IR_TYPE_F32:
+        return arch->f32_alignment;
+    case IR_TYPE_F64:
+        return arch->f64_alignment;
+    case IR_TYPE_PTR:
+        return ir_get_alignment(arch, arch->ptr_int_type);
+    case IR_TYPE_ARRAY:
+        return ir_get_alignment(arch, type->array.element);
+    case IR_TYPE_STRUCT_OR_UNION:
+        if (type->struct_or_union.fields.size == 0) return arch->int8_alignment;
+        return ir_get_alignment(arch, type->struct_or_union.fields.buffer[0]->type);
+    case IR_TYPE_FUNCTION:
+        return 1; // this shouldn't be reachable, you would only allocate a pointer to a function in c
+    }
+}
+
+ir_type_struct_t ir_pad_struct(const ir_arch_t *arch, const ir_type_struct_t *source) {
+    ir_type_struct_t result = {
+        .id = source->id,
+        .field_map = hash_table_create_string_keys(64),
+        .fields = VEC_INIT,
+        .is_union = source->is_union,
+    };
+
+    int pad_field_id = 0;
+    int offset = 0;
+    int result_field_index = 0;
+    for (int source_field_index = 0; source_field_index < source->fields.size; source_field_index += 1) {
+        // add padding before the field if the current offset is not divisible by the alignment requirement of
+        // the fields type
+        // no padding should be added before the first field
+        const ir_struct_field_t *source_field = source->fields.buffer[source_field_index];
+        const int alignment = ir_get_alignment(arch, source_field->type);
+        if (offset % alignment != 0) {
+            // add padding before the field
+            int pad_bytes = offset % alignment;
+            ir_type_t *pad_type = malloc(sizeof(ir_type_t));
+            *pad_type = (ir_type_t) {
+                .kind = IR_TYPE_ARRAY,
+                .array = {
+                    .element = &IR_U8,
+                    .length = pad_bytes,
+                },
+            };
+            ir_struct_field_t *padding = malloc(sizeof(ir_struct_field_t));
+            char name_buf[64];
+            int name_len = snprintf(name_buf, 64, "__padding_%d", pad_field_id++) + 1;
+            *padding = (ir_struct_field_t) {
+                .index = result_field_index++,
+                .name = memcpy(malloc(name_len), name_buf, name_len),
+                .type = pad_type,
+            };
+            VEC_APPEND(&result.fields, padding);
+            hash_table_insert(&result.field_map, padding->name, padding);
+            offset += pad_bytes;
+        }
+        assert(offset % alignment == 0);
+        ir_struct_field_t *field = malloc(sizeof(ir_struct_field_t));
+        *field = (ir_struct_field_t) {
+            .index = result_field_index++,
+            .name = source_field->name,
+            .type = source_field->type,
+        };
+        VEC_APPEND(&result.fields, field);
+        hash_table_insert(&result.field_map, field->name, field);
+        offset += ir_size_of_type_bytes(arch, field->type);
+    }
+
+    return result;
 }
 
 void append_ir_validation_error(ir_validation_error_vector_t *vector, ir_validation_error_t error) {
@@ -465,7 +556,7 @@ void ir_validate_visit_instruction(
                         .message = "Truncation result and operand types must be integer or floating point numbers"
                 });
             }
-            if (size_of_type_bits(module->arch, result_type) >= size_of_type_bits(module->arch, value_type)) {
+            if (ir_size_of_type_bits(module->arch, result_type) >= ir_size_of_type_bits(module->arch, value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
                         .message = "Truncation result type must be smaller than the value being truncated"
@@ -496,7 +587,7 @@ void ir_validate_visit_instruction(
                         .message = "Extension result and operand types must be integer or floating point numbers"
                 });
             }
-            if (size_of_type_bits(module->arch, result_type) <= size_of_type_bits(module->arch, value_type)) {
+            if (ir_size_of_type_bits(module->arch, result_type) <= ir_size_of_type_bits(module->arch, value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
                         .message = "Extension result type must be larger than the value being extended"

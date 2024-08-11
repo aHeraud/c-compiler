@@ -1,8 +1,6 @@
 #ifndef C_COMPILER_TESTS_H
 #define C_COMPILER_TESTS_H
 
-#include <assert.h>
-
 int read_lines_test_init_suite();
 int lexer_tests_init_suite();
 int preprocessor_tests_init_suite();

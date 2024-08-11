@@ -16,6 +16,12 @@ const ir_arch_t IR_ARCH_X86 = (ir_arch_t) {
     ._double = &IR_F64,
     ._long_double = &IR_F64, // TODO: F80?
     .ptr_int_type = &IR_I32,
+    .int8_alignment = 1,
+    .int16_alignment = 2,
+    .int32_alignment = 4,
+    .int64_alignment = 8,
+    .f32_alignment = 4,
+    .f64_alignment = 8,
 };
 
 const ir_arch_t IR_ARCH_X86_64 = {
@@ -34,6 +40,12 @@ const ir_arch_t IR_ARCH_X86_64 = {
     ._double = &IR_F64,
     ._long_double = &IR_F64, // TODO: F80
     .ptr_int_type = &IR_I64,
+    .int8_alignment = 1,
+    .int16_alignment = 2,
+    .int32_alignment = 4,
+    .int64_alignment = 8,
+    .f32_alignment = 4,
+    .f64_alignment = 8,
 };
 
 const ir_arch_t IR_ARCH_ARM32 = {
@@ -52,6 +64,12 @@ const ir_arch_t IR_ARCH_ARM32 = {
     ._double = &IR_F64,
     ._long_double = &IR_F64,
     .ptr_int_type = &IR_I32,
+    .int8_alignment = 1,
+    .int16_alignment = 2,
+    .int32_alignment = 4,
+    .int64_alignment = 8,
+    .f32_alignment = 4,
+    .f64_alignment = 8,
 };
 
 const ir_arch_t IR_ARCH_ARM64 = {
@@ -70,4 +88,10 @@ const ir_arch_t IR_ARCH_ARM64 = {
     ._double = &IR_F64,
     ._long_double = &IR_F64,
     .ptr_int_type = &IR_I64,
+    .int8_alignment = 1,
+    .int16_alignment = 2,
+    .int32_alignment = 4,
+    .int64_alignment = 8,
+    .f32_alignment = 4,
+    .f64_alignment = 8,
 };
