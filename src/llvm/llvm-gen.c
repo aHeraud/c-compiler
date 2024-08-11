@@ -514,10 +514,12 @@ void llvm_gen_visit_instruction(
             LLVMValueRef result = NULL;
             if (struct_type->struct_or_union.is_union) {
                 // This is a union, so the field we want to access always has an offset of 0
-                // const ir_struct_field_t *field = struct_type->struct_or_union.fields.buffer[index];
-                // LLVMTypeRef llvm_field_type = ir_to_llvm_type(context, field->type);
-                // LLVM pointers are untyped, so we can just return the pointer as is
-                result = llvm_ptr;
+                // We just need to cast the pointer to the type of the selected field
+                // Note: This seems to only be required for older versions of LLVM, as in newer versions pointers are
+                //       untyped
+                const ir_struct_field_t *field = struct_type->struct_or_union.fields.buffer[index];
+                LLVMTypeRef llvm_field_type = ir_to_llvm_type(context, field->type);
+                result = LLVMBuildPointerCast(context->llvm_builder, llvm_ptr, LLVMPointerType(llvm_field_type, 0), "");
             } else {
                 result = LLVMBuildStructGEP2(context->llvm_builder, ir_to_llvm_type(context, struct_type), llvm_ptr, index, "");
             }
