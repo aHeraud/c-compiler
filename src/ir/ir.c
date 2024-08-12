@@ -205,7 +205,7 @@ ir_type_struct_t ir_pad_struct(const ir_arch_t *arch, const ir_type_struct_t *so
         const int alignment = ir_get_alignment(arch, source_field->type);
         if (offset % alignment != 0) {
             // add padding before the field
-            int pad_bytes = offset % alignment;
+            int pad_bytes = alignment - (offset % alignment);
             ir_type_t *pad_type = malloc(sizeof(ir_type_t));
             *pad_type = (ir_type_t) {
                 .kind = IR_TYPE_ARRAY,

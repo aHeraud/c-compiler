@@ -912,6 +912,47 @@ void ir_gen_anonymous_struct() {
         "ret i32 0"
     }));
 }
+
+void ir_gen_sizeof_type_primitive() {
+    // sizeof(type) is a compile time constant, so it can be a global initializer
+    const char *input = "int size = sizeof(int);\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    CU_ASSERT_EQUAL_FATAL(result.module->globals.size, 1);
+    const ir_global_t *size = result.module->globals.buffer[0];
+    CU_ASSERT_TRUE_FATAL(size->initialized && size->value.kind == IR_CONST_INT)
+    CU_ASSERT_EQUAL_FATAL(size->value.i, 4) // int = i32 on x86_64
+}
+
+void ir_gen_sizeof_type_struct() {
+    // sizeof(type) is a compile time constant, so it can be a global initializer
+    const char *input =
+        "struct Foo { char a; int b; };\n"
+        "int size = sizeof(struct Foo);\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    CU_ASSERT_EQUAL_FATAL(result.module->globals.size, 1);
+    const ir_global_t *size = result.module->globals.buffer[0];
+    CU_ASSERT_TRUE_FATAL(size->initialized && size->value.kind == IR_CONST_INT)
+    // expected size is 8: 1 for the char, 3 for padding to align the int, and 4 for the int
+    CU_ASSERT_EQUAL_FATAL(size->value.i, 8)
+}
+
+void ir_gen_sizeof_unary_expression() {
+    const char *input =
+        "float val = 0;\n"
+        "int size = sizeof(val)\n;";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    CU_ASSERT_EQUAL_FATAL(result.module->globals.size, 2);
+    const ir_global_t *size = result.module->globals.buffer[1];
+    CU_ASSERT_TRUE_FATAL(size->initialized && size->value.kind == IR_CONST_INT)
+    // float on x86_64 = f32 == 4 bytes
+    CU_ASSERT_EQUAL_FATAL(size->value.i, 4)
+}
  
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
@@ -964,5 +1005,8 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "struct pointer read field", ir_gen_struct_ptr_read_field);
     CU_add_test(suite, "struct definition scoping", ir_gen_struct_definition_scoping);
     CU_add_test(suite, "anonymous struct", ir_gen_anonymous_struct);
+    CU_add_test(suite, "sizeof type primitive", ir_gen_sizeof_type_primitive);
+    CU_add_test(suite, "sizeof type struct", ir_gen_sizeof_type_struct);
+    CU_add_test(suite, "sizeof unary expression", ir_gen_sizeof_unary_expression);
     return CUE_SUCCESS;
 }

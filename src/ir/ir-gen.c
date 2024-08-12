@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "ast.h"
-#include "ir/arch.h"
 #include "ir/ir-gen.h"
 #include "ir/ir.h"
 #include "ir/ir-builder.h"
@@ -188,7 +187,7 @@ void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t
 /**
  * Get the C integer type that is the same width as a pointer.
  */
-const type_t *c_ptr_int_type();
+const type_t *c_ptr_uint_type();
 
 /**
  * Get the IR integer type that is the same width as a pointer.
@@ -294,11 +293,13 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
 expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_sizeof_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_sizeof_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const expression_t *expr);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir_arch_t *arch) {
@@ -636,7 +637,7 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
     // Compare the condition to zero
     if (is_pointer_type(condition.c_type)) {
         // Convert to an integer type
-        condition = convert_to_type(context, condition.value, condition.c_type, c_ptr_int_type());
+        condition = convert_to_type(context, condition.value, condition.c_type, c_ptr_uint_type());
     }
 
     bool condition_is_floating = is_floating_type(condition.c_type);
@@ -1254,8 +1255,7 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
         case EXPRESSION_PRIMARY:
             return ir_visit_primary_expression(context, expression);
         case EXPRESSION_SIZEOF:
-            assert(false && "sizeof operator not implemented");
-            return EXPR_ERR;
+            return ir_visit_sizeof_expression(context, expression);
         case EXPRESSION_TERNARY:
             return ir_visit_ternary_expression(context, expression);
         case EXPRESSION_UNARY:
@@ -2066,6 +2066,21 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     };
 }
 
+expression_result_t ir_visit_sizeof_expression(ir_gen_context_t *context, const expression_t *expr) {
+    assert(expr != NULL && expr->type == EXPRESSION_SIZEOF);
+    const ir_type_t *type = get_ir_type(context, expr->sizeof_type);
+    ssize_t size = ir_size_of_type_bytes(context->arch, type);
+    const ir_value_t size_val = ir_make_const_int(context->arch->ptr_int_type, (long long) size);
+    return (expression_result_t) {
+        .addr_of = false,
+        .c_type = c_ptr_uint_type(),
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .kind = EXPR_RESULT_VALUE,
+        .value = size_val,
+    };
+}
+
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
@@ -2242,6 +2257,8 @@ expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const e
             return ir_visit_address_of_unexpr(context, expr);
         case UNARY_DEREFERENCE:
             return ir_visit_indirection_unexpr(context, expr);
+        case UNARY_SIZEOF:
+            return ir_visit_sizeof_unexpr(context, expr);
         default:
             // TODO
             assert(false && "Unary operator not implemented");
@@ -2358,6 +2375,25 @@ expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const
             .indirection_inner = inner,
         };
     }
+}
+
+expression_result_t ir_visit_sizeof_unexpr(ir_gen_context_t *context, const expression_t *expr) {
+    assert(expr != NULL && expr->type == EXPRESSION_UNARY);
+    // TODO: error if sizeof is applied to an expression that designates a bit-field member
+    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+    const ir_type_t *ir_type = ir_get_type_of_value(operand.value);
+    if (operand.is_lvalue) ir_type = ir_type->ptr.pointee;
+    ssize_t size = ir_size_of_type_bytes(context->arch, ir_type);
+    ir_value_t size_val = ir_make_const_int(ir_ptr_int_type(context), (long long) size);
+    return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
+        .addr_of = false,
+        .c_type = c_ptr_uint_type(),
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .value = size_val,
+    };
 }
 
 expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context, const expression_t *expr) {
@@ -2667,7 +2703,8 @@ ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type) {
     };
 }
 
-const type_t *c_ptr_int_type() {
+const type_t *c_ptr_uint_type() {
+    // TODO: arch dependent
     return &UNSIGNED_LONG;
 }
 
@@ -2877,7 +2914,7 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
             }
         };
     } else if (type->kind == IR_TYPE_PTR) {
-        ir_value_t zero = ir_get_zero_value(context, get_ir_type(context,c_ptr_int_type()));
+        ir_value_t zero = ir_get_zero_value(context, get_ir_type(context,c_ptr_uint_type()));
         ir_var_t result = temp_var(context, type);
         ir_build_ptoi(context->builder, zero, result);
         return ir_value_for_var(result);
@@ -3150,8 +3187,8 @@ expression_result_t convert_to_type(
 
             // int -> ptr
             // If the source is smaller than the target, we need to extend it
-            if (ir_size_of_type_bits(context->arch, source_type) < ir_size_of_type_bits(context->arch, get_ir_type(context, c_ptr_int_type()))) {
-                ir_var_t temp = temp_var(context, get_ir_type(context,c_ptr_int_type()));
+            if (ir_size_of_type_bits(context->arch, source_type) < ir_size_of_type_bits(context->arch, get_ir_type(context, c_ptr_uint_type()))) {
+                ir_var_t temp = temp_var(context, get_ir_type(context,c_ptr_uint_type()));
                 ir_build_ext(context->builder, value, temp);
                 value = ir_value_for_var(temp);
             }
@@ -3266,7 +3303,6 @@ void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t
 }
 
 const ir_type_t *ir_ptr_int_type(const ir_gen_context_t *context) {
-    // TODO: arch dependent
     return context->arch->ptr_int_type;
 }
 
