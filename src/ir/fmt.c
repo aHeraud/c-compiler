@@ -124,6 +124,39 @@ const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
             free(str);
             break;
         }
+        case IR_CONST_ARRAY: {
+            int l = snprintf(buffer, size, "%s {", ir_fmt_type(alloca(256), 256, constant.type));
+            buffer += l;
+            size -= l;
+            for (int i = 0; i < constant.array.length; i += 1) {
+                ir_const_t val = constant.array.values[i];
+                const char *str = NULL;
+                switch (val.kind) {
+                    case IR_CONST_ARRAY:
+                        str = "{ ... }"; // TODO
+                        break;
+                    case IR_CONST_INT: {
+                        char *s = alloca(256);
+                        snprintf(s, 256, "%ld", val.i);
+                        str = s;
+                        break;
+                    }
+                    case IR_CONST_FLOAT: {
+                        char *s = alloca(256);
+                        snprintf(s, 256, "%f", val.f);
+                        str = s;
+                        break;
+                    }
+                    case IR_CONST_STRING:
+                        str = val.s;
+                        break;
+                }
+                if (i > 0) l = snprintf(buffer, size, ",%s", str);
+                else l = snprintf(buffer, size, "%s", str);
+                buffer += l;
+                size -= l;
+            }
+        }
     }
     return buffer;
 }
@@ -259,6 +292,9 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
             break;
         case IR_MEMCPY:
             snprintf(buffer, size, "memcpy %s, %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            break;
+        case IR_MEMSET:
+            snprintf(buffer, size, "memset %s, %s, %s", FMT_VAL(instr->memset.ptr), FMT_VAL(instr->memset.value), FMT_VAL(instr->memset.length));
             break;
         case IR_GET_ARRAY_ELEMENT_PTR:
             snprintf(buffer, size, "%s = get_array_element_ptr %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));

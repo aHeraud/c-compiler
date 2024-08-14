@@ -8,13 +8,9 @@
 #include "util/hashtable.h"
 #include "ir/ir.h"
 
-typedef struct IrBasicBlock ir_basic_block_t;
+struct IrBasicBlock;
 
-typedef struct IrBasicBlockPtrVector {
-    ir_basic_block_t **buffer;
-    size_t size;
-    size_t capacity;
-} ir_basic_block_ptr_vector_t;
+VEC_DEFINE(IrBasicBlockPtrVector, ir_basic_block_ptr_vector_t, struct IrBasicBlock*);
 
 typedef struct IrBasicBlock {
     // Unique identifier for the block
@@ -22,7 +18,7 @@ typedef struct IrBasicBlock {
     // Label of the first instruction in the block, if any
     const char* label;
     bool is_entry;
-    ir_basic_block_t *fall_through;
+    struct IrBasicBlock *fall_through;
     ir_basic_block_ptr_vector_t predecessors;
     ir_basic_block_ptr_vector_t successors;
     ir_instruction_ptr_vector_t instructions;

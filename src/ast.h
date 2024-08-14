@@ -7,8 +7,8 @@
 #include "parser/lexer.h"
 #include "types.h"
 
-typedef struct Statement statement_t;
-typedef struct Expression expression_t;
+struct Statement;
+struct Expression;
 
 typedef struct PrimaryExpression {
     enum {
@@ -19,7 +19,7 @@ typedef struct PrimaryExpression {
     } type;
     union {
         token_t token; // value of an identifier, constant, or string literal
-        expression_t* expression;
+        struct Expression* expression;
     };
 } primary_expression_t;
 
@@ -76,8 +76,8 @@ typedef struct BinaryExpression {
         BINARY_BITWISE,
         BINARY_LOGICAL,
     } type;
-    expression_t *left;
-    expression_t *right;
+    struct Expression *left;
+    struct Expression *right;
     const token_t *operator;
     union {
         binary_arithmetic_operator_t arithmetic_operator;
@@ -89,7 +89,7 @@ typedef struct BinaryExpression {
 } binary_expression_t;
 
 typedef struct UnaryExpression {
-    expression_t* operand;
+    struct Expression* operand;
     enum {
         UNARY_ADDRESS_OF,
         UNARY_DEREFERENCE,
@@ -106,30 +106,30 @@ typedef struct UnaryExpression {
 } unary_expression_t;
 
 typedef struct TernaryExpression {
-    expression_t* condition;
-    expression_t* true_expression;
-    expression_t* false_expression;
+    struct Expression* condition;
+    struct Expression* true_expression;
+    struct Expression* false_expression;
 } ternary_expression_t;
 
 typedef struct CallExpression {
-    expression_t* callee;
+    struct Expression* callee;
     ptr_vector_t arguments;
 } call_expression_t;
 
 typedef struct ArraySubscriptExpression {
-    expression_t* array;
-    expression_t* index;
+    struct Expression* array;
+    struct Expression* index;
 } array_subscript_expression_t;
 
 typedef struct MemberAccessExpression {
-    expression_t* struct_or_union;
+    struct Expression* struct_or_union;
     token_t operator; // "." or "->"
     token_t member; // identifier
 } member_access_expression_t;
 
 typedef struct CastExpression {
     type_t *type;
-    expression_t *expression;
+    struct Expression *expression;
 } cast_expression_t;
 
 typedef struct Expression {
@@ -218,8 +218,8 @@ typedef struct Statement {
         struct {
             token_t *keyword;
             expression_t *condition;
-            statement_t *true_branch;
-            statement_t *false_branch;
+            struct Statement *true_branch;
+            struct Statement *false_branch;
         } if_;
         struct {
             token_t *keyword;
@@ -228,7 +228,7 @@ typedef struct Statement {
         struct {
             token_t *keyword;
             expression_t *condition;
-            statement_t *body;
+            struct Statement *body;
         } while_;
         struct {
             const token_t *keyword;
@@ -245,14 +245,14 @@ typedef struct Statement {
             } initializer;
             expression_t *condition;
             expression_t *post;
-            statement_t *body;
+            struct Statement *body;
         } for_;
         struct {
             token_t *identifier;
         } goto_;
         struct {
             token_t *identifier;
-            statement_t *statement;
+            struct Statement *statement;
         } label_;
         struct {
             token_t *keyword;
@@ -271,7 +271,7 @@ typedef struct FunctionDefinition {
     statement_t *body;
 } function_definition_t;
 
-typedef struct Initializer initializer_t;
+struct Initializer;
 
 typedef struct Designator {
     enum {
@@ -288,7 +288,7 @@ VEC_DEFINE(DesignatorList, designator_list_t, designator_t);
 
 typedef struct InitializerListElement {
     designator_list_t *designation;
-    initializer_t *initializer;
+    struct Initializer *initializer;
 } initializer_list_element_t;
 
 VEC_DEFINE(InitializerList, initializer_list_t, initializer_list_element_t);

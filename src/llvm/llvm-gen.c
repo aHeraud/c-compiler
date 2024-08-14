@@ -106,6 +106,17 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
                 value = LLVMConstReal(ir_to_llvm_type(&context, ir_type), global->value.f);
                 break;
             }
+            case IR_CONST_ARRAY: {
+                LLVMTypeRef element_type = ir_to_llvm_type(&context, global->value.type->array.element);
+                int len = global->value.array.length;
+                LLVMValueRef *elements = malloc(sizeof(LLVMValueRef) * len);
+                for (int i = 0; i < len; i += 1) {
+                    ir_value_t element = { .kind = IR_VALUE_CONST, .constant = global->value.array.values[i] };
+                    elements[i] = ir_to_llvm_value(&context, &element);
+                }
+                value = LLVMConstArray(element_type, elements, len);
+                break;
+            }
         }
         LLVMSetInitializer(llvm_global, value);
         hash_table_insert(&context.global_var_map, global->name, llvm_global);
@@ -698,8 +709,14 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
                 case IR_CONST_FLOAT:
                     return LLVMConstReal(ir_to_llvm_type(context, ir_type), value->constant.f);
                 case IR_CONST_STRING:
-                    assert(false && "Not implemented");
-                    break;
+                    // This is _probably_ unreachable, since this should be handled when visiting the ir globals
+                    fprintf(stderr, "%s:%d: LLVM codegen for IR constant strings not implemented\n", __FILE__, __LINE__);
+                    exit(1);
+                case IR_CONST_ARRAY: {
+                    // This is _probably_ unreachable, since this should be handled when visiting the ir globals
+                    fprintf(stderr, "%s:%d: LLVM codegen for IR constant arrays not implemented\n", __FILE__, __LINE__);
+                    exit(1);
+                }
             }
         }
         case IR_VALUE_VAR: {

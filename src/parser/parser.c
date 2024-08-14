@@ -18,7 +18,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <assert.h>
 
 #include "parser.h"
@@ -118,6 +117,9 @@ void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
             break;
         case PARSE_ERROR_PARAMETER_TYPE_MALFORMED:
             fprintf(stream, "Expected a declarator, comma, closing parenthesis, or ellipsis after type\n");
+            break;
+        case PARSE_ERROR_EXPECTED_EXPRESSION:
+            fprintf(stream, "Expected an expression\n");
             break;
     }
 }
@@ -773,11 +775,11 @@ bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct
 }
 
 bool parse_declaration_specifiers(parser_t *parser, type_t *type) {
-    parse_specifiers(parser, true, type);
+    return parse_specifiers(parser, true, type);
 }
 
 bool parse_specifier_qualifier_list(parser_t *parser, type_t *type) {
-    parse_specifiers(parser, false, type);
+    return parse_specifiers(parser, false, type);
 }
 
 bool parse_init_declarator(parser_t *parser, type_t base_type, declaration_t *decl) {
@@ -3060,7 +3062,12 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
  */
 bool parse_external_declaration(parser_t *parser, external_declaration_t *external_declaration) {
     type_t type;
-    if (!parse_declaration_specifiers(parser, &type)) {
+    // if (!parse_declaration_specifiers(parser, &type)) {
+    //     return false;
+    // }
+    // clang what the fuck
+    bool result = parse_declaration_specifiers(parser, &type);
+    if (result == false) {
         return false;
     }
 

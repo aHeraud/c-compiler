@@ -154,8 +154,8 @@ void fill_block(ssa_gen_context_t *context, ir_basic_block_t *block, ir_ssa_basi
 
     for (int i = 0; i < block->instructions.size; i += 1) {
         ir_instruction_t instr = *block->instructions.buffer[i];
-        ir_var_t *uses[64];
-        size_t num_uses = ir_get_uses(&instr, uses, 64);
+        ir_var_t *uses[32];
+        size_t num_uses = ir_get_uses(&instr, uses, 32);
         for (int j = 0; j < num_uses; j += 1) {
             ir_var_t var = read_variable(context, *uses[j], ssa_block);
             *uses[j] = var;

@@ -182,6 +182,25 @@ bool statement_eq(const statement_t *left, const statement_t *right) {
                 return false;
             }
             return expression_eq(left->return_.expression, right->return_.expression);
+        case STATEMENT_WHILE:
+            return expression_eq(left->while_.condition, right->while_.condition) &&
+                statement_eq(left->while_.body, right->while_.body);
+        case STATEMENT_FOR:
+            return left->for_.initializer.kind == right->for_.initializer.kind && // TODO: check rest of initializer
+                expression_eq(left->for_.condition, right->for_.condition) &&
+                expression_eq(left->for_.post, right->for_.post) &&
+                statement_eq(left->for_.body, right->for_.body);
+        case STATEMENT_BREAK:
+            return true;
+        case STATEMENT_CONTINUE:
+            return true;
+        case STATEMENT_GOTO:
+            return right->type == STATEMENT_GOTO &&
+                strcmp(left->goto_.identifier->value, right->goto_.identifier->value) == 0;
+        case STATEMENT_LABEL:
+            return right->type == STATEMENT_LABEL &&
+                strcmp(left->label_.identifier->value, right->label_.identifier->value) == 0 &&
+                statement_eq(left->label_.statement, right->label_.statement);
     }
 }
 
@@ -209,6 +228,7 @@ bool initializer_eq(const initializer_t *left, initializer_t *right) {
     } else {
         return expression_eq(left->expression, right->expression);
     }
+    return false;
 }
 
 bool declaration_eq(const declaration_t *left, const declaration_t *right) {

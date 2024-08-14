@@ -5,8 +5,8 @@
 #include <stddef.h>
 #include "parser/lexer.h"
 
-typedef struct Type type_t;
-typedef struct Expression expression_t;
+struct Type;
+struct Expression;
 
 typedef enum TypeKind {
     TYPE_VOID,
@@ -59,7 +59,7 @@ typedef enum StorageClass {
 } storage_class_t;
 
 typedef struct ParameterDeclaration {
-    const type_t *type;
+    const struct Type *type;
     const token_t *identifier;
 } parameter_declaration_t;
 
@@ -72,8 +72,8 @@ typedef struct ParameterTypeList {
 typedef struct Field {
     int index;
     const token_t *identifier;
-    const type_t *type;
-    const expression_t *bitfield_width; // only present for bitfields
+    const struct Type *type;
+    const struct Expression *bitfield_width; // only present for bitfields
 } struct_field_t;
 
 VEC_DEFINE(FieldPtrVector, field_ptr_vector_t, struct_field_t*);
@@ -101,18 +101,18 @@ typedef struct Type {
         } integer;
         float_type_t floating;
         struct {
-            const type_t *base;
+            const struct Type *base;
             bool is_const;
             bool is_volatile;
             bool is_restrict;
         } pointer;
         struct {
-            const type_t *return_type;
+            const struct Type *return_type;
             const parameter_type_list_t *parameter_list;
         } function;
         struct {
-            const type_t *element_type;
-            expression_t *size;
+            const struct Type *element_type;
+            struct Expression *size;
         } array;
         struct_t struct_or_union;
     };

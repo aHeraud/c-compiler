@@ -466,7 +466,7 @@ typedef struct LexerGlobalContext {
     bool disable_macro_expansion;
 } lexer_global_context_t;
 
-typedef struct Lexer lexer_t;
+struct Lexer;
 typedef struct Lexer {
     const char* input_path;
     const char* input;
@@ -478,7 +478,7 @@ typedef struct Lexer {
      * A pointer to a child lexer (if any exist).
      * Mainly used for handling #includes directives, which create a new lexer to parse the included file.
      */
-    lexer_t* child;
+    struct Lexer* child;
     /**
      * Tokens that have been parsed but not yet consumed.
      * Generally, this will be the tokens that were parsed by the preprocessor as part of macro expansion,

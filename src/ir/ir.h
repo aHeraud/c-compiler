@@ -149,7 +149,7 @@ typedef enum IrTypeKind {
     IR_TYPE_FUNCTION
 } ir_type_kind_t;
 
-typedef struct IrType ir_type_t;
+struct IrType;
 
 typedef struct IrTypePtr {
     const struct IrType *pointee;
@@ -161,8 +161,8 @@ typedef struct IrTypeArray {
 } ir_type_array_t;
 
 typedef struct IrTypeFunction {
-    const ir_type_t *return_type;
-    const ir_type_t **params;
+    const struct IrType *return_type;
+    const struct IrType **params;
     size_t num_params;
     bool is_variadic;
 } ir_type_function_t;
@@ -170,7 +170,7 @@ typedef struct IrTypeFunction {
 typedef struct IrStructField {
     int index;
     const char* name;
-    const ir_type_t *type;
+    const struct IrType *type;
 } ir_struct_field_t;
 
 VEC_DEFINE(IrStructFieldPtrVector, ir_struct_field_ptr_vector_t, ir_struct_field_t*);

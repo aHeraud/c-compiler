@@ -738,7 +738,7 @@ ir_validation_error_vector_t ir_validate_function(const ir_module_t *module, con
 
 size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
     size_t count = 0;
-    assert(uses_max >= 2 && "Output array must be able to store at least 2 variables");
+    assert(uses_max >= 3 && "Output array must be able to store at least 3 variables");
     switch (instr->opcode) {
         case IR_NOP:
             break;
@@ -797,14 +797,17 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
         case IR_BITCAST:
             if (instr->unary_op.operand.kind == IR_VALUE_VAR) uses[count++] = &instr->unary_op.operand.var;
             break;
+        case IR_MEMSET:
+            if (instr->memset.ptr.kind == IR_VALUE_VAR) uses[count++] = &instr->memset.ptr.var;
+            if (instr->memset.value.kind == IR_VALUE_VAR) uses[count++] = &instr->memset.value.var;
+            if (instr->memset.length.kind == IR_VALUE_VAR) uses[count++] = &instr->memset.length.var;
     }
     return count;
 }
 
 ir_var_t *ir_get_def(ir_instruction_t *instr) {
     switch (instr->opcode) {
-        case IR_NOP:
-            break;
+        case IR_NOP: break;
         case IR_ADD:
         case IR_SUB:
         case IR_MUL:
@@ -836,8 +839,7 @@ ir_var_t *ir_get_def(ir_instruction_t *instr) {
             break;
         case IR_ALLOCA:
             return &instr->alloca.result;
-        case IR_STORE:
-            break;
+        case IR_STORE: break;
         case IR_LOAD:
         case IR_NOT:
         case IR_MEMCPY:
@@ -849,6 +851,7 @@ ir_var_t *ir_get_def(ir_instruction_t *instr) {
         case IR_ITOP:
         case IR_BITCAST:
             return &instr->unary_op.result;
+        case IR_MEMSET: break;
     }
     return NULL;
 }
