@@ -746,7 +746,7 @@ void test_ir_while_loop() {
     }));
 }
 
-void ir_gen_for_loop_empty() {
+void test_ir_gen_for_loop_empty() {
     const char* input =
         "int main() {\n"
         "    for (;;);\n"
@@ -762,18 +762,19 @@ void ir_gen_for_loop_empty() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "l0: nop",
+        "l1: nop",
         "br l0",
     }));
 }
 
-void ir_gen_declare_struct_type_global_scope() {
+void test_ir_gen_declare_struct_type_global_scope() {
     const char* input = "struct Foo { int a; };\n";
     PARSE(input)
     ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
     assert(result.errors.size == 0);
 }
 
-void ir_gen_declare_struct_default_initializer() {
+void test_ir_gen_declare_struct_default_initializer() {
     const char* input = "int main() {"
                         "    struct Foo { int a; } foo;"
                         "}";
@@ -786,7 +787,7 @@ void ir_gen_declare_struct_default_initializer() {
     }));
 }
 
-void ir_gen_struct_set_field() {
+void test_ir_gen_struct_set_field() {
     const char* input =
         "int main() {\n"
         "    struct Foo { int a; } foo;\n"
@@ -806,7 +807,7 @@ void ir_gen_struct_set_field() {
     }));
 }
 
-void ir_gen_struct_ptr_set_field() {
+void test_ir_gen_struct_ptr_set_field() {
     const char* input =
         "struct Foo { int a; };"
         "int main(struct Foo *foo) {\n"
@@ -828,7 +829,7 @@ void ir_gen_struct_ptr_set_field() {
     }));
 }
 
-void ir_gen_struct_read_field() {
+void test_ir_gen_struct_read_field() {
     const char* input =
         "int main() {\n"
         "    struct Foo { int a; } foo;\n"
@@ -849,7 +850,7 @@ void ir_gen_struct_read_field() {
     }));
 }
 
-void ir_gen_struct_ptr_read_field() {
+void test_ir_gen_struct_ptr_read_field() {
     const char* input =
         "struct Foo { int a; };"
         "int main(struct Foo *foo) {\n"
@@ -872,7 +873,7 @@ void ir_gen_struct_ptr_read_field() {
     }));
 }
 
-void ir_gen_struct_definition_scoping() {
+void test_ir_gen_struct_definition_scoping() {
     const char *input =
         "struct Foo { int a; };\n"
         "struct Foo foo;\n"
@@ -893,7 +894,7 @@ void ir_gen_struct_definition_scoping() {
     }));
 }
 
-void ir_gen_anonymous_struct() {
+void test_ir_gen_anonymous_struct() {
     const char* input =
         "int main() {\n"
         "    struct { int a; } foo;\n"
@@ -913,7 +914,7 @@ void ir_gen_anonymous_struct() {
     }));
 }
 
-void ir_gen_sizeof_type_primitive() {
+void test_ir_gen_sizeof_type_primitive() {
     // sizeof(type) is a compile time constant, so it can be a global initializer
     const char *input = "int size = sizeof(int);\n";
     PARSE(input)
@@ -925,7 +926,7 @@ void ir_gen_sizeof_type_primitive() {
     CU_ASSERT_EQUAL_FATAL(size->value.i, 4) // int = i32 on x86_64
 }
 
-void ir_gen_sizeof_type_struct() {
+void test_ir_gen_sizeof_type_struct() {
     // sizeof(type) is a compile time constant, so it can be a global initializer
     const char *input =
         "struct Foo { char a; int b; };\n"
@@ -940,7 +941,7 @@ void ir_gen_sizeof_type_struct() {
     CU_ASSERT_EQUAL_FATAL(size->value.i, 8)
 }
 
-void ir_gen_sizeof_unary_expression() {
+void test_ir_gen_sizeof_unary_expression() {
     const char *input =
         "float val = 0;\n"
         "int size = sizeof(val)\n;";
@@ -953,7 +954,141 @@ void ir_gen_sizeof_unary_expression() {
     // float on x86_64 = f32 == 4 bytes
     CU_ASSERT_EQUAL_FATAL(size->value.i, 4)
 }
- 
+
+void test_ir_gen_label_and_goto() {
+    const char *input =
+        "int main() {\n"
+        "    int a = 0;\n"
+        "    lbl: a = 1;\n"
+        "    goto lbl;\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 0, *i32 %0",
+        "l0: nop",
+        "i32 %1 = i32 1",
+        "store i32 %1, *i32 %0",
+        "br l0"
+    }));
+}
+
+void test_ir_forward_goto() {
+    const char *input =
+        "int main() {\n"
+        "    goto end;\n"
+        "    int a = 1;\n"
+        "    return a;\n"
+        "    end: return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "br l0",
+        "l0: nop",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_while_break() {
+    const char *input =
+        "int main() {\n"
+        "    while (1) {\n"
+        "        break;\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    // This looks a bit funky, but I think its due to eliminating unreachable nodes from the cfg then translating
+    // back to linear form
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "l0: nop",
+        "bool %0 = eq i32 1, i32 0",
+        "br bool %0, l1",
+        "br l1",
+        "l1: nop",
+        "ret i32 0"
+    }));
+}
+
+void ir_test_for_break() {
+    const char *input =
+        "int main() {\n"
+        "    for (;1;) {\n"
+        "        break;\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "l0: nop",
+        "bool %0 = eq bool 1, bool 0",
+        "br bool %0, l2",
+        "br l2",
+        "l2: nop",
+        "ret i32 0"
+    }));
+}
+
+void ir_test_while_continue() {
+    const char *input =
+        "int main() {\n"
+        "    while (1) {\n"
+        "        continue;\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "l0: nop",
+        "bool %0 = eq i32 1, i32 0",
+        "br bool %0, l1",
+        "br l0",
+        "l1: nop",
+        "ret i32 0"
+    }));
+}
+
+void ir_test_for_continue() {
+    const char *input =
+        "int main() {\n"
+        "    for (;1;) {\n"
+        "        continue;\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "l0: nop",
+        "bool %0 = eq bool 1, bool 0",
+        "br bool %0, l2",
+        "br l1",
+        "l1: nop",
+        "br l0",
+        "l2: nop",
+        "ret i32 0"
+    }));
+}
+
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -996,17 +1131,23 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "conditional expr (void)", test_ir_gen_conditional_expr_void);
     CU_add_test(suite, "conditional expr", test_ir_gen_conditional_expr_returning_int);
     CU_add_test(suite, "while loop", test_ir_while_loop);
-    CU_add_test(suite, "for loop (empty)", ir_gen_for_loop_empty);
-    CU_add_test(suite, "declare struct type (global scope)", ir_gen_declare_struct_type_global_scope);
-    CU_add_test(suite, "declare struct default initializer (local scope)", ir_gen_declare_struct_default_initializer);
-    CU_add_test(suite, "struct set field", ir_gen_struct_set_field);
-    CU_add_test(suite, "struct pointer set field", ir_gen_struct_ptr_set_field);
-    CU_add_test(suite, "struct read field", ir_gen_struct_read_field);
-    CU_add_test(suite, "struct pointer read field", ir_gen_struct_ptr_read_field);
-    CU_add_test(suite, "struct definition scoping", ir_gen_struct_definition_scoping);
-    CU_add_test(suite, "anonymous struct", ir_gen_anonymous_struct);
-    CU_add_test(suite, "sizeof type primitive", ir_gen_sizeof_type_primitive);
-    CU_add_test(suite, "sizeof type struct", ir_gen_sizeof_type_struct);
-    CU_add_test(suite, "sizeof unary expression", ir_gen_sizeof_unary_expression);
+    CU_add_test(suite, "for loop (empty)", test_ir_gen_for_loop_empty);
+    CU_add_test(suite, "declare struct type (global scope)", test_ir_gen_declare_struct_type_global_scope);
+    CU_add_test(suite, "declare struct default initializer (local scope)", test_ir_gen_declare_struct_default_initializer);
+    CU_add_test(suite, "struct set field", test_ir_gen_struct_set_field);
+    CU_add_test(suite, "struct pointer set field", test_ir_gen_struct_ptr_set_field);
+    CU_add_test(suite, "struct read field", test_ir_gen_struct_read_field);
+    CU_add_test(suite, "struct pointer read field", test_ir_gen_struct_ptr_read_field);
+    CU_add_test(suite, "struct definition scoping", test_ir_gen_struct_definition_scoping);
+    CU_add_test(suite, "anonymous struct", test_ir_gen_anonymous_struct);
+    CU_add_test(suite, "sizeof type primitive", test_ir_gen_sizeof_type_primitive);
+    CU_add_test(suite, "sizeof type struct", test_ir_gen_sizeof_type_struct);
+    CU_add_test(suite, "sizeof unary expression", test_ir_gen_sizeof_unary_expression);
+    CU_add_test(suite, "goto", test_ir_gen_label_and_goto);
+    CU_add_test(suite, "goto (forward)", test_ir_forward_goto);
+    CU_add_test(suite, "break (while)", test_ir_while_break);
+    CU_add_test(suite, "break (for)", ir_test_for_break);
+    CU_add_test(suite, "continue (while)", ir_test_while_continue);
+    CU_add_test(suite, "continue (for)", ir_test_for_continue);
     return CUE_SUCCESS;
 }

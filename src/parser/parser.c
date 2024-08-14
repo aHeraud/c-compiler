@@ -210,6 +210,14 @@ bool peek(parser_t* parser, token_kind_t kind) {
     return next_token(parser)->kind == kind;
 }
 
+bool peek2(parser_t *parser, token_kind_t kind) {
+    parse_checkpoint_t checkpoint  = create_checkpoint(parser);
+    parser->next_token_index += 1;
+    bool result = peek(parser, kind);
+    backtrack(parser, checkpoint);
+    return result;
+}
+
 bool accept(parser_t* parser, token_kind_t kind, token_t** token_out) {
     token_t* token = next_token(parser);
     bool eof = token->kind == TK_EOF;
@@ -1530,6 +1538,14 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
         return parse_while_statement(parser, stmt, begin);
     } else if (accept(parser, TK_FOR, &begin)) {
         return parse_for_statement(parser, stmt, begin);
+    } else if (peek(parser, TK_BREAK)) {
+        return parse_break_statement(parser, stmt);
+    } else if (peek(parser, TK_CONTINUE)) {
+        return parse_continue_statement(parser, stmt);
+    } else if (peek(parser, TK_GOTO)) {
+        return parse_goto_statement(parser, stmt);
+    } else if (peek(parser, TK_IDENTIFIER) && peek2(parser, TK_COLON)) {
+        return parse_labeled_statement(parser, stmt);
     } else {
         return parse_expression_statement(parser, stmt);
     }
@@ -1792,6 +1808,83 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
     }
 
     statement->for_.body = body;
+    return true;
+}
+
+bool parse_break_statement(parser_t *parser, statement_t *statement) {
+    token_t *keyword = NULL;
+    if (!accept(parser, TK_BREAK, &keyword)) return false;
+
+    token_t *semicolon = NULL;
+    bool terminated = require(parser, TK_SEMICOLON, &semicolon, "break-statement", NULL);
+
+    *statement = (statement_t) {
+        .terminator = semicolon,
+        .type = STATEMENT_BREAK,
+        .break_ = {
+            .keyword = keyword,
+        },
+    };
+
+    return terminated;
+}
+
+bool parse_continue_statement(parser_t *parser, statement_t *statement) {
+    token_t *keyword = NULL;
+    if (!accept(parser, TK_CONTINUE, &keyword)) return false;
+
+    token_t *semicolon = NULL;
+    bool terminated = require(parser, TK_SEMICOLON, &semicolon, "break-statement", NULL);
+
+    *statement = (statement_t) {
+        .terminator = semicolon,
+        .type = STATEMENT_CONTINUE,
+        .continue_ = {
+            .keyword = keyword,
+        },
+    };
+
+    return terminated;
+}
+
+bool parse_goto_statement(parser_t *parser, statement_t *statement) {
+    token_t *keyword = NULL;
+    if (!accept(parser, TK_GOTO, &keyword)) return false;
+
+    token_t *identifier = NULL;
+    if (!require(parser, TK_IDENTIFIER, &identifier, "goto-statement", NULL))
+        return false;
+
+    token_t *semicolon = NULL;
+    bool terminated = require(parser, TK_SEMICOLON, &semicolon, "goto-statement", NULL);
+
+    *statement = (statement_t) {
+        .terminator = semicolon,
+        .type = STATEMENT_GOTO,
+        .goto_ = {
+            .identifier = identifier,
+        },
+    };
+
+    return terminated;
+}
+
+bool parse_labeled_statement(parser_t *parser, statement_t *statement) {
+    token_t *identifier = NULL;
+    if (!require(parser, TK_IDENTIFIER, &identifier, "labeled-statement", NULL))
+        return false;
+    if (!require(parser, TK_COLON, NULL, "labeled-statement", NULL))
+        return false;
+    statement_t *statement_inner = malloc(sizeof(statement_t));
+    if (!parse_statement(parser, statement_inner))
+        return false;
+    *statement = (statement_t) {
+        .type = STATEMENT_LABEL,
+        .label_ = {
+            .identifier = identifier,
+            .statement = statement_inner,
+        },
+    };
     return true;
 }
 

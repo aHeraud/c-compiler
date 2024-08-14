@@ -32,6 +32,10 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_SUBSCRIPT_TYPE,
     ERR_INVALID_MEMBER_ACCESS_TARGET,
     ERR_INVALID_STRUCT_FIELD_REFERENCE,
+    ERR_USE_OF_UNDECLARED_LABEL,
+    ERR_REDEFINITION_OF_LABEL,
+    ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE,
+    ERR_CONTINUE_OUTSIDE_OF_LOOP,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -101,6 +105,19 @@ typedef struct CompilationError {
             const type_t *type;
             token_t field;
         } invalid_struct_field_reference;
+        struct {
+            token_t label;
+        } use_of_undeclared_label;
+        struct {
+            token_t label;
+            token_t previous_definition;
+        } redefinition_of_label;
+        struct {
+            token_t keyword;
+        } break_outside_of_loop_or_switch_case;
+        struct {
+            token_t keyword;
+        } continue_outside_of_loop;
     };
 } compilation_error_t;
 

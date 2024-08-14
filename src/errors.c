@@ -115,6 +115,59 @@ void print_compilation_error(const compilation_error_t *error) {
                     error->location.path, error->location.line, error->location.column);
             break;
         }
+        case ERR_INVALID_MEMBER_ACCESS_TARGET: {
+            const type_t *type = error->invalid_member_access_target.type;
+            token_t operator = error->invalid_member_access_target.operator;
+            if (type->kind != TYPE_STRUCT_OR_UNION &&
+                (type->kind != TYPE_POINTER || type->pointer.base->kind != TYPE_STRUCT_OR_UNION)) {
+                // TODO: print type
+                fprintf(stderr, ERROR_PREFIX "Member reference base type is not a struct or struct pointer\n",
+                    error->location.path, error->location.line, error->location.column);
+            } else if (operator.kind == TK_ARROW) {
+                fprintf(stderr, ERROR_PREFIX "Member reference type is not a pointer, but accessed with '%s'\n",
+                    error->location.path, error->location.line, error->location.column, operator.value);
+            } else {
+                fprintf(stderr, ERROR_PREFIX "Member reference type is a pointer, but accessed with '%s'\n",
+                    error->location.path, error->location.line, error->location.column, operator.value);
+            }
+            break;
+        }
+        case ERR_INVALID_STRUCT_FIELD_REFERENCE: {
+            const type_t *type = error->invalid_struct_field_reference.type;
+            const token_t field = error->invalid_struct_field_reference.field;
+            assert(type->kind == TYPE_STRUCT_OR_UNION);
+            const char *struct_or_union = type->struct_or_union.is_union ? "union" : "struct";
+            const char *identifier = "anonymous";
+            if (type->struct_or_union.identifier != NULL)
+                identifier = type->struct_or_union.identifier->value;
+            fprintf(stderr, ERROR_PREFIX "%s %s has no field named %s\n",
+                error->location.path, error->location.line, error->location.column,
+                struct_or_union, identifier, field.value);
+            break;
+        }
+        case ERR_USE_OF_UNDECLARED_LABEL: {
+            fprintf(stderr, ERROR_PREFIX "Use of undeclared label %s\n",
+                error->location.path, error->location.line, error->location.column,
+                error->use_of_undeclared_label.label.value);
+             break;
+        }
+        case ERR_REDEFINITION_OF_LABEL: {
+            const source_position_t prev = error->redefinition_of_label.previous_definition.position;
+            fprintf(stderr, ERROR_PREFIX "Redefinition of label %s, previous definition: %s:%d:%d\n",
+                error->location.path, error->location.line, error->location.column,
+                error->redefinition_of_label.label.value,
+                prev.path, prev.line, prev.column);
+            break;
+        }
+        case ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE: {
+            fprintf(stderr, ERROR_PREFIX "break statement is only allowed inside of the body of a loop or switch case\n",
+                error->location.path, error->location.line, error->location.column);
+            break;
+        }
+        case ERR_CONTINUE_OUTSIDE_OF_LOOP: {
+            fprintf(stderr, ERROR_PREFIX "continue statement is only allowed inside the body of a loop\n",
+                error->location.path, error->location.line, error->location.column);
+        }
         default: {
             fprintf(stderr, ERROR_PREFIX "Unknown error kind\n",
                     error->location.path, error->location.line, error->location.column);

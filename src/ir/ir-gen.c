@@ -16,6 +16,8 @@
 typedef struct Scope scope_t;
 typedef struct Symbol symbol_t;
 
+VEC_DEFINE(StatementPtrVector, statement_ptr_vector_t, statement_t*)
+
 typedef struct IrGenContext {
     ir_module_t *module;
     const ir_arch_t *arch;
@@ -29,6 +31,14 @@ typedef struct IrGenContext {
     const function_definition_t *c_function;
     ir_function_builder_t *builder;
     ir_instruction_node_t *alloca_tail;
+    hash_table_t label_map; // map of c label -> ir label
+    hash_table_t label_exists; // set of c label that actually exist, for validating the goto statements
+    statement_ptr_vector_t goto_statements; // goto statements that need to be validated at the end of the fn
+
+    // Break label (if in a loop/switch case statement)
+    char* break_label;
+    // Continue label (if in a loop)
+    char* continue_label;
 
     // List of compilation errors encountered during semantic analysis
     compilation_error_vector_t errors;
@@ -272,13 +282,44 @@ void ir_append_global_ptr(ir_global_ptr_vector_t *vec, ir_global_t *global) {
     VEC_APPEND(vec, global);
 }
 
+typedef struct LoopContext {
+    char *break_label;
+    char *continue_label;
+} loop_context_t;
+
+/**
+* Enter a loop context, which will set the loop break and continue labels
+* Also saves and returns the previous context
+*/
+loop_context_t enter_loop_context(ir_gen_context_t *context, char *break_label, char *continue_label) {
+    const loop_context_t prev = {
+        .break_label = context->break_label,
+        .continue_label = context->continue_label,
+    };
+    context->break_label = break_label;
+    context->continue_label = continue_label;
+    return prev;
+}
+
+/**
+ * Restore the previous loop context
+ */
+void leave_loop_context(ir_gen_context_t *context, loop_context_t prev) {
+    context->break_label = prev.break_label;
+    context->continue_label = prev.continue_label;
+}
+
 void ir_visit_translation_unit(ir_gen_context_t *context, const translation_unit_t *translation_unit);
 void ir_visit_function(ir_gen_context_t *context, const function_definition_t *function);
 void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_labeled_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_while_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_for_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_continue_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_goto_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 expression_result_t ir_visit_expression(ir_gen_context_t *context, const expression_t *expression);
@@ -313,6 +354,8 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir
         .builder = NULL,
         .errors = (compilation_error_vector_t) { .size = 0, .capacity = 0, .buffer = NULL },
         .current_scope = NULL,
+        .break_label = NULL,
+        .continue_label = NULL,
         .global_id_counter = 0,
         .local_id_counter = 0,
     };
@@ -371,6 +414,9 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     context->c_function = function;
     context->builder = ir_builder_create();
     context->alloca_tail = ir_builder_get_position(context->builder);
+    context->label_map = hash_table_create_string_keys(64);
+    context->label_exists = hash_table_create_string_keys(64);
+    context->goto_statements = (statement_ptr_vector_t) VEC_INIT;
 
     const type_t function_c_type = {
         .kind = TYPE_FUNCTION,
@@ -486,6 +532,25 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     hash_table_insert(&context->function_definition_map, function->identifier->value, context->function);
     ir_append_function_ptr(&context->module->functions, context->function);
 
+    // Validate the goto statements
+    // We deferred the validation until the end of the function body, as you can goto a label defined later in
+    // the function.
+    // For every goto statement, there should be an entry in the label_exists map.
+    for (int i = 0; i < context->goto_statements.size; i += 1) {
+        const statement_t *goto_statement = context->goto_statements.buffer[i];
+        assert(goto_statement != NULL && goto_statement->type == STATEMENT_GOTO);
+        bool valid_label = hash_table_lookup(&context->label_exists, goto_statement->goto_.identifier->value, NULL);
+        if (!valid_label) {
+            append_compilation_error(&context->errors, (compilation_error_t) {
+                .kind = ERR_USE_OF_UNDECLARED_LABEL,
+                .location = goto_statement->label_.identifier->position,
+                .use_of_undeclared_label = {
+                    .label = *goto_statement->label_.identifier
+                },
+            });
+        }
+    }
+
     if (context->errors.size > 0) {
         // There were errors processing the function, skip IR validation.
         return;
@@ -553,6 +618,11 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     //       may want to just store the cfg instead.
     ir_instruction_vector_t linearized = ir_linearize_cfg(&cfg);
     context->function->body = linearized;
+
+    // cleanup
+    hash_table_destroy(&context->label_map);
+    hash_table_destroy(&context->label_exists);
+    VEC_DESTROY(&context->goto_statements);
 }
 
 void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement) {
@@ -576,30 +646,36 @@ void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement)
             }
             leave_scope(context);
         }
-        case STATEMENT_EMPTY: {
+        case STATEMENT_EMPTY:
             // no-op
             break;
-        }
-        case STATEMENT_EXPRESSION: {
+        case STATEMENT_EXPRESSION:
             ir_visit_expression(context, statement->expression);
             break;
-        }
-        case STATEMENT_IF: {
+        case STATEMENT_IF:
             ir_visit_if_statement(context, statement);
             break;
-        }
-        case STATEMENT_RETURN: {
+        case STATEMENT_RETURN:
             ir_visit_return_statement(context, statement);
             break;
-        }
-        case STATEMENT_WHILE: {
+        case STATEMENT_WHILE:
             ir_visit_while_statement(context, statement);
             break;
-        }
-        case STATEMENT_FOR: {
+        case STATEMENT_FOR:
             ir_visit_for_statement(context, statement);
             break;
-        }
+        case STATEMENT_BREAK:
+            ir_visit_break_statement(context, statement);
+            break;
+        case STATEMENT_CONTINUE:
+            ir_visit_continue_statement(context, statement);
+            break;
+        case STATEMENT_LABEL:
+            ir_visit_labeled_statement(context, statement);
+            break;
+        case STATEMENT_GOTO:
+            ir_visit_goto_statement(context, statement);
+            break;
         default:
             fprintf(stderr, "%s:%d: Invalid statement type\n", __FILE__, __LINE__);
             exit(1);
@@ -758,8 +834,14 @@ void ir_visit_while_statement(ir_gen_context_t *context, const statement_t *stat
     ir_build_eq(context->builder, condition.value, zero, condition_var);
     ir_build_br_cond(context->builder, ir_value_for_var(condition_var), end_label);
 
+    // set the loop context while in the body (for break/continue)
+    loop_context_t loop_context = enter_loop_context(context, end_label, loop_label);
+
     // Execute the loop body
     ir_visit_statement(context, statement->while_.body);
+
+    // restore the loop context
+    leave_loop_context(context, loop_context);
 
     // Jump back to the start of the loop
     ir_build_br(context->builder, loop_label);
@@ -785,6 +867,7 @@ void ir_visit_for_statement(ir_gen_context_t *context, const statement_t *statem
     }
 
     char *loop_label = gen_label(context); // start of the loop
+    char *post_label = gen_label(context); // start of the post-statement
     char *end_label = gen_label(context);  // end of the loop
 
     ir_build_nop(context->builder, loop_label);
@@ -819,9 +902,12 @@ void ir_visit_for_statement(ir_gen_context_t *context, const statement_t *statem
     }
 
     if (statement->for_.body != NULL) {
+        loop_context_t loop_context = enter_loop_context(context, end_label, post_label);
         ir_visit_statement(context, statement->for_.body);
+        leave_loop_context(context, loop_context);
     }
 
+    ir_build_nop(context->builder, post_label);
     if (statement->for_.post != NULL) {
         ir_visit_expression(context, statement->for_.post);
     }
@@ -833,6 +919,97 @@ void ir_visit_for_statement(ir_gen_context_t *context, const statement_t *statem
     ir_build_nop(context->builder, end_label);
 
     leave_scope(context);
+}
+
+void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *statement) {
+    assert(statement != NULL && statement->type == STATEMENT_BREAK);
+    if (context->break_label == NULL) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE,
+            .location = statement->break_.keyword->position,
+            .break_outside_of_loop_or_switch_case = {
+                .keyword = *statement->break_.keyword,
+            },
+        });
+        return;
+    }
+
+    ir_build_br(context->builder, context->break_label);
+}
+
+void ir_visit_continue_statement(ir_gen_context_t *context, const statement_t *statement) {
+    assert(statement != NULL && statement->type == STATEMENT_CONTINUE);
+    if (context->continue_label == NULL) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CONTINUE_OUTSIDE_OF_LOOP,
+            .location = statement->continue_.keyword->position,
+            .continue_outside_of_loop = {
+                .keyword = *statement->continue_.keyword,
+            },
+        });
+    }
+
+    ir_build_br(context->builder, context->continue_label);
+}
+
+void ir_visit_labeled_statement(ir_gen_context_t *context, const statement_t *statement) {
+    assert(statement != NULL && statement->type == STATEMENT_LABEL);
+
+    const token_t *source_label = statement->label_.identifier;
+
+    // check if this is a duplicate label
+    statement_t *previous_definition = NULL;
+    bool exists = hash_table_lookup(&context->label_exists, source_label->value, (void**) &previous_definition);
+    if (exists) {
+        // label redefinition
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_REDEFINITION_OF_LABEL,
+            .location = source_label->position,
+            .redefinition_of_label = {
+                .label = *source_label,
+                .previous_definition = *previous_definition->label_.identifier,
+            },
+        });
+    }
+
+    // check if we've already mapped this label to an ir label
+    char *ir_label = NULL;
+    if (!hash_table_lookup(&context->label_map, source_label->value, (void**) &ir_label)) {
+        // nope, need to generate the ir label and create the mapping
+        ir_label = gen_label(context);
+        hash_table_insert(&context->label_map, source_label->value, ir_label);
+    }
+
+    // add the definition of the label to the label_exists map so we can detect duplicate definitions, and so we can
+    // validate that any goto instruction that references it is valid later
+    hash_table_insert(&context->label_exists, source_label->value, (void *) statement);
+
+    // insert the label into the ir
+    ir_build_nop(context->builder, ir_label);
+
+    // visit the inner statement
+    if (statement->label_.statement != NULL) ir_visit_statement(context, statement->label_.statement);
+}
+
+void ir_visit_goto_statement(ir_gen_context_t *context, const statement_t *statement) {
+    assert(statement != NULL && statement->type == STATEMENT_GOTO);
+
+    // add to the function goto statement list so we can validate it later (it may reference a label that hasn't been
+    // visited yet)
+    VEC_APPEND(&context->goto_statements, statement);
+
+    const token_t *source_label =  statement->goto_.identifier;
+
+    // check if we've already mapped this label to an ir label
+    char *ir_label = NULL;
+    if (!hash_table_lookup(&context->label_map, source_label->value, (void**) &ir_label)) {
+        // nope, need to generate the ir label and create the mapping
+        ir_label = gen_label(context);
+        hash_table_insert(&context->label_map, source_label->value, ir_label);
+    }
+
+    // jump to the label
+    ir_build_br(context->builder, ir_label);
 }
 
 void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer);

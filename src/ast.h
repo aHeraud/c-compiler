@@ -204,6 +204,10 @@ typedef struct Statement {
         STATEMENT_RETURN,
         STATEMENT_WHILE,
         STATEMENT_FOR,
+        STATEMENT_BREAK,
+        STATEMENT_CONTINUE,
+        STATEMENT_GOTO,
+        STATEMENT_LABEL,
     } type;
     union {
         struct {
@@ -243,6 +247,19 @@ typedef struct Statement {
             expression_t *post;
             statement_t *body;
         } for_;
+        struct {
+            token_t *identifier;
+        } goto_;
+        struct {
+            token_t *identifier;
+            statement_t *statement;
+        } label_;
+        struct {
+            token_t *keyword;
+        } break_;
+        struct {
+            token_t *keyword;
+        } continue_;
     };
     token_t *terminator;
 } statement_t;

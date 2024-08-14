@@ -1939,9 +1939,57 @@ void parse_external_definition_function_taking_void() {
     CU_ASSERT_TRUE_FATAL(statement_eq(node.function_definition->body, &body))
 }
 
+void test_parse_break_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "break;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    statement_t statement;
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
+    CU_ASSERT_TRUE_FATAL(statement.type == STATEMENT_BREAK)
+}
+
+void test_parse_continue_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "continue;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    statement_t statement;
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
+    CU_ASSERT_TRUE_FATAL(statement.type == STATEMENT_CONTINUE)
+}
+
+void test_parse_goto_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "goto foo;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    statement_t statement;
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
+    CU_ASSERT_TRUE_FATAL(statement.type == STATEMENT_GOTO)
+    CU_ASSERT_TRUE_FATAL(statement.goto_.identifier != NULL)
+    CU_ASSERT_STRING_EQUAL_FATAL(statement.goto_.identifier->value, "foo")
+}
+
+void test_parse_labeled_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "yoshi: ;"; // label + empty statement
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    statement_t statement;
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
+    CU_ASSERT_TRUE_FATAL(statement.type == STATEMENT_LABEL)
+    CU_ASSERT_STRING_EQUAL_FATAL(statement.label_.identifier->value, "yoshi")
+    CU_ASSERT_TRUE_FATAL(statement.label_.statement->type == STATEMENT_EMPTY)
+}
+
 void test_parse_program() {
     lexer_global_context_t context = create_lexer_context();
-    char* input = "float square(float);\nfloat square(float val) {\n\treturn val * val;\n}\nint main() {\n\treturn square(2.0);\n}";
+    const char* input = "float square(float);\nfloat square(float val) {\n\treturn val * val;\n}\nint main() {\n\treturn square(2.0);\n}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
 
@@ -2024,6 +2072,10 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "for statement", test_parse_for_statement) ||
         NULL == CU_add_test(pSuite, "for statement with no optional parts", test_parse_for_statement_no_optional_parts) ||
         NULL == CU_add_test(pSuite, "for statement with expression initializer", test_parse_for_statement_expr_initializer) ||
+        NULL == CU_add_test(pSuite, "break statement", test_parse_break_statement) ||
+        NULL == CU_add_test(pSuite, "continue statement", test_parse_continue_statement) ||
+        NULL == CU_add_test(pSuite, "goto statement", test_parse_goto_statement) ||
+        NULL == CU_add_test(pSuite, "labeled statement", test_parse_labeled_statement) ||
         NULL == CU_add_test(pSuite, "external declaration - declaration", parse_external_declaration_declaration) ||
         NULL == CU_add_test(pSuite, "external declaration - prototype (var args)", parse_external_definition_prototype_var_args) ||
         NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||
