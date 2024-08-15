@@ -304,7 +304,7 @@ void ir_print_control_flow_graph(FILE *file, const ir_control_flow_graph_t *func
         fprintf(file, "    label=\"%s\";\n", cfg.function->name);
         for (size_t j = 0; j < cfg.basic_blocks.size; j += 1) {
             ir_basic_block_t *bb = cfg.basic_blocks.buffer[j];
-            fprintf(file, "    block_%d [\n      shape=box\n      label=\n", bb->id);
+            fprintf(file, "    %s_block_%d [\n      shape=box\n      label=\n", cfg.function->name, bb->id);
             for (size_t k = 0; k < bb->instructions.size; k += 1) {
                 char buffer[512];
                 ir_fmt_instr(buffer, 512, bb->instructions.buffer[k]);
@@ -314,7 +314,7 @@ void ir_print_control_flow_graph(FILE *file, const ir_control_flow_graph_t *func
 
             for (size_t k = 0; k < bb->successors.size; k += 1) {
                 ir_basic_block_t *succ = bb->successors.buffer[k];
-                fprintf(file, "    block_%d -> block_%d;\n", bb->id, succ->id);
+                fprintf(file, "    %s_block_%d -> %s_block_%d;\n", cfg.function->name, bb->id, cfg.function->name, succ->id);
             }
         }
         fprintf(file, "  }\n");

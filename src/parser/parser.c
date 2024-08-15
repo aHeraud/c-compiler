@@ -2728,6 +2728,7 @@ bool unary_op(parser_t *parser, expression_t* expr, token_t *token) {
             .unary = {
                     .operator = operator,
                     .operand = operand,
+                    .token = token,
             },
     };
     return true;
@@ -2749,6 +2750,7 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
             .unary = {
                 .operator = UNARY_PRE_INCREMENT,
                 .operand = operand,
+                .token = token,
             },
         };
         return true;
@@ -2765,6 +2767,7 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
             .unary = {
                 .operator = UNARY_PRE_DECREMENT,
                 .operand = operand,
+                .token = token,
             }
         };
         return true;
@@ -2789,6 +2792,7 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
                     .unary = {
                         .operator = UNARY_SIZEOF,
                         .operand = inner,
+                        .token = token,
                     },
                 };
                 return true;
@@ -2839,6 +2843,7 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
                 .unary = {
                     .operator = UNARY_SIZEOF,
                     .operand = inner,
+                    .token = token,
                 },
             };
             return true;
@@ -2945,24 +2950,21 @@ bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
                     .unary = {
                             .operator = UNARY_POST_INCREMENT,
                             .operand = operand,
+                            .token = token,
                     },
             };
         } else if (accept(parser, TK_DECREMENT, NULL)) {
             expression_t *operand = current;
             current = malloc(sizeof(expression_t));
-
             *current = (expression_t) {
-                    .span = {
-                            .start = operand->span.start,
-                            .end = *current_position(parser),
-                    },
+                    .span = SPAN_STARTING(operand->span.start),
                     .type = EXPRESSION_UNARY,
                     .unary = {
                             .operator = UNARY_POST_DECREMENT,
                             .operand = operand,
+                            .token = token,
                     },
             };
-            return true;
         }
     }
 

@@ -187,6 +187,7 @@ ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type);
 char *gen_label(ir_gen_context_t *context);
 
 ir_value_t ir_make_const_int(const ir_type_t *type, long long value);
+ir_value_t ir_make_const_float(const ir_type_t *type, double value);
 ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type);
 
 /**
@@ -341,6 +342,7 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
 expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_sizeof_unexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_increment_decrement(ir_gen_context_t *context, const expression_t *expr, bool pre, bool incr);
 expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const expression_t *expr);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir_arch_t *arch) {
@@ -2436,6 +2438,14 @@ expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const e
             return ir_visit_indirection_unexpr(context, expr);
         case UNARY_SIZEOF:
             return ir_visit_sizeof_unexpr(context, expr);
+        case UNARY_PRE_DECREMENT:
+            return ir_visit_increment_decrement(context, expr, true, false);
+        case UNARY_POST_DECREMENT:
+            return ir_visit_increment_decrement(context, expr, false, false);
+        case UNARY_PRE_INCREMENT:
+            return ir_visit_increment_decrement(context, expr, true, true);
+        case UNARY_POST_INCREMENT:
+            return ir_visit_increment_decrement(context, expr, false, true);
         default:
             // TODO
             assert(false && "Unary operator not implemented");
@@ -2570,6 +2580,61 @@ expression_result_t ir_visit_sizeof_unexpr(ir_gen_context_t *context, const expr
         .is_lvalue = false,
         .is_string_literal = false,
         .value = size_val,
+    };
+}
+
+expression_result_t ir_visit_increment_decrement(ir_gen_context_t *context, const expression_t *expr, bool pre, bool increment) {
+    assert(expr != NULL && expr->type == EXPRESSION_UNARY);
+
+    expression_result_t lvalue = ir_visit_expression(context, expr->unary.operand);
+    if (lvalue.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+    if (!lvalue.is_lvalue || lvalue.kind != EXPR_RESULT_VALUE) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_ASSIGNMENT_TARGET,
+            .location = expr->unary.token->position,
+        });
+        return EXPR_ERR;
+    }
+    expression_result_t rvalue = get_rvalue(context, lvalue);
+    if (rvalue.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+
+    // The semantics of the increment/decrement operators are similar to the additive operators.
+    // The operand must have an arithmetic or pointer type.
+    // TODO: this should also work for enums (?) when those get implemented
+    if (!is_arithmetic_type(rvalue.c_type) && !is_pointer_type(rvalue.c_type)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CANNOT_INCREMENT_DECREMENT_TYPE,
+            .location = expr->unary.token->position,
+            .cannot_increment_decrement_type = {
+                .type = rvalue.c_type,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    const ir_type_t *ir_type = rvalue.value.var.type;
+    ir_var_t post_value = temp_var(context, ir_type);
+    if (is_integer_type(rvalue.c_type)) {
+        ir_value_t rhs = ir_make_const_int(ir_type, 1);
+        if (increment) ir_build_add(context->builder, rvalue.value, rhs, post_value);
+        else ir_build_sub(context->builder, rvalue.value, rhs, post_value);
+    } else if (is_floating_type(rvalue.c_type)) {
+        ir_value_t rhs = ir_make_const_float(ir_type, 1.0);
+        if (increment) ir_build_add(context->builder, rvalue.value, rhs, post_value);
+        else ir_build_sub(context->builder, rvalue.value, rhs, post_value);
+    } else /* has pointer type */ {
+        ir_build_get_array_element_ptr(context->builder, rvalue.value, ir_make_const_int(&IR_I32, increment ? 1 : -1), post_value);
+    }
+
+    ir_build_store(context->builder, lvalue.value, ir_value_for_var(post_value));
+
+    return (expression_result_t) {
+        .addr_of = false,
+        .c_type = lvalue.c_type,
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .kind = EXPR_RESULT_VALUE,
+        .value = pre ? ir_value_for_var(post_value) : rvalue.value,
     };
 }
 
@@ -3491,5 +3556,16 @@ ir_value_t ir_make_const_int(const ir_type_t *type, long long value) {
             .type = type,
             .i = value,
         }
+    };
+}
+
+ir_value_t ir_make_const_float(const ir_type_t *type, double value) {
+    return (ir_value_t) {
+        .kind = IR_VALUE_CONST,
+        .constant = {
+            .kind = IR_CONST_FLOAT,
+            .type = type,
+            .f = value,
+        },
     };
 }

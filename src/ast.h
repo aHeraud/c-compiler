@@ -90,6 +90,7 @@ typedef struct BinaryExpression {
 
 typedef struct UnaryExpression {
     struct Expression* operand;
+    const token_t *token;
     enum {
         UNARY_ADDRESS_OF,
         UNARY_DEREFERENCE,

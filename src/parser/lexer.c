@@ -241,8 +241,14 @@ token_t lscan(struct Lexer* lexer) {
             break;
         case '+':
             ladvance(lexer);
-            token.kind = TK_PLUS;
-            token.value = "+";
+            if (lpeek(lexer, 1) == '+') {
+                ladvance(lexer);
+                token.kind = TK_INCREMENT;
+                token.value = "++";
+            } else {
+                token.kind = TK_PLUS;
+                token.value = "+";
+            }
             break;
         case '-':
             ladvance(lexer);
@@ -250,6 +256,10 @@ token_t lscan(struct Lexer* lexer) {
                 ladvance(lexer);
                 token.kind = TK_ARROW;
                 token.value = "->";
+            } else if (lpeek(lexer, 1) == '-') {
+                ladvance(lexer);
+                token.kind = TK_DECREMENT;
+                token.value = "--";
             } else {
                 token.kind = TK_MINUS;
                 token.value = "-";

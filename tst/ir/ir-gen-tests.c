@@ -348,6 +348,196 @@ void test_ir_gen_ternary_expression_constants_2() {
     }));
 }
 
+void test_ir_gen_prefix_increment_integer() {
+    const char *input = "int main() {\n"
+                        "    int a = 1;\n"
+                        "    int b = ++a;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",       // %0 = ptr to a
+        "*i32 %1 = alloca i32",       // %1 = ptr to b
+        "store i32 1, *i32 %0",       // a = 1
+        "i32 %2 = load *i32 %0",      // %2 = a
+        "i32 %3 = add i32 %2, i32 1", // %3 = a + 1
+        "store i32 %3, *i32 %0",      // a = a + 1
+        "store i32 %3, *i32 %1",      // b = a + 1
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_postfix_increment_integer() {
+    const char *input = "int main() {\n"
+                        "    int a = 1;\n"
+                        "    int b = a++;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",       // %0 = ptr to a
+        "*i32 %1 = alloca i32",       // %1 = ptr to b
+        "store i32 1, *i32 %0",       // a = 1
+        "i32 %2 = load *i32 %0",      // %2 = a
+        "i32 %3 = add i32 %2, i32 1", // %3 = a + 1
+        "store i32 %3, *i32 %0",      // a = a + 1
+        "store i32 %2, *i32 %1",      // b = %2 (a before increment)
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_prefix_decrement_integer() {
+    const char *input = "int main() {\n"
+                        "    int a = 1;\n"
+                        "    int b = --a;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",       // %0 = ptr to a
+        "*i32 %1 = alloca i32",       // %1 = ptr to b
+        "store i32 1, *i32 %0",       // a = 1
+        "i32 %2 = load *i32 %0",      // %2 = a
+        "i32 %3 = sub i32 %2, i32 1", // %3 = a - 1
+        "store i32 %3, *i32 %0",      // a = a + 1
+        "store i32 %3, *i32 %1",      // b = a + 1
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_postfix_decrement_integer() {
+    const char *input = "int main() {\n"
+                        "    int a = 1;\n"
+                        "    int b = a--;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",       // %0 = ptr to a
+        "*i32 %1 = alloca i32",       // %1 = ptr to b
+        "store i32 1, *i32 %0",       // a = 1
+        "i32 %2 = load *i32 %0",      // %2 = a
+        "i32 %3 = sub i32 %2, i32 1", // %3 = a - 1
+        "store i32 %3, *i32 %0",      // a = a + 1
+        "store i32 %2, *i32 %1",      // b = %2 (a before increment)
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_postfix_increment_float() {
+    const char *input = "int main() {\n"
+                        "    float a = 1.0f;\n"
+                        "    float b = a++;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*f32 %0 = alloca f32",              // %0 = ptr to a
+        "*f32 %1 = alloca f32",              // %1 = ptr to b
+        "store f32 1.000000, *f32 %0",       // a = 1
+        "f32 %2 = load *f32 %0",             // %2 = a
+        "f32 %3 = add f32 %2, f32 1.000000", // %3 = a + 1
+        "store f32 %3, *f32 %0",             // a = a + 1
+        "store f32 %2, *f32 %1",             // b = %2 (a before increment)
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_postfix_decrement_float() {
+    const char *input = "int main() {\n"
+                        "    float a = 1.0f;\n"
+                        "    float b = a--;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*f32 %0 = alloca f32",              // %0 = ptr to a
+        "*f32 %1 = alloca f32",              // %1 = ptr to b
+        "store f32 1.000000, *f32 %0",       // a = 1
+        "f32 %2 = load *f32 %0",             // %2 = a
+        "f32 %3 = sub f32 %2, f32 1.000000", // %3 = a + 1
+        "store f32 %3, *f32 %0",             // a = a + 1
+        "store f32 %2, *f32 %1",             // b = %2 (a before increment)
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_postfix_increment_pointer() {
+    const char *input = "int main() {\n"
+                        "    int x = 0;\n"
+                        "    int *a = &x;\n"
+                        "    int *b = a++;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "**i32 %1 = alloca *i32",                         // %1 = ptr to a
+        "**i32 %2 = alloca *i32",                         // %2 = ptr to b
+        "store i32 0, *i32 %0",
+        "store *i32 %0, **i32 %1",
+        "*i32 %3 = load **i32 %1",                        // %3 = a
+        "*i32 %4 = get_array_element_ptr *i32 %3, i32 1", // %4 = a + 1
+        "store *i32 %4, **i32 %1",                        // a = a + 1
+        "store *i32 %3, **i32 %2",                        // b = a before incrementing
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_postfix_decrement_pointer() {
+    const char *input = "int main() {\n"
+                        "    int x = 0;\n"
+                        "    int *a = &x;\n"
+                        "    int *b = a--;\n"
+                        "    return 0;\n"
+                        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "**i32 %1 = alloca *i32",                         // %1 = ptr to a
+        "**i32 %2 = alloca *i32",                         // %2 = ptr to b
+        "store i32 0, *i32 %0",
+        "store *i32 %0, **i32 %1",
+        "*i32 %3 = load **i32 %1",                        // %3 = a
+        "*i32 %4 = get_array_element_ptr *i32 %3, i32 -1", // %4 = a + 1
+        "store *i32 %4, **i32 %1",                        // a = a + 1
+        "store *i32 %3, **i32 %2",                        // b = a before decrementing
+        "ret i32 0"
+    }));
+}
+
 void test_ir_gen_addr_of_variable() {
     const char* input = "int main() {\n"
                         "    int a = 1;\n"
@@ -1115,6 +1305,14 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "logic or constants 3", test_ir_gen_logic_or_constants_3);
     CU_add_test(suite, "ternary expression constants 1", test_ir_gen_ternary_expression_constants_1);
     CU_add_test(suite, "ternary expression constants 2", test_ir_gen_ternary_expression_constants_2);
+    CU_add_test(suite, "prefix-increment integer", test_ir_gen_prefix_increment_integer);
+    CU_add_test(suite, "postfix-increment integer", test_ir_gen_postfix_increment_integer);
+    CU_add_test(suite, "prefix-decrement integer", test_ir_gen_prefix_decrement_integer);
+    CU_add_test(suite, "postfix-decrement integer", test_ir_gen_postfix_decrement_integer);
+    CU_add_test(suite, "postfix-increment float", test_ir_gen_postfix_increment_float);
+    CU_add_test(suite, "postfix-decrement float", test_ir_gen_postfix_decrement_float);
+    CU_add_test(suite, "postfix-increment pointer", test_ir_gen_postfix_increment_pointer);
+    CU_add_test(suite, "postfix-decrement pointer", test_ir_gen_postfix_decrement_pointer);
     CU_add_test(suite, "address of variable", test_ir_gen_addr_of_variable);
     CU_add_test(suite, "indirect load", test_ir_gen_indirect_load);
     CU_add_test(suite, "indirect store", test_ir_gen_indirect_store);

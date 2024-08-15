@@ -36,6 +36,7 @@ typedef enum CompilationErrorKind {
     ERR_REDEFINITION_OF_LABEL,
     ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE,
     ERR_CONTINUE_OUTSIDE_OF_LOOP,
+    ERR_CANNOT_INCREMENT_DECREMENT_TYPE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -118,6 +119,9 @@ typedef struct CompilationError {
         struct {
             token_t keyword;
         } continue_outside_of_loop;
+        struct {
+            const type_t *type;
+        } cannot_increment_decrement_type;
     };
 } compilation_error_t;
 

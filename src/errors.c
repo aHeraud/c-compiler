@@ -167,6 +167,13 @@ void print_compilation_error(const compilation_error_t *error) {
         case ERR_CONTINUE_OUTSIDE_OF_LOOP: {
             fprintf(stderr, ERROR_PREFIX "continue statement is only allowed inside the body of a loop\n",
                 error->location.path, error->location.line, error->location.column);
+            break;
+        }
+        case ERR_CANNOT_INCREMENT_DECREMENT_TYPE: {
+            // TODO: display type
+            fprintf(stderr, ERROR_PREFIX "cannot increment/decrement value of type\n",
+                error->location.path, error->location.line, error->location.column);
+            break;
         }
         default: {
             fprintf(stderr, ERROR_PREFIX "Unknown error kind\n",

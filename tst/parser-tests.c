@@ -383,6 +383,90 @@ void test_parse_unary_sizeof_parenthesized_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
+void test_parse_prefix_increment() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "++a";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+        .span = dummy_span(),
+        .type = EXPRESSION_UNARY,
+        .unary = {
+            .operator = UNARY_PRE_INCREMENT,
+            .operand = primary((primary_expression_t) {
+                .type = PE_IDENTIFIER,
+                .token = *token(TK_IDENTIFIER, "a"),
+            }),
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expected,  &expr))
+}
+
+void test_parse_prefix_decrement() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "--b";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+        .span = dummy_span(),
+        .type = EXPRESSION_UNARY,
+        .unary = {
+            .operator = UNARY_PRE_DECREMENT,
+            .operand = primary((primary_expression_t) {
+                .type = PE_IDENTIFIER,
+                .token = *token(TK_IDENTIFIER, "b"),
+            }),
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expected,  &expr))
+}
+
+void test_parse_postfix_increment() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "a++";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+        .span = dummy_span(),
+        .type = EXPRESSION_UNARY,
+        .unary = {
+            .operator = UNARY_POST_INCREMENT,
+            .operand = primary((primary_expression_t) {
+                .type = PE_IDENTIFIER,
+                .token = *token(TK_IDENTIFIER, "a"),
+            }),
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expected,  &expr))
+}
+
+void test_parse_postfix_decrement() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "b--";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
+    expression_t expected = (expression_t) {
+        .span = dummy_span(),
+        .type = EXPRESSION_UNARY,
+        .unary = {
+            .operator = UNARY_POST_DECREMENT,
+            .operand = primary((primary_expression_t) {
+                .type = PE_IDENTIFIER,
+                .token = *token(TK_IDENTIFIER, "b"),
+            }),
+        },
+    };
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expected,  &expr))
+}
+
 void test_parse_cast_expression() {
     lexer_global_context_t context = create_lexer_context();
     char* input = "(float) 14";
@@ -2013,6 +2097,10 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "unary expression - sizeof (type)", test_parse_unary_sizeof_type) ||
         NULL == CU_add_test(pSuite, "unary expression - sizeof (more complicated type)", test_parse_unary_sizeof_function_pointer_type) ||
         NULL == CU_add_test(pSuite, "unary expression - sizeof (expression)", test_parse_unary_sizeof_parenthesized_expression) ||
+        NULL == CU_add_test(pSuite, "unary pre-increment", test_parse_prefix_increment) ||
+        NULL == CU_add_test(pSuite, "unary pre-decrement", test_parse_prefix_decrement) ||
+        NULL == CU_add_test(pSuite, "unary post-increment", test_parse_postfix_increment) ||
+        NULL == CU_add_test(pSuite, "unary post-decrement", test_parse_postfix_decrement) ||
         NULL == CU_add_test(pSuite, "cast expression", test_parse_cast_expression) ||
         NULL == CU_add_test(pSuite, "multiplicative expression", test_parse_multiplicative_expression) ||
         NULL == CU_add_test(pSuite, "additive expression", test_parse_additive_expression) ||
