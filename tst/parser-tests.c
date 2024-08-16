@@ -1829,6 +1829,26 @@ void test_parse_while_statement_with_empty_body() {
     CU_ASSERT_EQUAL_FATAL(node.while_.body->type, STATEMENT_EMPTY)
 }
 
+void test_parse_do_while_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "do { cond = cond - 1; } while (cond > 0);";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    // Assert that it was parsed successfully, and that the parser consumed all of the input.
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
+
+    // Make sure the statement is parsed correctly
+    // We have other tests to validate the condition and body, so just make sure
+    // they're present and have the expected types.
+    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_DO_WHILE)
+    CU_ASSERT_EQUAL_FATAL(node.do_while.condition->type, EXPRESSION_BINARY)
+    CU_ASSERT_EQUAL_FATAL(node.do_while.body->type, STATEMENT_COMPOUND)
+}
+
 void test_parse_for_statement() {
     lexer_global_context_t context = create_lexer_context();
     const char *input =
@@ -2157,6 +2177,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement) ||
         NULL == CU_add_test(pSuite, "while statement", test_parse_while_statement) ||
         NULL == CU_add_test(pSuite, "while statement with empty body", test_parse_while_statement_with_empty_body) ||
+        NULL == CU_add_test(pSuite, "do while statement", test_parse_do_while_statement) ||
         NULL == CU_add_test(pSuite, "for statement", test_parse_for_statement) ||
         NULL == CU_add_test(pSuite, "for statement with no optional parts", test_parse_for_statement_no_optional_parts) ||
         NULL == CU_add_test(pSuite, "for statement with expression initializer", test_parse_for_statement_expr_initializer) ||

@@ -204,6 +204,7 @@ typedef struct Statement {
         STATEMENT_IF,
         STATEMENT_RETURN,
         STATEMENT_WHILE,
+        STATEMENT_DO_WHILE,
         STATEMENT_FOR,
         STATEMENT_BREAK,
         STATEMENT_CONTINUE,
@@ -231,6 +232,12 @@ typedef struct Statement {
             expression_t *condition;
             struct Statement *body;
         } while_;
+        struct {
+            token_t *do_keyword;
+            token_t *while_keyword;
+            expression_t *condition;
+            struct Statement *body;
+        } do_while;
         struct {
             const token_t *keyword;
             struct {

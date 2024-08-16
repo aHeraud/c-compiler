@@ -316,7 +316,9 @@ void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement)
 void ir_visit_labeled_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_while_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_do_while_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_for_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_continue_statement(ir_gen_context_t *context, const statement_t *statement);
@@ -661,10 +663,9 @@ void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement)
             ir_visit_return_statement(context, statement);
             break;
         case STATEMENT_WHILE:
-            ir_visit_while_statement(context, statement);
-            break;
+        case STATEMENT_DO_WHILE:
         case STATEMENT_FOR:
-            ir_visit_for_statement(context, statement);
+            ir_visit_loop_statement(context, statement);
             break;
         case STATEMENT_BREAK:
             ir_visit_break_statement(context, statement);
@@ -797,59 +798,126 @@ void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *sta
     }
 }
 
-void ir_visit_while_statement(ir_gen_context_t *context, const statement_t *statement) {
-    assert(context != NULL && "Context must not be NULL");
-    assert(statement != NULL && "Statement must not be NULL");
-    assert(statement->type == STATEMENT_WHILE);
+void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *statement) {
+    assert(context != NULL && statement != NULL);
+    assert(statement->type == STATEMENT_WHILE || statement->type == STATEMENT_DO_WHILE || statement->type == STATEMENT_FOR);
 
-    char *loop_label = gen_label(context);
-    char *end_label = gen_label(context);
+    bool post_test = false;
+    expression_t *condition_expr = NULL;
+    statement_t *body = NULL;
+
+    char *loop_start_label = gen_label(context);
+    char *loop_end_label = gen_label(context);
+    char *loop_exit_label = gen_label(context);
+
+    switch (statement->type) {
+        case STATEMENT_WHILE:
+            body = statement->while_.body;
+            condition_expr = statement->while_.condition;
+            break;
+        case STATEMENT_DO_WHILE:
+            body = statement->do_while.body;
+            condition_expr = statement->do_while.condition;
+            post_test = true;
+            break;
+        case STATEMENT_FOR: {
+            // The for statement gets its own scope, so that variables declared in the initializer are not visible
+            // outside the loop.
+            enter_scope(context);
+            // Visit the initializer(s)
+            if (statement->for_.initializer.kind == FOR_INIT_DECLARATION) {
+                assert(statement->for_.initializer.declarations != NULL);
+                for (size_t i = 0; i < statement->for_.initializer.declarations->size; i += 1) {
+                    ir_visit_declaration(context, statement->for_.initializer.declarations->buffer[i]);
+                }
+            } else if (statement->for_.initializer.kind == FOR_INIT_EXPRESSION) {
+                assert(statement->for_.initializer.expression != NULL);
+                ir_visit_expression(context, statement->for_.initializer.expression);
+            }
+            body = statement->for_.body;
+            condition_expr = statement->for_.condition;
+            break;
+        }
+        default:
+            fprintf(stderr, "%s:%d (%s) Error unrecognized statement type\n", __FILE__, __LINE__, __func__);
+            exit(1);
+    }
 
     // Label for the start of the loop
-    ir_build_nop(context->builder, loop_label);
+    ir_build_nop(context->builder, loop_start_label);
 
-    // Evaluate the condition
-    expression_result_t condition = ir_visit_expression(context, statement->while_.condition);
+    if (!post_test && condition_expr != NULL) {
+        // Evaluate the condition
+        expression_result_t condition = ir_visit_expression(context, condition_expr);
+        if (condition.is_lvalue) condition = get_rvalue(context, condition);
 
-    // Constraint for all loops:
-    // * The condition must have a scalar type
-    // * The loop body executes until the condition evaluates to 0
+        // The condition must have a scalar type.
+        if (!is_scalar_type(condition.c_type)) {
+            append_compilation_error(&context->errors, (compilation_error_t) {
+                .kind = ERR_INVALID_LOOP_CONDITION_TYPE,
+                .location = condition_expr->span.start,
+                .invalid_loop_condition_type = {
+                    .type = condition.c_type,
+                },
+            });
+            return;
+        }
 
-    if (condition.is_lvalue) {
-        condition = get_rvalue(context, condition);
+        // If the condition is false (0), then jump to the exit label. Otherwise continue to the loop body.
+        const ir_type_t *condition_ir_type = ir_get_type_of_value(condition.value);
+        ir_value_t zero = ir_get_zero_value(context, condition_ir_type);
+        ir_var_t condition_var = temp_var(context, &IR_BOOL);
+        ir_build_eq(context->builder, condition.value, zero, condition_var);
+        ir_build_br_cond(context->builder, ir_value_for_var(condition_var), loop_exit_label);
     }
-
-    if (!is_scalar_type(condition.c_type)) {
-        append_compilation_error(&context->errors, (compilation_error_t) {
-            .kind = ERR_INVALID_LOOP_CONDITION_TYPE,
-            .location = statement->expression->span.start,
-            .invalid_loop_condition_type = {
-                .type = condition.c_type,
-            },
-        });
-        return;
-    }
-
-    const ir_type_t *condition_ir_type = ir_get_type_of_value(condition.value);
-    ir_value_t zero = ir_get_zero_value(context, condition_ir_type);
-    ir_var_t condition_var = temp_var(context, &IR_BOOL);
-    ir_build_eq(context->builder, condition.value, zero, condition_var);
-    ir_build_br_cond(context->builder, ir_value_for_var(condition_var), end_label);
 
     // set the loop context while in the body (for break/continue)
-    loop_context_t loop_context = enter_loop_context(context, end_label, loop_label);
+    loop_context_t loop_context = enter_loop_context(context, loop_exit_label, loop_end_label);
 
     // Execute the loop body
-    ir_visit_statement(context, statement->while_.body);
+    if (body != NULL) ir_visit_statement(context, body);
 
     // restore the loop context
     leave_loop_context(context, loop_context);
 
-    // Jump back to the start of the loop
-    ir_build_br(context->builder, loop_label);
+    // Label for the end of the loop body
+    ir_build_nop(context->builder, loop_end_label);
 
-    // Label for the end of the loop
-    ir_build_nop(context->builder, end_label);
+    if (post_test && condition_expr != NULL) {
+        // Evaluate the condition
+        expression_result_t condition = ir_visit_expression(context, condition_expr);
+        if (condition.is_lvalue) condition = get_rvalue(context, condition);
+
+        // The condition must have a scalar type.
+        if (!is_scalar_type(condition.c_type)) {
+            append_compilation_error(&context->errors, (compilation_error_t) {
+                .kind = ERR_INVALID_LOOP_CONDITION_TYPE,
+                .location = condition_expr->span.start,
+                .invalid_loop_condition_type = {
+                    .type = condition.c_type,
+                },
+            });
+            return;
+        }
+
+        // Evaluate the condition. If it evaluates to 0 (false), then jump to the exit label.
+        const ir_type_t *condition_ir_type = ir_get_type_of_value(condition.value);
+        ir_value_t zero = ir_get_zero_value(context, condition_ir_type);
+        ir_var_t condition_var = temp_var(context, &IR_BOOL);
+        ir_build_eq(context->builder, condition.value, zero, condition_var);
+        ir_build_br_cond(context->builder, ir_value_for_var(condition_var), loop_exit_label);
+    }
+
+    if (statement->type == STATEMENT_FOR && statement->for_.post != NULL)
+        ir_visit_expression(context, statement->for_.post);
+
+    // Jump back to the start of the loop
+    ir_build_br(context->builder, loop_start_label);
+
+    // Label to exit the loop
+    ir_build_nop(context->builder, loop_exit_label);
+
+    if (statement->type == STATEMENT_FOR) leave_scope(context);
 }
 
 void ir_visit_for_statement(ir_gen_context_t *context, const statement_t *statement) {

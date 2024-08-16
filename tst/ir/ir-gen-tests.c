@@ -925,13 +925,48 @@ void test_ir_while_loop() {
         "i32 %1 = load *i32 %0",
         "bool %2 = lt i32 %1, i32 10",
         "bool %3 = eq bool %2, bool 0",
-        "br bool %3, l1",
+        "br bool %3, l2",
         "i32 %4 = load *i32 %0",
         "i32 %5 = add i32 %4, i32 1",
         "i32 %6 = i32 %5",
         "store i32 %6, *i32 %0",
-        "br l0",
         "l1: nop",
+        "br l0",
+        "l2: nop",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_do_while_loop() {
+    const char* input =
+        "int main() {\n"
+        "    int x = 0;\n"
+        "    do {\n"
+        "        x = x + 1;\n"
+        "    } while (x < 10);\n"
+        "    return 0;\n"
+        "}\n";
+
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    assert(result.errors.size == 0);
+
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",          // x
+        "store i32 0, *i32 %0",          // x = 0
+        "l0: nop",                       // do {
+        "i32 %1 = load *i32 %0",         // load x
+        "i32 %2 = add i32 %1, i32 1",    // temp = x + 1
+        "i32 %3 = i32 %2",               // TODO: fix this (ugly)
+        "store i32 %3, *i32 %0",         // store temp, x
+        "l1: nop",
+        "i32 %4 = load *i32 %0",         // load x
+        "bool %5 = lt i32 %4, i32 10",   // %5 = x < 10
+        "bool %6 = eq bool %5, bool 0",  // invert the condition
+        "br bool %6, l2",                // if x < 10 == false, exit loop
+        "br l0",                         // go to the start of the loop
+        "l2: nop",
         "ret i32 0"
     }));
 }
@@ -1204,9 +1239,30 @@ void test_ir_while_break() {
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "l0: nop",
         "bool %0 = eq i32 1, i32 0",
-        "br bool %0, l1",
-        "br l1",
-        "l1: nop",
+        "br bool %0, l2",
+        "br l2",
+        "l2: nop",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_do_while_break() {
+    const char *input =
+        "int main() {\n"
+        "    do {\n"
+        "        break;\n"
+        "    } while (1);\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    // Note that the entire condition check is removed due to being un-reachable in the CFG
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "l0: nop",
+        "br l2",
+        "l2: nop",
         "ret i32 0"
     }));
 }
@@ -1225,7 +1281,7 @@ void ir_test_for_break() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "l0: nop",
-        "bool %0 = eq bool 1, bool 0",
+        "bool %0 = eq i32 1, i32 0",
         "br bool %0, l2",
         "br l2",
         "l2: nop",
@@ -1248,9 +1304,35 @@ void ir_test_while_continue() {
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "l0: nop",
         "bool %0 = eq i32 1, i32 0",
-        "br bool %0, l1",
-        "br l0",
+        "br bool %0, l2",
+        "br l1",
         "l1: nop",
+        "br l0",
+        "l2: nop",
+        "ret i32 0"
+    }));
+}
+
+void ir_test_do_while_continue() {
+    const char *input =
+        "int main() {\n"
+        "    do {\n"
+        "        continue;\n"
+        "    } while (1);\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "l0: nop",                    // do {
+        "br l1",                      //    continue;
+        "l1: nop",                    // }
+        "bool %0 = eq i32 1, i32 0",  //
+        "br bool %0, l2",             // if condition is false, exit loop
+        "br l0",                      // go to start of loop
+        "l2: nop",
         "ret i32 0"
     }));
 }
@@ -1269,7 +1351,7 @@ void ir_test_for_continue() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "l0: nop",
-        "bool %0 = eq bool 1, bool 0",
+        "bool %0 = eq i32 1, i32 0",
         "br bool %0, l2",
         "br l1",
         "l1: nop",
@@ -1329,6 +1411,7 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "conditional expr (void)", test_ir_gen_conditional_expr_void);
     CU_add_test(suite, "conditional expr", test_ir_gen_conditional_expr_returning_int);
     CU_add_test(suite, "while loop", test_ir_while_loop);
+    CU_add_test(suite, "do-while loop", test_ir_do_while_loop);
     CU_add_test(suite, "for loop (empty)", test_ir_gen_for_loop_empty);
     CU_add_test(suite, "declare struct type (global scope)", test_ir_gen_declare_struct_type_global_scope);
     CU_add_test(suite, "declare struct default initializer (local scope)", test_ir_gen_declare_struct_default_initializer);
@@ -1344,8 +1427,10 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "goto", test_ir_gen_label_and_goto);
     CU_add_test(suite, "goto (forward)", test_ir_forward_goto);
     CU_add_test(suite, "break (while)", test_ir_while_break);
+    CU_add_test(suite, "break (do-while)", test_ir_do_while_break);
     CU_add_test(suite, "break (for)", ir_test_for_break);
     CU_add_test(suite, "continue (while)", ir_test_while_continue);
+    CU_add_test(suite, "continue (do-while)", ir_test_do_while_continue);
     CU_add_test(suite, "continue (for)", ir_test_for_continue);
     return CUE_SUCCESS;
 }

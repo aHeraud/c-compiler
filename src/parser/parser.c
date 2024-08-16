@@ -21,6 +21,8 @@
 #include <assert.h>
 
 #include "parser.h"
+
+#include "errors.h"
 #include "parser/lexer.h"
 
 bool any_non_null(size_t count, ...) {
@@ -1538,6 +1540,8 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
         return parse_return_statement(parser, stmt, begin);
     } else if (accept(parser, TK_WHILE, &begin)) {
         return parse_while_statement(parser, stmt, begin);
+    } else if (peek(parser, TK_DO)) {
+        return parse_do_while_statement(parser, stmt);
     } else if (accept(parser, TK_FOR, &begin)) {
         return parse_for_statement(parser, stmt, begin);
     } else if (peek(parser, TK_BREAK)) {
@@ -1701,7 +1705,8 @@ bool parse_while_statement(parser_t* parser, statement_t *statement, token_t *ke
         return false;
     }
 
-    if (!require(parser, TK_RPAREN, NULL, "while-statement", NULL)) return false;
+    token_t *terminator = NULL;
+    if (!require(parser, TK_RPAREN, &terminator, "while-statement", NULL)) return false;
 
     statement_t *body = malloc(sizeof(statement_t));
     if (!parse_statement(parser, body)) {
@@ -1716,8 +1721,52 @@ bool parse_while_statement(parser_t* parser, statement_t *statement, token_t *ke
             .condition = condition,
             .body = body,
         },
+        .terminator = terminator,
     };
 
+    return true;
+}
+
+bool parse_do_while_statement(parser_t *parser, statement_t *statement) {
+    token_t *do_token, *while_token, *terminator;
+    if (!require(parser, TK_DO, &do_token, "do-while-statement", NULL))
+        return false;
+
+    statement_t *body = malloc(sizeof(statement_t));
+    if (!parse_statement(parser, body)) {
+        free(body);
+        return false;
+    }
+
+    if (!require(parser, TK_WHILE, &while_token, "do-while-statement", NULL))
+        return false;
+
+    if (!require(parser, TK_LPAREN, NULL, "do-while-statement", NULL))
+        return false;
+
+    expression_t *condition = malloc(sizeof(expression_t));
+    if (!parse_expression(parser, condition)) {
+        free(body);
+        free(condition);
+        return false;
+    }
+
+    if (!require(parser, TK_RPAREN, NULL, "do-while-statement", NULL))
+        return false;
+
+    if (!require(parser, TK_SEMICOLON, &terminator, "do-while-statement", NULL))
+        return false;
+
+    *statement = (statement_t) {
+        .type = STATEMENT_DO_WHILE,
+        .terminator = terminator,
+        .do_while = {
+            .body = body,
+            .condition = condition,
+            .do_keyword = do_token,
+            .while_keyword = while_token,
+        },
+    };
     return true;
 }
 
@@ -3064,12 +3113,7 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
  */
 bool parse_external_declaration(parser_t *parser, external_declaration_t *external_declaration) {
     type_t type;
-    // if (!parse_declaration_specifiers(parser, &type)) {
-    //     return false;
-    // }
-    // clang what the fuck
-    bool result = parse_declaration_specifiers(parser, &type);
-    if (result == false) {
+    if (!parse_declaration_specifiers(parser, &type)) {
         return false;
     }
 
@@ -3131,7 +3175,7 @@ bool parse_external_declaration(parser_t *parser, external_declaration_t *extern
     return true;
 }
 
-bool parse_function_definition(parser_t *parser, declaration_t *declarator, const token_t *body_start, function_definition_t *fn) {
+bool parse_function_definition(parser_t *parser, const declaration_t *declarator, const token_t *body_start, function_definition_t *fn) {
     statement_t *body = malloc(sizeof(statement_t));
     if (!parse_compound_statement(parser, body, body_start)) {
         free(body);

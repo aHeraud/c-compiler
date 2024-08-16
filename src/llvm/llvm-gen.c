@@ -1,7 +1,8 @@
 #include <string.h>
 #include <ctype.h>
-#include "llvm-c/Core.h"
+
 #include "llvm-c/Analysis.h"
+#include "llvm-c/Core.h"
 
 #include "ir/ir.h"
 #include "llvm-gen.h"
@@ -184,6 +185,19 @@ void llvm_gen_visit_function(llvm_gen_context_t *context, const ir_function_defi
         }
 
         LLVMAddIncoming(incomplete_phi->llvm_phi, incoming_values, incoming_blocks, phi->operands.size);
+    }
+
+    // The entry block must not have predecessors
+    ir_ssa_basic_block_t *entry_block = context->ir_cfg->basic_blocks.buffer[0];
+    if (entry_block != NULL && entry_block->predecessors.size > 0){
+        // The entry basic block has at least 1 predecessor. It's probably the start of a loop, or a label that is the
+        // destination of a goto statement.
+        // We will add a new basic block as the entry of the function that just contains a jump instruction to go to
+        // the previous entry block.
+        LLVMBasicBlockRef llvm_entry_block = llvm_get_or_create_basic_block(context, entry_block);
+        LLVMBasicBlockRef llvm_basic_block = LLVMInsertBasicBlock(llvm_entry_block, "");
+        LLVMPositionBuilderAtEnd(context->llvm_builder, llvm_basic_block);
+        LLVMBuildBr(context->llvm_builder, llvm_entry_block);
     }
 
     // Cleanup
