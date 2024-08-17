@@ -1,7 +1,7 @@
 #ifndef C_COMPILER_IR_H
 #define C_COMPILER_IR_H
 
-//// # IR Definition
+/// # IR Definition
 ///
 /// Internal intermediate representation (IR) for the compiler.
 /// This is a simple typed three address code representation of the input program. After parsing and building the
@@ -111,6 +111,18 @@
 /// - memcpy: Copy intrinsic, copy the value from a to b `memcpy dest, src`
 ///    + If src and dest are different sizes, the smaller size is used.
 ///    + dest must be a pointer, array, or struct type
+/// - memset: Memset intrinsic, fills the destination with len elements of the provided value `memset dest, val, len`
+///    + dest must be a pointer or array
+/// - get_array_element_pointer: Get a pointer to an element in an array: `get_array_element_pointer ptr, index, result`
+///    + ptr must be a pointer
+///    + index must be an integer
+///    + result must be a pointer, with the same type as ptr
+/// - get_struct_member_pointer: Get a pointer to a field of a struct: `get_struct_element_pointer ptr, index, result`
+///    + ptr must be a pointer to a struct or union
+///    + index refers to the target field of the struct, there must be a field with that index
+///    + index must be a constant integer
+///    + result must be a pointer, with a pointee type of the field being accessed
+///
 /// ### Type Conversion
 ///
 /// - trunc a, b - Truncate a to the specified size `i8 b = trunc i32 a`

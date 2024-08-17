@@ -77,6 +77,8 @@ The compiler has its own internal representation, which is produced as the outpu
 This IR can then be lowered to another IR (implemented by the LLVM backend), or directly to the target machine code 
 (not currently implemented).
 
+For more details on the IR, see [docs/ir.md](docs/ir.md).
+
 #### IR Example
 
 ```c
