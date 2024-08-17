@@ -319,7 +319,6 @@ void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *sta
 void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_while_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_do_while_statement(ir_gen_context_t *context, const statement_t *statement);
-void ir_visit_for_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_continue_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_goto_statement(ir_gen_context_t *context, const statement_t *statement);
@@ -918,77 +917,6 @@ void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *state
     ir_build_nop(context->builder, loop_exit_label);
 
     if (statement->type == STATEMENT_FOR) leave_scope(context);
-}
-
-void ir_visit_for_statement(ir_gen_context_t *context, const statement_t *statement) {
-    assert(statement->type == STATEMENT_FOR);
-
-    // The for statement gets its own scope, so that variables declared in the initializer are not visible outside the loop
-    enter_scope(context);
-
-    if (statement->for_.initializer.kind == FOR_INIT_DECLARATION) {
-        assert(statement->for_.initializer.declarations != NULL);
-        for (size_t i = 0; i < statement->for_.initializer.declarations->size; i += 1) {
-            ir_visit_declaration(context, statement->for_.initializer.declarations->buffer[i]);
-        }
-    } else if (statement->for_.initializer.kind == FOR_INIT_EXPRESSION) {
-        assert(statement->for_.initializer.expression != NULL);
-        ir_visit_expression(context, statement->for_.initializer.expression);
-    }
-
-    char *loop_label = gen_label(context); // start of the loop
-    char *post_label = gen_label(context); // start of the post-statement
-    char *end_label = gen_label(context);  // end of the loop
-
-    ir_build_nop(context->builder, loop_label);
-
-    if (statement->for_.condition != NULL) {
-        // Evaluate the condition
-        expression_result_t condition = ir_visit_expression(context, statement->for_.condition);
-        if (condition.kind == EXPR_RESULT_ERR) {
-            leave_scope(context);
-            return;
-        }
-        if (condition.is_lvalue) condition = get_rvalue(context, condition);
-
-        // The loop condition must be a scalar type
-        if (!is_scalar_type(condition.c_type)) {
-            append_compilation_error(&context->errors, (compilation_error_t) {
-                .kind = ERR_INVALID_LOOP_CONDITION_TYPE,
-                .location = statement->expression->span.start,
-                .invalid_loop_condition_type = {
-                    .type = condition.c_type,
-                },
-            });
-            leave_scope(context);
-            return;
-        }
-
-        // If the condition is false, jump to the end of the loop
-        expression_result_t bool_condition = get_boolean_value(context, condition.value, condition.c_type, statement->for_.condition);
-        ir_var_t br_cond = temp_var(context, &IR_BOOL);
-        ir_build_eq(context->builder, bool_condition.value, ir_get_zero_value(context, &IR_BOOL), br_cond);
-        ir_build_br_cond(context->builder, ir_value_for_var(br_cond), end_label);
-    }
-
-    if (statement->for_.body != NULL) {
-        loop_context_t loop_context = enter_loop_context(context, end_label, post_label);
-        ir_visit_statement(context, statement->for_.body);
-        leave_loop_context(context, loop_context);
-    }
-
-    ir_build_nop(context->builder, post_label);
-    if (statement->for_.post != NULL) {
-        ir_visit_expression(context, statement->for_.post);
-    }
-
-    // Jump back to the start of the loop
-    ir_build_br(context->builder, loop_label);
-
-    // Label for the end of the loop
-    ir_build_nop(context->builder, end_label);
-
-    leave_scope(context);
 }
 
 void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *statement) {
