@@ -44,9 +44,16 @@ class ValidationTestCase(unittest.TestCase):
         # Delete the temporary build directory
         subprocess.run(["rm", "-rf", self.tempdir])
 
+    def stdin(self) -> str | None:
+        stdin_file = self.test_dir + "/stdin"
+        if not os.path.exists(stdin_file):
+            return None
+        with open(stdin_file, "r") as f:
+            return f.read()
+
     def runTest(self):
         binary = self.build()
-        result = subprocess.run([binary], stdout=subprocess.PIPE, text=True)
+        result = subprocess.run([binary], input=self.stdin(), stdout=subprocess.PIPE, text=True, timeout=20)
 
         self.assertEqual(result.returncode, self.expected_exit_code(), "Program exited with unexpected exit code " +
                          str(result.returncode))

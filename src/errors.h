@@ -24,7 +24,6 @@ typedef enum CompilationErrorKind {
     ERR_CALL_TARGET_NOT_FUNCTION,
     ERR_CALL_ARGUMENT_COUNT_MISMATCH,
     ERR_INVALID_LOOP_CONDITION_TYPE,
-    ERR_INVALID_UNARY_NOT_OPERAND_TYPE,
     ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
     ERR_INVALID_CONVERSION_TO_BOOLEAN,
     ERR_UNARY_INDIRECTION_OPERAND_NOT_PTR_TYPE,
@@ -37,6 +36,7 @@ typedef enum CompilationErrorKind {
     ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE,
     ERR_CONTINUE_OUTSIDE_OF_LOOP,
     ERR_CANNOT_INCREMENT_DECREMENT_TYPE,
+    ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -91,9 +91,6 @@ typedef struct CompilationError {
         } invalid_loop_condition_type;
         struct {
             const type_t *type;
-        } invalid_unary_not_operand_type;
-        struct {
-            const type_t *type;
         } invalid_logical_binary_expression_operand_type;
         struct {
             const type_t *type;
@@ -122,6 +119,10 @@ typedef struct CompilationError {
         struct {
             const type_t *type;
         } cannot_increment_decrement_type;
+        struct {
+            const type_t *type;
+            token_t operator;
+        } invalid_unary_arithmetic_operator_type;
     };
 } compilation_error_t;
 

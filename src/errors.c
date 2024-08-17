@@ -85,11 +85,6 @@ void print_compilation_error(const compilation_error_t *error) {
                     error->location.path, error->location.line, error->location.column);
             break;
         }
-        case ERR_INVALID_UNARY_NOT_OPERAND_TYPE: {
-            fprintf(stderr, ERROR_PREFIX "Invalid operand type for unary operator\n",
-                    error->location.path, error->location.line, error->location.column);
-            break;
-        }
         case ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE: {
             fprintf(stderr, ERROR_PREFIX "Invalid operand type for logical binary operator\n",
                     error->location.path, error->location.line, error->location.column);
@@ -173,6 +168,28 @@ void print_compilation_error(const compilation_error_t *error) {
             // TODO: display type
             fprintf(stderr, ERROR_PREFIX "cannot increment/decrement value of type\n",
                 error->location.path, error->location.line, error->location.column);
+            break;
+        }
+        case ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE: {
+            const char *suffix;
+            switch (error->invalid_unary_arithmetic_operator_type.operator.kind) {
+                case TK_EXCLAMATION:
+                    // unary logical not
+                    suffix = ", operand must have scalar type";
+                    break;
+                case TK_BITWISE_NOT:
+                    suffix = ", operand must have integer type";
+                    break;
+                case TK_PLUS:
+                case TK_MINUS:
+                    suffix = ", operand must have arithmetic type";
+                    break;
+                default:
+                    suffix = "";
+            }
+            fprintf(stderr, ERROR_PREFIX "Invalid operand type for unary operator '%s'%s\n",
+                    error->location.path, error->location.line, error->location.column,
+                    error->invalid_unary_arithmetic_operator_type.operator.value, suffix);
             break;
         }
         default: {

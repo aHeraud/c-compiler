@@ -1180,6 +1180,48 @@ void test_ir_gen_sizeof_unary_expression() {
     CU_ASSERT_EQUAL_FATAL(size->value.i, 4)
 }
 
+void test_ir_gen_unary_local_not_constexpr() {
+    const char *input =
+        "int main() {\n"
+        "    int a = !4;\n"
+        "    int b = !0;\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "*i32 %1 = alloca i32",
+        "store i32 0, *i32 %0",
+        "store i32 1, *i32 %1",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_unary_local_not() {
+    const char *input =
+        "int main(int a) {\n"
+        "    int b = !a;\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "*i32 %1 = alloca i32",
+        "store i32 a, *i32 %0",
+        "i32 %2 = load *i32 %0",
+        "bool %3 = eq i32 %2, i32 0",
+        "i32 %4 = ext bool %3",
+        "store i32 %4, *i32 %1",
+        "ret i32 0"
+    }));
+}
+
 void test_ir_gen_label_and_goto() {
     const char *input =
         "int main() {\n"
@@ -1424,6 +1466,8 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "sizeof type primitive", test_ir_gen_sizeof_type_primitive);
     CU_add_test(suite, "sizeof type struct", test_ir_gen_sizeof_type_struct);
     CU_add_test(suite, "sizeof unary expression", test_ir_gen_sizeof_unary_expression);
+    CU_add_test(suite, "unary logical not (constant)", test_ir_gen_unary_local_not_constexpr);
+    CU_add_test(suite, "unary logical not", test_ir_gen_unary_local_not);
     CU_add_test(suite, "goto", test_ir_gen_label_and_goto);
     CU_add_test(suite, "goto (forward)", test_ir_forward_goto);
     CU_add_test(suite, "break (while)", test_ir_while_break);

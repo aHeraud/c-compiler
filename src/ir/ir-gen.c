@@ -340,6 +340,7 @@ expression_result_t ir_visit_sizeof_expression(ir_gen_context_t *context, const 
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_logical_not_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_sizeof_unexpr(ir_gen_context_t *context, const expression_t *expr);
@@ -2428,6 +2429,8 @@ expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const e
     switch (expr->unary.operator) {
         case UNARY_BITWISE_NOT:
             return ir_visit_bitwise_not_unexpr(context, expr);
+        case UNARY_LOGICAL_NOT:
+            return ir_visit_logical_not_unexpr(context, expr);
         case UNARY_ADDRESS_OF:
             return ir_visit_address_of_unexpr(context, expr);
         case UNARY_DEREFERENCE:
@@ -2443,8 +2446,9 @@ expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const e
         case UNARY_POST_INCREMENT:
             return ir_visit_increment_decrement(context, expr, false, true);
         default:
-            // TODO
-            assert(false && "Unary operator not implemented");
+            fprintf(stderr, "%s:%d:%d: Unary operator not implemented\n",
+                expr->span.start.path, expr->span.start.line, expr->span.start.column);
+            exit(1);
     }
 }
 
@@ -2460,10 +2464,11 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
     if (!is_integer_type(operand.c_type)) {
         // The operand must have integer type
         append_compilation_error(&context->errors, (compilation_error_t) {
-            .kind = ERR_INVALID_UNARY_NOT_OPERAND_TYPE,
+            .kind = ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE,
             .location = expr->unary.operand->span.start,
-            .invalid_unary_not_operand_type = {
+            .invalid_unary_arithmetic_operator_type = {
                 .type = operand.c_type,
+                .operator = *expr->unary.token,
             },
         });
         return EXPR_ERR;
@@ -2499,6 +2504,57 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
         .is_string_literal = false,
         .addr_of = false,
         .value = ir_value_for_var(result),
+    };
+}
+
+expression_result_t ir_visit_logical_not_unexpr(ir_gen_context_t *context, const expression_t *expr) {
+    assert(expr != NULL && expr->type == EXPRESSION_UNARY);
+
+    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+    if (operand.is_lvalue) operand = get_rvalue(context, operand);
+
+    if (!is_scalar_type(operand.c_type)) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE,
+            .location = expr->unary.token->position,
+            .invalid_unary_arithmetic_operator_type = {
+                .operator = *expr->unary.token,
+                .type = operand.c_type,
+            }
+        });
+        return EXPR_ERR;
+    }
+
+    // The result has type int. It is 0 if the value of the operand compares unequal to 0, otherwise the result is 1.
+    // The expression !expr is equivalent to (0 == expr).
+
+    ir_value_t result;
+    if (operand.value.kind == IR_VALUE_CONST) {
+        // constant volding
+        assert(operand.value.constant.kind == IR_CONST_INT);
+        result = ir_make_const_int(context->arch->sint, operand.value.constant.i == 0 ? 1 : 0);
+    } else {
+        // Get a constant zero of the same type as the operand
+        ir_value_t zero = ir_get_zero_value(context, ir_get_type_of_value(operand.value));
+
+        // Compare to 0
+        ir_var_t comparisson_result = temp_var(context, &IR_BOOL);
+        ir_build_eq(context->builder, operand.value, zero, comparisson_result);
+
+        // Extend the result to an int, as a boolean is just a 1-bit integer
+        ir_var_t int_result = temp_var(context, context->arch->sint);
+        ir_build_ext(context->builder, ir_value_for_var(comparisson_result), int_result);
+        result = ir_value_for_var(int_result);
+    }
+
+    return (expression_result_t) {
+        .addr_of = false,
+        .c_type = &INT,
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .kind = EXPR_RESULT_VALUE,
+        .value = result,
     };
 }
 

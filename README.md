@@ -233,10 +233,11 @@ Expressions/Operators:
 - [x] Size of
 - [x] Address of (`&`)
 - [x] Dereference (`*`)
-- [ ] Bitwise not (`~`)
-- [ ] Logical not (`!`)
+- [x] Bitwise not (`~`)
+- [x] Logical not (`!`)
 - [x] Function calls
 - [x] Variadic functions
+- [ ] Function pointers 
 
 Control Flow:
 - [x] For loop

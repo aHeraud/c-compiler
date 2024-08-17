@@ -137,13 +137,13 @@ const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
                         break;
                     case IR_CONST_INT: {
                         char *s = alloca(256);
-                        snprintf(s, 256, "%ld", val.i);
+                        snprintf(s, 256, "%ld", (long) val.i);
                         str = s;
                         break;
                     }
                     case IR_CONST_FLOAT: {
                         char *s = alloca(256);
-                        snprintf(s, 256, "%f", val.f);
+                        snprintf(s, 256, "%f", (double) val.f);
                         str = s;
                         break;
                     }
