@@ -1403,6 +1403,256 @@ void ir_test_for_continue() {
     }));
 }
 
+void ir_test_compound_assign_add() {
+    const char *input =
+        "int main() {\n"
+            "int a = 0;\n"
+            "a += 1;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 0;
+        "*i32 %0 = alloca i32",
+        "store i32 0, *i32 %0",
+        // a += 1;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = add i32 %1, i32 1",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_sub() {
+    const char *input =
+        "int main() {\n"
+            "int a = 0;\n"
+            "a -= 1;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 0;
+        "*i32 %0 = alloca i32",
+        "store i32 0, *i32 %0",
+        // a -= 1;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = sub i32 %1, i32 1",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_mul() {
+    const char *input =
+        "int main() {\n"
+            "int a = 1;\n"
+            "a *= 2;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 1;
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        // a *= 2;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = mul i32 %1, i32 2",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_div() {
+    const char *input =
+        "int main() {\n"
+            "int a = 1;\n"
+            "a /= 2;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 1;
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        // a /= 2;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = div i32 %1, i32 2",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_mod() {
+    const char *input =
+        "int main() {\n"
+            "int a = 1;\n"
+            "a %= 2;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 1;
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        // a %= 2;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = mod i32 %1, i32 2",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_and() {
+    const char *input =
+        "int main() {\n"
+            "int a = 1;\n"
+            "a &= 2;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 1;
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        // a &= 2;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = and i32 %1, i32 2",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_or() {
+    const char *input =
+        "int main() {\n"
+            "int a = 1;\n"
+            "a |= 2;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 1;
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        // a |= 2;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = or i32 %1, i32 2",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_xor() {
+    const char *input =
+        "int main() {\n"
+            "int a = 1;\n"
+            "a ^= 2;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 1;
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        // a |= 2;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = xor i32 %1, i32 2",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_shl() {
+    const char *input =
+        "int main() {\n"
+            "int a = 1;\n"
+            "a <<= 2;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 1;
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        // a <<= 2;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = shl i32 %1, i32 2",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
+void ir_test_compound_assign_shr() {
+    const char *input =
+        "int main() {\n"
+            "int a = 1;\n"
+            "a >>= 2;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        // int a = 1;
+        "*i32 %0 = alloca i32",
+        "store i32 1, *i32 %0",
+        // a >>= 2;
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = shr i32 %1, i32 2",
+        "i32 %3 = i32 %2",
+        "store i32 %3, *i32 %0",
+        // return 0;
+        "ret i32 0"
+    }));
+}
+
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -1476,5 +1726,15 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "continue (while)", ir_test_while_continue);
     CU_add_test(suite, "continue (do-while)", ir_test_do_while_continue);
     CU_add_test(suite, "continue (for)", ir_test_for_continue);
+    CU_add_test(suite, "compound assignment (add)", ir_test_compound_assign_add);
+    CU_add_test(suite, "compound assignment (sub)", ir_test_compound_assign_sub);
+    CU_add_test(suite, "compound assignment (mul)", ir_test_compound_assign_mul);
+    CU_add_test(suite, "compound assignment (div)", ir_test_compound_assign_div);
+    CU_add_test(suite, "compound assignment (mod)", ir_test_compound_assign_mod);
+    CU_add_test(suite, "compound assignment (shl)", ir_test_compound_assign_shl);
+    CU_add_test(suite, "compound assignment (shr)", ir_test_compound_assign_shr);
+    CU_add_test(suite, "compound assignment (and)", ir_test_compound_assign_and);
+    CU_add_test(suite, "compound assignment (or)", ir_test_compound_assign_or);
+    CU_add_test(suite, "compound assignment (xor)", ir_test_compound_assign_xor);
     return CUE_SUCCESS;
 }

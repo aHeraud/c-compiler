@@ -789,6 +789,40 @@ void test_parse_assignment_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
+void test_parse_compound_assignment_expression_add() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "val += 3";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t node;
+    CU_ASSERT_TRUE_FATAL(parse_assignment_expression(&parser, &node))
+    expression_t *expected = binary((binary_expression_t) {
+            .left = make_identifier("val"),
+            .right = integer_constant("3"),
+            .type = BINARY_ASSIGNMENT,
+            .assignment_operator = BINARY_ADD_ASSIGN,
+            .operator = token(TK_PLUS_ASSIGN, "+="),
+    });
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
+}
+
+void test_parse_compound_assignment_expression_div() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "val /= 3";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t node;
+    CU_ASSERT_TRUE_FATAL(parse_assignment_expression(&parser, &node))
+    expression_t *expected = binary((binary_expression_t) {
+            .left = make_identifier("val"),
+            .right = integer_constant("3"),
+            .type = BINARY_ASSIGNMENT,
+            .assignment_operator = BINARY_DIVIDE_ASSIGN,
+            .operator = token(TK_DIVIDE_ASSIGN, "/="),
+    });
+    CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
+}
+
 void test_parse_int_declaration_specifiers() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int";
@@ -2136,6 +2170,8 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "logical or expression", test_parse_logical_or_expression) ||
         NULL == CU_add_test(pSuite, "conditional expression", test_parse_conditional_expression) ||
         NULL == CU_add_test(pSuite, "assignment expression", test_parse_assignment_expression) ||
+        NULL == CU_add_test(pSuite, "compound assignment expression (add)", test_parse_compound_assignment_expression_add) ||
+        NULL == CU_add_test(pSuite, "compound assignment expression (div)", test_parse_compound_assignment_expression_div) ||
         NULL == CU_add_test(pSuite, "int declaration specifiers", test_parse_int_declaration_specifiers) ||
         NULL == CU_add_test(pSuite, "invalid declaration specifiers", test_parse_invalid_declaration_specifiers) ||
         NULL == CU_add_test(pSuite, "struct definition", test_parse_struct_definition) ||

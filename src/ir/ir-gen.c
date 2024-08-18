@@ -331,11 +331,11 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
 expression_result_t ir_visit_constant(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const expression_t *expr);
-expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t lhs, expression_result_t rhs);
 expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr);
-expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t lhs, expression_result_t rhs);
 expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr);
-expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t lhs, expression_result_t rhs);
 expression_result_t ir_visit_sizeof_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr);
@@ -1613,22 +1613,29 @@ expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const 
 
     switch (expr->binary.type) {
         case BINARY_ARITHMETIC: {
+            expression_result_t lhs = ir_visit_expression(context, expr->binary.left);
+            expression_result_t rhs = ir_visit_expression(context, expr->binary.right);
             if (expr->binary.arithmetic_operator == BINARY_ARITHMETIC_ADD ||
                 expr->binary.arithmetic_operator == BINARY_ARITHMETIC_SUBTRACT) {
-                return ir_visit_additive_binexpr(context, expr);
+                return ir_visit_additive_binexpr(context, expr, lhs, rhs);
             } else {
-                return ir_visit_multiplicative_binexpr(context, expr);
+                return ir_visit_multiplicative_binexpr(context, expr, lhs, rhs);
             }
         }
         case BINARY_ASSIGNMENT: {
             return ir_visit_assignment_binexpr(context, expr);
         }
         case BINARY_BITWISE: {
-            return ir_visit_bitwise_binexpr(context, expr);
+            expression_result_t lhs = ir_visit_expression(context, expr->binary.left);
+            expression_result_t rhs = ir_visit_expression(context, expr->binary.right);
+            return ir_visit_bitwise_binexpr(context, expr, lhs, rhs);
         }
         case BINARY_COMMA: {
             // TODO
-            assert(false && "comma operator not implemented");
+            source_position_t pos = expr->binary.operator->position;
+            fprintf(stderr, "%s:%d:%d: comma operator not yet implemented\n",
+                pos.path, pos.line, pos.column);
+            exit(1);
         }
         case BINARY_COMPARISON: {
             return ir_visit_comparison_binexpr(context, expr);
@@ -1639,13 +1646,9 @@ expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const 
     }
 }
 
-expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr) {
+expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
     const type_t *result_type;
     const ir_type_t *ir_result_type;
-
-    // Evaluate the left and right operands.
-    expression_result_t left = ir_visit_expression(context, expr->binary.left);
-    expression_result_t right = ir_visit_expression(context, expr->binary.right);
 
     // Bubble up errors if the operands are invalid.
     if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
@@ -1750,13 +1753,9 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
     }
 }
 
-expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr) {
-    bool is_modulo = expr->binary.operator->kind == TK_PERCENT;
-    bool is_division = expr->binary.operator->kind == TK_SLASH;
-
-    // Evaluate the left and right operands.
-    expression_result_t left = ir_visit_expression(context, expr->binary.left);
-    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
+    bool is_modulo = expr->binary.operator->kind == TK_PERCENT || expr->binary.operator->kind == TK_MOD_ASSIGN;
+    bool is_division = expr->binary.operator->kind == TK_SLASH || expr->binary.operator->kind == TK_DIVIDE_ASSIGN;
 
     // Bubble up errors if the operands are invalid.
     if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
@@ -1824,7 +1823,7 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
             ir_build_mod(context->builder, left.value, right.value, temp);
         } else if (is_division) {
             ir_build_div(context->builder, left.value, right.value, temp);
-        } else {
+        } else { // multiplication
             ir_build_mul(context->builder, left.value, right.value, temp);
         }
         result = ir_value_for_var(temp);
@@ -1840,21 +1839,18 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
     };
 }
 
-expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr) {
-    // Evaluate the left and right operands.
-    expression_result_t left = ir_visit_expression(context, expr->binary.left);
-    expression_result_t right = ir_visit_expression(context, expr->binary.right);
-
+expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
     // Bubble up errors if the operands are invalid.
     if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
 
-    bool is_shift = expr->binary.operator->kind == TK_LSHIFT
-                 || expr->binary.operator->kind == TK_RSHIFT;
-    bool is_and = expr->binary.operator->kind == TK_AMPERSAND;
-    bool is_or = expr->binary.operator->kind == TK_BITWISE_OR;
+    bool is_lshift = expr->binary.operator->kind == TK_LSHIFT || expr->binary.operator->kind == TK_LSHIFT_ASSIGN;
+    bool is_rshift = expr->binary.operator->kind == TK_RSHIFT || expr->binary.operator->kind == TK_RSHIFT_ASSIGN;
+    bool is_shift = is_lshift || is_rshift;
+    bool is_and = expr->binary.operator->kind == TK_AMPERSAND || expr->binary.operator->kind == TK_BITWISE_AND_ASSIGN;
+    bool is_or = expr->binary.operator->kind == TK_BITWISE_OR || expr->binary.operator->kind == TK_BITWISE_OR_ASSIGN;
 
     // For bitwise operators, both operands must have integer type
     if (!is_integer_type(left.c_type) || !is_integer_type(right.c_type)) {
@@ -1886,8 +1882,8 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
             .i = 0,
         };
 
-        if (expr->binary.operator->kind == TK_LSHIFT) value.i = left.value.constant.i << right.value.constant.i;
-        else if (expr->binary.operator->kind == TK_RSHIFT) value.i = left.value.constant.i >> right.value.constant.i;
+        if (is_lshift) value.i = left.value.constant.i << right.value.constant.i;
+        else if (is_rshift) value.i = left.value.constant.i >> right.value.constant.i;
         else if (is_and) value.i = left.value.constant.i & right.value.constant.i;
         else if (is_or) value.i = left.value.constant.i | right.value.constant.i;
         else value.i = left.value.constant.i ^ right.value.constant.i;
@@ -1898,13 +1894,9 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
         };
     } else {
         ir_var_t temp = temp_var(context, result_type);
-
         if (is_shift) {
-            if (expr->binary.operator->kind == TK_LSHIFT) {
-                ir_build_shl(context->builder, left.value, right.value, temp);
-            } else {
-                ir_build_shr(context->builder, left.value, right.value, temp);
-            }
+            if (is_lshift) ir_build_shl(context->builder, left.value, right.value, temp);
+            else ir_build_shr(context->builder, left.value, right.value, temp);
         } else if (is_and) {
             ir_build_and(context->builder, left.value, right.value, temp);
         } else if (is_or) {
@@ -1946,12 +1938,32 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
         return EXPR_ERR;
     }
 
-    if (right.is_lvalue) right = get_rvalue(context, right);
-
     if (expr->binary.operator->kind != TK_ASSIGN) {
-        // TODO
-        assert(false && "Compound assignment not implemented");
+        switch (expr->binary.assignment_operator) {
+            case BINARY_ADD_ASSIGN:
+            case BINARY_SUBTRACT_ASSIGN:
+                right = ir_visit_additive_binexpr(context, expr, left, right);
+                break;
+            case BINARY_DIVIDE_ASSIGN:
+            case BINARY_MODULO_ASSIGN:
+            case BINARY_MULTIPLY_ASSIGN:
+                right = ir_visit_multiplicative_binexpr(context, expr, left, right);
+                break;
+            case BINARY_BITWISE_AND_ASSIGN:
+            case BINARY_BITWISE_OR_ASSIGN:
+            case BINARY_BITWISE_XOR_ASSIGN:
+            case BINARY_SHIFT_LEFT_ASSIGN:
+            case BINARY_SHIFT_RIGHT_ASSIGN:
+                right = ir_visit_bitwise_binexpr(context, expr, left, right);
+                break;
+            default:
+                // This should be unreachable
+                fprintf(stderr, "%s:%d IR generation error, unrecognized assignment operator\n", __FILE__, __LINE__);
+                exit(1);
+        }
     }
+
+    if (right.is_lvalue) right = get_rvalue(context, right);
 
     // Generate an assignment instruction.
     ir_var_t result = (ir_var_t) {

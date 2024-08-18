@@ -208,6 +208,11 @@ token_t lscan(struct Lexer* lexer) {
                 token_t comment_token;
                 comment(lexer, &comment_token); // TODO: can we just discard this?
                 return lscan(lexer); // scan next token
+            } else if (lpeek(lexer, 2) == '=') {
+                ladvance(lexer);
+                ladvance(lexer);
+                token.kind = TK_DIVIDE_ASSIGN;
+                token.value = "/=";
             } else {
                 ladvance(lexer);
                 token.kind = TK_SLASH;
@@ -245,6 +250,10 @@ token_t lscan(struct Lexer* lexer) {
                 ladvance(lexer);
                 token.kind = TK_INCREMENT;
                 token.value = "++";
+            } else if (lpeek(lexer, 1) == '=') {
+                ladvance(lexer);
+                token.kind = TK_PLUS_ASSIGN;
+                token.value = "+=";
             } else {
                 token.kind = TK_PLUS;
                 token.value = "+";
@@ -260,6 +269,10 @@ token_t lscan(struct Lexer* lexer) {
                 ladvance(lexer);
                 token.kind = TK_DECREMENT;
                 token.value = "--";
+            } else if (lpeek(lexer, 1) == '=') {
+                ladvance(lexer);
+                token.kind = TK_MINUS_ASSIGN;
+                token.value = "-=";
             } else {
                 token.kind = TK_MINUS;
                 token.value = "-";
@@ -267,13 +280,25 @@ token_t lscan(struct Lexer* lexer) {
             break;
         case '*':
             ladvance(lexer);
-            token.kind = TK_STAR;
-            token.value = "*";
+            if (lpeek(lexer, 1) == '=') {
+                ladvance(lexer);
+                token.kind = TK_MULTIPLY_ASSIGN;
+                token.value = "*=";
+            } else {
+                token.kind = TK_STAR;
+                token.value = "*";
+            }
             break;
         case '%':
             ladvance(lexer);
-            token.kind = TK_PERCENT;
-            token.value = "%";
+            if (lpeek(lexer, 1) == '=') {
+                ladvance(lexer);
+                token.kind = TK_MOD_ASSIGN;
+                token.value = "%=";
+            } else {
+                token.kind = TK_PERCENT;
+                token.value = "%";
+            }
             break;
         case '=':
             ladvance(lexer);
@@ -294,8 +319,14 @@ token_t lscan(struct Lexer* lexer) {
                 token.value = "<=";
             } else if (c1 == '<') {
                 ladvance(lexer);
-                token.kind = TK_LSHIFT;
-                token.value = "<<";
+                if (lpeek(lexer, 1) == '=') {
+                    ladvance(lexer);
+                    token.kind = TK_LSHIFT_ASSIGN;
+                    token.value = "<<=";
+                } else {
+                    token.kind = TK_LSHIFT;
+                    token.value = "<<";
+                }
             } else {
                 token.kind = TK_LESS_THAN;
                 token.value = "<";
@@ -309,8 +340,14 @@ token_t lscan(struct Lexer* lexer) {
                 token.value = ">=";
             } else if (c1 == '>') {
                 ladvance(lexer);
-                token.kind = TK_RSHIFT;
-                token.value = ">>";
+                if (lpeek(lexer, 1) == '=') {
+                    ladvance(lexer);
+                    token.kind = TK_RSHIFT_ASSIGN;
+                    token.value = ">>=";
+                } else {
+                    token.kind = TK_RSHIFT;
+                    token.value = ">>";
+                }
             } else {
                 token.kind = TK_GREATER_THAN;
                 token.value = ">";
@@ -333,6 +370,10 @@ token_t lscan(struct Lexer* lexer) {
                 ladvance(lexer);
                 token.kind = TK_LOGICAL_AND;
                 token.value = "&&";
+            } else if (c1 == '=') {
+                ladvance(lexer);
+                token.kind = TK_BITWISE_AND_ASSIGN;
+                token.value = "&=";
             } else {
                 token.kind = TK_AMPERSAND;
                 token.value = "&";
@@ -344,6 +385,10 @@ token_t lscan(struct Lexer* lexer) {
                 ladvance(lexer);
                 token.kind = TK_LOGICAL_OR;
                 token.value = "||";
+            } else if (c1 == '=') {
+                ladvance(lexer);
+                token.kind = TK_BITWISE_OR_ASSIGN;
+                token.value = "|=";
             } else {
                 token.kind = TK_BITWISE_OR;
                 token.value = "|";
@@ -351,8 +396,14 @@ token_t lscan(struct Lexer* lexer) {
             break;
         case '^':
             ladvance(lexer);
-            token.kind = TK_BITWISE_XOR;
-            token.value = "^";
+            if (c1 == '=') {
+                ladvance(lexer);
+                token.kind = TK_BITWISE_XOR_ASSIGN;
+                token.value = "^=";
+            } else {
+                token.kind = TK_BITWISE_XOR;
+                token.value = "^";
+            }
             break;
         case '?':
             ladvance(lexer);

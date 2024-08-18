@@ -179,7 +179,7 @@ The IR has 3 different forms:
 
 There are utilities for converting the IR between the three forms, see src/ir/cfg.c and src/ir/ssa.c.
 
-### Unimplemented Language Features
+### C Language Feature Support
 
 Specifiers/Qualifiers:
 - [ ] Inline
@@ -221,7 +221,7 @@ Types:
 - [x] Pointers
 
 Expressions/Operators:
-- [x] Assignment expressions (excluding compound assignments, e.g. `x += 1`)
+- [x] Assignment expressions
 - [x] Conditional expressions (e.g. ternary operator `?`)
 - [x] Increment/decrement
 - [x] Logical and/or (`&&`, `||`)
