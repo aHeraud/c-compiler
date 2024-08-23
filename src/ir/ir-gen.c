@@ -1965,19 +1965,14 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
 
     if (right.is_lvalue) right = get_rvalue(context, right);
 
-    // Generate an assignment instruction.
-    ir_var_t result = (ir_var_t) {
-        .name = temp_name(context),
-        .type = get_ir_type(context,left.c_type),
-    };
 
+    // Generate an assignment instruction.
     if (!types_equal(left.c_type, right.c_type)) {
         // Convert the right operand to the type of the left operand.
         right = convert_to_type(context, right.value, right.c_type, left.c_type);
         if (right.c_type == NULL) return EXPR_ERR;
     }
 
-    ir_build_assign(context->builder, right.value, result);
 
     ir_value_t ptr;
     if (left.kind == EXPR_RESULT_VALUE) {
@@ -1988,7 +1983,7 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
         return EXPR_ERR;
     }
 
-    ir_build_store(context->builder, ptr, ir_value_for_var(result));
+    ir_build_store(context->builder, ptr, right.value);
 
     // assignments can be chained, e.g. `a = b = c;`
     return left;

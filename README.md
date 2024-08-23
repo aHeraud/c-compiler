@@ -116,25 +116,22 @@ function swap (*i32, *i32) -> void {
     *i32 %4 = load **i32 %0
     i32 %5 = load *i32 %4
     i32 %6 = xor i32 %3, i32 %5
-    i32 %7 = i32 %6
+    *i32 %7 = load **i32 %0
+    store i32 %6, *i32 %7
     *i32 %8 = load **i32 %0
-    store i32 %7, *i32 %8
-    *i32 %9 = load **i32 %0
-    i32 %10 = load *i32 %9
-    *i32 %11 = load **i32 %1
-    i32 %12 = load *i32 %11
-    i32 %13 = xor i32 %10, i32 %12
-    i32 %14 = i32 %13
-    *i32 %15 = load **i32 %1
-    store i32 %14, *i32 %15
-    *i32 %16 = load **i32 %1
+    i32 %9 = load *i32 %8
+    *i32 %10 = load **i32 %1
+    i32 %11 = load *i32 %10
+    i32 %12 = xor i32 %9, i32 %11
+    *i32 %13 = load **i32 %1
+    store i32 %12, *i32 %13
+    *i32 %14 = load **i32 %1
+    i32 %15 = load *i32 %14
+    *i32 %16 = load **i32 %0
     i32 %17 = load *i32 %16
-    *i32 %18 = load **i32 %0
-    i32 %19 = load *i32 %18
-    i32 %20 = xor i32 %17, i32 %19
-    i32 %21 = i32 %20
-    *i32 %22 = load **i32 %0
-    store i32 %21, *i32 %22
+    i32 %18 = xor i32 %15, i32 %17
+    *i32 %19 = load **i32 %0
+    store i32 %18, *i32 %19
     ret void
 }
 function main () -> i32 {

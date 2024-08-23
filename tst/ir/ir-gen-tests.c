@@ -589,9 +589,8 @@ void test_ir_gen_indirect_store() {
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "**i32 %0 = alloca *i32",
         "store *i32 a, **i32 %0",
-        "i32 %1 = i32 1",
-        "*i32 %2 = load **i32 %0",
-        "store i32 %1, *i32 %2",
+        "*i32 %1 = load **i32 %0",
+        "store i32 1, *i32 %1",
         "ret i32 0"
     }));
 }
@@ -631,8 +630,7 @@ void test_ir_gen_array_store_constant_index() {
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*[i32;2] %0 = alloca [i32;2]",
         "*i32 %1 = get_array_element_ptr *[i32;2] %0, i32 1",
-        "i32 %2 = i32 10",
-        "store i32 %2, *i32 %1",
+        "store i32 10, *i32 %1",
         "ret i32 0"
     }));
 }
@@ -703,15 +701,13 @@ void test_ir_gen_if_else_statement() {
         "i32 %2 = load *i32 %0",
         "bool %3 = eq i32 %2, i32 0",
         "br bool %3, l0",
-        "i32 %4 = i32 1",
-        "store i32 %4, *i32 %1",
+        "store i32 1, *i32 %1",
         "br l1",
         "l0: nop",
-        "i32 %5 = i32 2",
-        "store i32 %5, *i32 %1",
+        "store i32 2, *i32 %1",
         "l1: nop",
-        "i32 %6 = load *i32 %1",
-        "ret i32 %6"
+        "i32 %4 = load *i32 %1",
+        "ret i32 %4"
     }));
 }
 
@@ -928,8 +924,7 @@ void test_ir_while_loop() {
         "br bool %3, l2",
         "i32 %4 = load *i32 %0",
         "i32 %5 = add i32 %4, i32 1",
-        "i32 %6 = i32 %5",
-        "store i32 %6, *i32 %0",
+        "store i32 %5, *i32 %0",
         "l1: nop",
         "br l0",
         "l2: nop",
@@ -958,13 +953,12 @@ void test_ir_do_while_loop() {
         "l0: nop",                       // do {
         "i32 %1 = load *i32 %0",         // load x
         "i32 %2 = add i32 %1, i32 1",    // temp = x + 1
-        "i32 %3 = i32 %2",               // TODO: fix this (ugly)
-        "store i32 %3, *i32 %0",         // store temp, x
+        "store i32 %2, *i32 %0",         // store temp, x
         "l1: nop",
-        "i32 %4 = load *i32 %0",         // load x
-        "bool %5 = lt i32 %4, i32 10",   // %5 = x < 10
-        "bool %6 = eq bool %5, bool 0",  // invert the condition
-        "br bool %6, l2",                // if x < 10 == false, exit loop
+        "i32 %3 = load *i32 %0",         // load x
+        "bool %4 = lt i32 %3, i32 10",   // %5 = x < 10
+        "bool %5 = eq bool %4, bool 0",  // invert the condition
+        "br bool %5, l2",                // if x < 10 == false, exit loop
         "br l0",                         // go to the start of the loop
         "l2: nop",
         "ret i32 0"
@@ -1026,8 +1020,7 @@ void test_ir_gen_struct_set_field() {
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*struct.Foo_0 %0 = alloca struct.Foo_0",
         "*i32 %1 = get_struct_member_ptr *struct.Foo_0 %0, i32 0",
-        "i32 %2 = i32 4", // TODO: this shouldn't be a variable, just a constant in the store instruction
-        "store i32 %2, *i32 %1",
+        "store i32 4, *i32 %1",
         "ret i32 0"
     }));
 }
@@ -1048,8 +1041,7 @@ void test_ir_gen_struct_ptr_set_field() {
         "store *struct.Foo_0 foo, **struct.Foo_0 %0",
         "*struct.Foo_0 %1 = load **struct.Foo_0 %0",
         "*i32 %2 = get_struct_member_ptr *struct.Foo_0 %1, i32 0",
-        "i32 %3 = i32 1",
-        "store i32 %3, *i32 %2",
+        "store i32 1, *i32 %2",
         "ret i32 0"
     }));
 }
@@ -1113,8 +1105,7 @@ void test_ir_gen_struct_definition_scoping() {
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*i32 %0 = get_struct_member_ptr *struct.Foo_0 @1, i32 0",
-        "i32 %1 = i32 1",
-        "store i32 %1, *i32 %0",
+        "store i32 1, *i32 %0",
         "ret i32 0"
     }));
 }
@@ -1133,8 +1124,7 @@ void test_ir_gen_anonymous_struct() {
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*struct.__anon_tag_0_0 %0 = alloca struct.__anon_tag_0_0",
         "*i32 %1 = get_struct_member_ptr *struct.__anon_tag_0_0 %0, i32 0",
-        "i32 %2 = i32 0",
-        "store i32 %2, *i32 %1",
+        "store i32 0, *i32 %1",
         "ret i32 0"
     }));
 }
@@ -1238,8 +1228,7 @@ void test_ir_gen_label_and_goto() {
         "*i32 %0 = alloca i32",
         "store i32 0, *i32 %0",
         "l0: nop",
-        "i32 %1 = i32 1",
-        "store i32 %1, *i32 %0",
+        "store i32 1, *i32 %0",
         "br l0"
     }));
 }
@@ -1421,8 +1410,7 @@ void ir_test_compound_assign_add() {
         // a += 1;
         "i32 %1 = load *i32 %0",
         "i32 %2 = add i32 %1, i32 1",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1446,8 +1434,7 @@ void ir_test_compound_assign_sub() {
         // a -= 1;
         "i32 %1 = load *i32 %0",
         "i32 %2 = sub i32 %1, i32 1",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1471,8 +1458,7 @@ void ir_test_compound_assign_mul() {
         // a *= 2;
         "i32 %1 = load *i32 %0",
         "i32 %2 = mul i32 %1, i32 2",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1496,8 +1482,7 @@ void ir_test_compound_assign_div() {
         // a /= 2;
         "i32 %1 = load *i32 %0",
         "i32 %2 = div i32 %1, i32 2",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1521,8 +1506,7 @@ void ir_test_compound_assign_mod() {
         // a %= 2;
         "i32 %1 = load *i32 %0",
         "i32 %2 = mod i32 %1, i32 2",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1546,8 +1530,7 @@ void ir_test_compound_assign_and() {
         // a &= 2;
         "i32 %1 = load *i32 %0",
         "i32 %2 = and i32 %1, i32 2",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1571,8 +1554,7 @@ void ir_test_compound_assign_or() {
         // a |= 2;
         "i32 %1 = load *i32 %0",
         "i32 %2 = or i32 %1, i32 2",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1596,8 +1578,7 @@ void ir_test_compound_assign_xor() {
         // a |= 2;
         "i32 %1 = load *i32 %0",
         "i32 %2 = xor i32 %1, i32 2",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1621,8 +1602,7 @@ void ir_test_compound_assign_shl() {
         // a <<= 2;
         "i32 %1 = load *i32 %0",
         "i32 %2 = shl i32 %1, i32 2",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
@@ -1646,8 +1626,7 @@ void ir_test_compound_assign_shr() {
         // a >>= 2;
         "i32 %1 = load *i32 %0",
         "i32 %2 = shr i32 %1, i32 2",
-        "i32 %3 = i32 %2",
-        "store i32 %3, *i32 %0",
+        "store i32 %2, *i32 %0",
         // return 0;
         "ret i32 0"
     }));
