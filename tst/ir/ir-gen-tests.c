@@ -1632,6 +1632,34 @@ void ir_test_compound_assign_shr() {
     }));
 }
 
+void ir_test_cast_expression() {
+    const char *input =
+        "int main() {\n"
+            "int a = 2;\n"
+            "double d = (float) a;\n"
+            "return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            // int a
+            "*i32 %0 = alloca i32",
+            // double d
+            "*f64 %1 = alloca f64",
+            // a = 2
+            "store i32 2, *i32 %0",
+            // d = (float) a
+            "i32 %2 = load *i32 %0",
+            "f32 %3 = itof i32 %2",
+            "f64 %4 = ext f32 %3",
+            "store f64 %4, *f64 %1",
+            // return 0;
+            "ret i32 0"
+    }));
+}
+
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -1715,5 +1743,6 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "compound assignment (and)", ir_test_compound_assign_and);
     CU_add_test(suite, "compound assignment (or)", ir_test_compound_assign_or);
     CU_add_test(suite, "compound assignment (xor)", ir_test_compound_assign_xor);
+    CU_add_test(suite, "cast expression", ir_test_cast_expression);
     return CUE_SUCCESS;
 }

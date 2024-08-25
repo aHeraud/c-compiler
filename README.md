@@ -228,7 +228,7 @@ Expressions/Operators:
 - [x] Relational operators (`<`, `>`, `<=`, `>=`)
 - [x] Left/right shift
 - [x] Multiplicative operators (`*`, `/`, `%`)
-- [ ] Cast expressions
+- [x] Cast expressions
 - [x] Size of
 - [x] Address of (`&`)
 - [x] Dereference (`*`)

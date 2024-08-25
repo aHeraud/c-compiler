@@ -317,8 +317,6 @@ void ir_visit_labeled_statement(ir_gen_context_t *context, const statement_t *st
 void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *statement);
-void ir_visit_while_statement(ir_gen_context_t *context, const statement_t *statement);
-void ir_visit_do_while_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_continue_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_goto_statement(ir_gen_context_t *context, const statement_t *statement);
@@ -330,6 +328,7 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
 expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_constant(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_cast_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t lhs, expression_result_t rhs);
 expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const expression_t *expr);
@@ -1424,8 +1423,7 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
         case EXPRESSION_CALL:
             return ir_visit_call_expression(context, expression);
         case EXPRESSION_CAST:
-            assert(false && "Cast not implemented");
-            return EXPR_ERR;
+            return ir_visit_cast_expression(context, expression);
         case EXPRESSION_MEMBER_ACCESS:
             return ir_visit_member_access_expression(context, expression);
         case EXPRESSION_PRIMARY:
@@ -1604,6 +1602,15 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         .addr_of = false,
         .value = result_value,
     };
+}
+
+expression_result_t ir_visit_cast_expression(ir_gen_context_t *context, const expression_t *expr) {
+    assert(expr != NULL && expr->type == EXPRESSION_CAST);
+
+    expression_result_t value = ir_visit_expression(context, expr->cast.expression);
+    if (value.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+    if (value.is_lvalue) value = get_rvalue(context, value);
+    return convert_to_type(context, value.value, value.c_type, expr->cast.type);
 }
 
 expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const expression_t *expr) {
