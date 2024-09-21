@@ -1536,6 +1536,38 @@ void test_parse_struct_type_declaration() {
     CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF) // should have consumed the entire input
 }
 
+void test_parse_typedef_struct_type() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "typedef struct Foo { int a; } foo;\n"
+                  "foo value;\n";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    translation_unit_t translation_unit;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &translation_unit))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF) // should have consumed the entire input
+
+    CU_ASSERT_EQUAL_FATAL(translation_unit.length, 2)
+    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[0]->type, EXTERNAL_DECLARATION_DECLARATION)
+    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[0]->declaration.length, 1)
+    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[1]->type, EXTERNAL_DECLARATION_DECLARATION)
+    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[1]->declaration.length, 1)
+
+    // The first external declaration declares the typedef name
+    const declaration_t *decl = translation_unit.external_declarations[0]->declaration.declarations[0];
+    CU_ASSERT_STRING_EQUAL_FATAL(decl->identifier->value, "foo")
+    CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_STRUCT_OR_UNION)
+    CU_ASSERT_EQUAL_FATAL(decl->type->storage_class, STORAGE_CLASS_TYPEDEF)
+    CU_ASSERT_STRING_EQUAL_FATAL(decl->type->struct_or_union.identifier->value, "Foo")
+
+    // The second external declaration declares a global variable "value" using the type referred to by the typedef
+    // name "foo".
+    decl = translation_unit.external_declarations[1]->declaration.declarations[0];
+    CU_ASSERT_STRING_EQUAL_FATAL(decl->identifier->value, "value")
+    CU_ASSERT_EQUAL_FATAL(decl->type->storage_class, STORAGE_CLASS_AUTO)
+    CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_STRUCT_OR_UNION)
+}
+
 void test_abstract_declarator_pointer_int() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "*"; // int token has already been parsed
@@ -2077,6 +2109,66 @@ void parse_external_definition_function_taking_void() {
     CU_ASSERT_TRUE_FATAL(statement_eq(node.function_definition->body, &body))
 }
 
+void test_parse_external_declaration_typedef() {
+    lexer_global_context_t context = create_lexer_context();
+    const char* input = "typedef int integer;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    external_declaration_t external_declaration;
+    parse_external_declaration(&parser, &external_declaration);
+    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.length == 1)
+    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.declarations[0]->type->storage_class == STORAGE_CLASS_TYPEDEF);
+    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.declarations[0]->type->kind == TYPE_INTEGER);
+    CU_ASSERT_STRING_EQUAL_FATAL(external_declaration.declaration.declarations[0]->identifier->value, "integer")
+}
+
+void test_parse_external_declaration_typedef_ptr() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "typedef int* ptr;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    external_declaration_t external_declaration;
+    CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &external_declaration))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.length == 1)
+    const declaration_t *decl = external_declaration.declaration.declarations[0];
+    CU_ASSERT_EQUAL_FATAL(decl->type->storage_class, STORAGE_CLASS_TYPEDEF)
+    CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_POINTER)
+    CU_ASSERT_EQUAL_FATAL(decl->type->pointer.base->storage_class, STORAGE_CLASS_AUTO)
+}
+
+void test_parse_external_declaration_typedef_const_ptr() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "typedef int * const ptr;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    external_declaration_t external_declaration;
+    CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &external_declaration))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.length == 1)
+    const declaration_t *decl = external_declaration.declaration.declarations[0];
+    CU_ASSERT_EQUAL_FATAL(decl->type->storage_class, STORAGE_CLASS_TYPEDEF)
+    CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_POINTER)
+    CU_ASSERT_TRUE_FATAL(decl->type->pointer.is_const)
+    CU_ASSERT_EQUAL_FATAL(decl->type->pointer.base->storage_class, STORAGE_CLASS_AUTO)
+}
+
+void test_parse_external_declaration_that_uses_typedef() {
+    lexer_global_context_t context = create_lexer_context();
+    const char* input = "typedef float type;\ntype foo;\n";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    translation_unit_t program;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
+
+    CU_ASSERT_TRUE_FATAL(program.length == 2)
+    const external_declaration_t *external_declaration = program.external_declarations[1];
+    CU_ASSERT_TRUE_FATAL(external_declaration->declaration.length == 1)
+    const declaration_t *decl = external_declaration->declaration.declarations[0];
+    CU_ASSERT_STRING_EQUAL_FATAL(decl->identifier->value, "foo")
+    CU_ASSERT_TRUE_FATAL(decl->type->kind == TYPE_FLOATING)
+}
+
 void test_parse_break_statement() {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "break;";
@@ -2133,6 +2225,56 @@ void test_parse_program() {
 
     translation_unit_t program;
     CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
+}
+
+void test_parse_program_typedef_used_in_different_scope() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input =
+        "typedef int integer;\n"
+        "int main() {\n"
+        "    integer foo = 1;\n"
+        "    return foo;\n"
+        "}\n";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    translation_unit_t program;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+}
+
+void test_parse_program_typedef_identifier_shadowing() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input =
+        "typedef int identifier; // <-- identifier is a typedef-name\n"
+        "identifier bar\n;"
+        "int foo(identifier identifier) // <-- identifier becomes an identifier after we handle the first parameter declaration\n"
+        "{\n"
+        "    int bar = identifier + 1;\n"
+        "    return bar;\n"
+        "}\n";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    translation_unit_t program;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+}
+
+void test_parse_program_illegal_symbol_redefinition_in_function_scope() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input =
+        "void foo(int a) \n"   // <-- declare a as a parameter
+        "{\n"                  // <-- in c, this doesn't create a new block scope
+        "    typedef float a;\n" // <-- error: redefinition of a
+        "}\n";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    translation_unit_t program;
+    CU_ASSERT_FALSE_FATAL(parse(&parser, &program))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 1)
+
 }
 
 int parser_tests_init_suite() {
@@ -2199,6 +2341,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "declaration - complex", test_parse_complex_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - empty", test_parse_empty_global_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - struct type", test_parse_struct_type_declaration) ||
+        NULL == CU_add_test(pSuite, "declaration - typedef struct type", test_parse_typedef_struct_type) ||
         NULL == CU_add_test(pSuite, "abstract declaration - pointer to int", test_abstract_declarator_pointer_int) ||
         NULL == CU_add_test(pSuite, "abstract declaration - function pointer", test_abstract_declarator_function_pointer) ||
         NULL == CU_add_test(pSuite, "function prototype (void)", test_parse_function_prototype_void) ||
@@ -2225,7 +2368,13 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "external declaration - prototype (var args)", parse_external_definition_prototype_var_args) ||
         NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||
         NULL == CU_add_test(pSuite, "external declaration - function (void) definition", parse_external_definition_function_taking_void) ||
-        NULL == CU_add_test(pSuite, "program", test_parse_program)
+        NULL == CU_add_test(pSuite, "external declaration - typedef", test_parse_external_declaration_typedef) ||
+        NULL == CU_add_test(pSuite, "external declaration - typedef ptr", test_parse_external_declaration_typedef_ptr) ||
+        NULL == CU_add_test(pSuite, "external declaration - typedef const ptr", test_parse_external_declaration_typedef_const_ptr) ||
+        NULL == CU_add_test(pSuite, "external declaration - using typedef", test_parse_external_declaration_that_uses_typedef) ||
+        NULL == CU_add_test(pSuite, "program", test_parse_program) ||
+        NULL == CU_add_test(pSuite, "typedef used in lower scope", test_parse_program_typedef_used_in_different_scope) ||
+        NULL == CU_add_test(pSuite, "illegal symbol redefinition in function scope", test_parse_program_illegal_symbol_redefinition_in_function_scope)
     ) {
         CU_cleanup_registry();
         return CU_get_error();

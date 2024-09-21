@@ -31,6 +31,9 @@ int main() {
     }
     printf("\n");
 
+    // The for initializer creates a new scope level, so it can declare variables that shadow those in the enclosing scope
+    for (int a = 0; a < 1; a += 1) { break; } // <-- this is ok
+
     // The condition and post-expression can also be empty,
     // but that would result in an infinite loop, unless there's a break statement inside the loop.
 

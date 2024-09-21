@@ -183,7 +183,7 @@ Specifiers/Qualifiers:
 - [ ] Const (accepted, but not enforced)
 - [ ] Restrict
 - [ ] Volatile
-- [ ] Typedef 
+- [x] Typedef 
 - [ ] Extern
 - [ ] Static
 - [x] Auto

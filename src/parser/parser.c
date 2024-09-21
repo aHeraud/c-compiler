@@ -13,6 +13,32 @@
 //    '(' tokens.
 // To resolve these ambiguities, we use a simple backtracking mechanism to try all possible parses and backtrack if
 // a parse fails.
+//
+// The C grammar is not a context free grammar, as the parser needs to be able to differentiate identifiers versus
+// typedef names.
+// Consider the following example expression: `(a)*b`. What the parser should generate for this statement is dependent
+// on what `a` is. If `a` is a typedef name, then this is a dereference and cast, otherwise it is multiplication.
+// Another example is the statement `a * b`. If a is an identifier, than this is an expression statement, but if a is
+// a typedef name, then it's a declaration.
+// To keep track, the parser will have a simplified symbol table, which keeps track of lexical scopes, identifiers and
+// typedefs. Why do we need to keep track of both identifiers and typedefs? Because a typedef or identifier in an inner
+// scope can hide a typedef or identifier declared in an enclosing scope, so when looking up a symbol to check if it is
+// a typedef, we need to know if there's a different definition of the symbol in a closer scope.
+// For example:
+// ```
+// typedef int value;
+// int square(int value) {
+//     return value * value; // <-- This is ok, in this context value refers to an identifier
+//                           //     If we didn't keep track of identifiers in the parser's symbol table, we would just
+//                           //     see that the enclosing scope had a typedef named "value", and would not be able to
+//                           //     correctly parse this.
+// }
+// ```
+//
+// Restoring the parser's symbol table when backtracking:
+// Each symbol and scope in the symbol table store the value of the index of the next token at the time they were
+// created. The parser checkpoints also include this value. When restoring from a checkpoint, any scope or symbol which
+// have a `next_token_index` value larger than the value in the checkpoint should be removed from the symbol table.
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -20,10 +46,125 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "errors.h"
 #include "parser.h"
 
-#include "errors.h"
+#include <string.h>
+
 #include "parser/lexer.h"
+
+void append_parse_error(parse_error_vector_t* vec, parse_error_t error) {
+    VEC_APPEND(vec, error);
+}
+
+typedef struct ParserSymbol
+{
+    enum {
+        SYMBOL_IDENTIFIER,
+        SYMBOL_TYPEDEF,
+    } kind;
+    token_t *token;
+    // if this is a typedef, the type
+    type_t *type;
+    // Index of the next token when this symbol was created
+    // For restoring the state of the parse table when backtracking
+    int next_token_index;
+} parser_symbol_t;
+
+typedef struct ParserScope parser_scope_t;
+struct ParserScope {
+    parser_scope_t *parent;
+    // Map of symbol name -> symbol
+    hash_table_t symbols_map;
+    // A list of symbols in the symbol table.
+    // Used for rolling back the symbol table state when backtracking.
+    ptr_vector_t symbols_vec;
+    // Index of the next token when this symbol was created
+    // For restoring the state of the parse table when backtracking
+    int next_token_index;
+};
+
+struct ParserSymbolTable {
+    parser_scope_t *root_scope;
+    parser_scope_t *current_scope;
+};
+
+void parser_enter_scope(parser_t *parser) {
+    parser_scope_t *scope = malloc(sizeof (parser_scope_t));
+    *scope = (parser_scope_t) {
+        .parent = parser->symbol_table->current_scope,
+        .symbols_map = hash_table_create_string_keys(64),
+    };
+    parser->symbol_table->current_scope = scope;
+}
+
+void parser_leave_scope(parser_t *parser) {
+    assert(parser->symbol_table->current_scope != parser->symbol_table->root_scope);
+    assert(parser->symbol_table->current_scope != NULL);
+    parser_scope_t *scope = parser->symbol_table->current_scope;
+    parser->symbol_table->current_scope = scope->parent;
+    free(scope);
+}
+
+void parser_insert_symbol(parser_t *parser, const parser_symbol_t *symbol) {
+    parser_symbol_t *prev = NULL;
+    if (hash_table_lookup(&parser->symbol_table->current_scope->symbols_map, symbol->token->value, (void**) &prev) &&
+        prev->kind != symbol->kind) {
+        append_parse_error(&parser->errors, (parse_error_t) {
+            .previous_production_name = NULL,
+            .previous_token = NULL,
+            .production_name = NULL,
+            .token = symbol->token,
+            .type = PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE,
+            .redeclaration_of_symbol = {
+                .prev = prev->token,
+                .redec = symbol->token,
+            }
+        });
+        // don't replace the existing value
+        return;
+    }
+
+    hash_table_insert(&parser->symbol_table->current_scope->symbols_map, symbol->token->value, (void*) symbol);
+    VEC_APPEND(&parser->symbol_table->current_scope->symbols_vec, symbol);
+}
+
+void parser_insert_symbol_for_declaration(parser_t *parser, const declaration_t *decl) {
+    bool is_typedef = decl->type->storage_class == STORAGE_CLASS_TYPEDEF;
+    if (is_typedef && decl->initializer != NULL) {
+        // TODO: error for illegal initializer
+    }
+
+    // If this doesn't declare anything, don't create a symbol
+    if (decl->identifier == NULL) return;
+
+    parser_symbol_t *symbol = malloc(sizeof(parser_symbol_t));
+    *symbol = (parser_symbol_t) {
+        .kind = is_typedef ? SYMBOL_TYPEDEF : SYMBOL_IDENTIFIER,
+        .next_token_index = parser->next_token_index,
+        .token = decl->identifier,
+        .type = is_typedef ? decl->type : NULL,
+    };
+    parser_insert_symbol(parser, symbol);
+}
+
+parser_symbol_t *parser_lookup_symbol_in_current_scope(const parser_t *parser, const char *name) {
+    const parser_scope_t *scope = parser->symbol_table->current_scope;
+    parser_symbol_t *symbol;
+    hash_table_lookup(&scope->symbols_map, name, (void**) &symbol);
+    return symbol;
+}
+
+parser_symbol_t *parser_lookup_symbol(parser_t *parser, const char *name) {
+    const parser_scope_t *scope = parser->symbol_table->current_scope;
+    while (scope != NULL) {
+        parser_symbol_t *symbol = NULL;
+        hash_table_lookup(&scope->symbols_map, name, (void**) &symbol);
+        if (symbol != NULL) return symbol;
+        scope = scope->parent;
+    }
+    return NULL;
+}
 
 bool any_non_null(size_t count, ...) {
     va_list args;
@@ -123,6 +264,9 @@ void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
         case PARSE_ERROR_EXPECTED_EXPRESSION:
             fprintf(stream, "Expected an expression\n");
             break;
+        case PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE:
+            fprintf(stream, "redeclaration of symbol %s as different type", error->redeclaration_of_symbol.redec->value);
+            break;
     }
 }
 
@@ -155,16 +299,20 @@ typedef struct ParseCheckpoint {
     size_t error_index;
 } parse_checkpoint_t;
 
-void append_parse_error(parse_error_vector_t* vec, parse_error_t error) {
-    VEC_APPEND(vec, error);
-}
-
 parser_t pinit(lexer_t lexer) {
+    parser_symbol_table_t symbol_table = malloc(sizeof(parser_symbol_table_t));
+    symbol_table->root_scope = malloc(sizeof(parser_scope_t));
+    *symbol_table->root_scope = (parser_scope_t) {
+        .parent = NULL,
+        .symbols_map = hash_table_create_string_keys(64),
+    };
+    symbol_table->current_scope = symbol_table->root_scope;
     return (parser_t) {
             .lexer = lexer,
             .tokens = {.size = 0, .capacity = 0, .buffer = NULL},
             .errors = {.size = 0, .capacity = 0, .buffer = NULL},
             .next_token_index = 0,
+            .symbol_table = symbol_table,
     };
 }
 
@@ -191,6 +339,21 @@ parse_checkpoint_t create_checkpoint(const parser_t* parser) {
 void backtrack(parser_t* parser, parse_checkpoint_t checkpoint) {
     parser->next_token_index = checkpoint.token_index;
     parser->errors.size = checkpoint.error_index;
+
+    // Restore the symbol table state
+    // First, leave any scopes that were entered after the checkpoint was created.
+    while(parser->symbol_table->current_scope != parser->symbol_table->root_scope &&
+        parser->symbol_table->current_scope->next_token_index > checkpoint.token_index) {
+        parser_leave_scope(parser);
+    }
+    // Next, remove any symbols that were added to the now current scope after the checkpoint was created.
+    parser_scope_t *scope = parser->symbol_table->current_scope;
+    for (int i = scope->symbols_vec.size; i > 0; i -= 1) {
+        parser_symbol_t *symbol = scope->symbols_vec.buffer[i-1];
+        if (symbol->next_token_index <= checkpoint.token_index) break;
+        hash_table_remove(&scope->symbols_map, symbol->token->value, NULL);
+        scope->symbols_vec.size -= 1;
+    }
 }
 
 token_t *next_token(parser_t* parser) {
@@ -309,6 +472,25 @@ bool parse(parser_t* parser, translation_unit_t *translation_unit) {
 
 // Declarations
 
+bool typedef_name(parser_t *parser, bool _peek, token_t **token_out, type_t **type_out) {
+    token_t *identifier = NULL;
+    if (!peek(parser, TK_IDENTIFIER)) return false;
+
+    identifier = next_token(parser);
+
+    parser_symbol_t *symbol = parser_lookup_symbol(parser, identifier->value);
+    if (symbol == NULL) return false;
+
+    if (symbol->kind == SYMBOL_TYPEDEF) {
+        if (token_out != NULL) *token_out = identifier;
+        if (type_out != NULL) *type_out = symbol->type;
+        if (!_peek) accept(parser, TK_IDENTIFIER, NULL); // consume the token
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * Parses a declaration.
  *
@@ -355,6 +537,7 @@ bool _parse_declaration(parser_t *parser, declaration_t *first_declarator, ptr_v
         append_ptr(&declarations->buffer, &declarations->size, &declarations->capacity, first_declarator);
 
         if (!accept(parser, TK_COMMA, NULL)) {
+            parser_insert_symbol_for_declaration(parser, first_declarator);
             return require(parser, TK_SEMICOLON, NULL, "declaration", NULL);
         }
     }
@@ -368,6 +551,12 @@ bool _parse_declaration(parser_t *parser, declaration_t *first_declarator, ptr_v
         }
         append_ptr(&declarations->buffer, &declarations->size, &declarations->capacity, decl);
     } while (accept(parser, TK_COMMA, NULL));
+
+    // Update the symbol table
+    for (int i = 0; i < declarations->size; i += 1) {
+        declaration_t *decl = declarations->buffer[i];
+        parser_insert_symbol_for_declaration(parser, decl);
+    }
 
     return require(parser, TK_SEMICOLON, NULL, "declaration", NULL);
 }
@@ -408,8 +597,8 @@ parse_error_t illegal_declaration_specifiers(token_t *token, token_t *prev) {
  *
  * <function-specifier> ::= 'inline'
  *
- * TODO: The parsing of structs, unions, and enums is not yet implemented.
- * TODO: Inlining is not yet implemented, and the keyword will be silently ignored.
+ * TODO: The parsing of enums is not yet implemented.
+ * TODO: Inling is not yet implemented, and the keyword will be silently ignored.
  *
  * Only one storage-class-specifier may be present in a declaration specifiers list.
  *
@@ -463,6 +652,9 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
     token_t *struct_or_union = NULL;
     token_t *enum_ = NULL;
 
+    token_t *typedef_name_token = NULL;
+    type_t *typedef_type = NULL;
+
     struct_t *struct_type = NULL;
 
     while (true) {
@@ -503,17 +695,27 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             });
         } else if (accept(parser, TK_VOLATILE, &token)) {
             is_volatile = true;
+        } else if (typedef_name(parser, false, &token, &typedef_type)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
+                                                           double_, signed_, unsigned_, complex_, struct_or_union, enum_,
+                                                           typedef_name_token);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
+            } else {
+                typedef_name_token = token;
+            }
         } else if (accept(parser, TK_VOID, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           double_, signed_, unsigned_, complex_, struct_or_union, enum_);
-            if (void_ != NULL) {
-                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, void_));
+                                                           double_, signed_, unsigned_, complex_, struct_or_union, enum_,
+                                                           typedef_name_token);
+            if (conflict != NULL) {
+                append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 void_ = token;
             }
         } else if (accept(parser, TK_CHAR, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           double_, complex_, struct_or_union, enum_);
+                                                           double_, complex_, struct_or_union, enum_, typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
@@ -521,21 +723,23 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_SHORT, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, char_, short_, long_, long_long, float_, double_,
-                                                           bool_, complex_, struct_or_union, enum_);
+                                                           bool_, complex_, struct_or_union, enum_, typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 short_ = token;
             }
         } else if (accept(parser, TK_INT, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, int_, float_, double_, complex_, struct_or_union, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, int_, float_, double_, complex_, struct_or_union,
+                                                           enum_, typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 int_ = token;
             }
         } else if (accept(parser, TK_LONG, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, long_long, float_, double_, struct_or_union, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, long_long, float_, double_, struct_or_union,
+                                                           enum_, typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else if (long_ != NULL) {
@@ -549,7 +753,8 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_FLOAT, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           signed_, unsigned_, struct_or_union, enum_);
+                                                           signed_, unsigned_, struct_or_union, enum_,
+                                                           typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
@@ -557,21 +762,24 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_DOUBLE, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_long, float_,
-                                                           double_, signed_, unsigned_, struct_or_union, enum_);
+                                                           double_, signed_, unsigned_, struct_or_union, enum_,
+                                                           typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 double_ = token;
             }
         } else if (accept(parser, TK_SIGNED, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_, struct_or_union, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_,
+                                                           struct_or_union, enum_, typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 signed_ = token;
             }
         } else if (accept(parser, TK_UNSIGNED, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_, struct_or_union, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, float_, double_, signed_, unsigned_,
+                                                           struct_or_union, enum_, typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
@@ -579,14 +787,16 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (accept(parser, TK_BOOL, &token)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           double_, signed_, unsigned_, complex_, struct_or_union, enum_);
+                                                           double_, signed_, unsigned_, complex_, struct_or_union,
+                                                           enum_, typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
                 bool_ = token;
             }
         } else if (accept(parser, TK_COMPLEX, &token)) {
-            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_long, signed_, unsigned_, struct_or_union, enum_);
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_long, signed_,
+                                                           unsigned_, struct_or_union, enum_, typedef_name_token);
             if (conflict != NULL) {
                 append_parse_error(&parser->errors, illegal_declaration_specifiers(token, conflict));
             } else {
@@ -594,13 +804,15 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             }
         } else if (peek(parser, TK_STRUCT) || peek(parser, TK_UNION)) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
-                                                           double_, signed_, unsigned_, complex_, struct_or_union, enum_);
+                                                           double_, signed_, unsigned_, complex_, struct_or_union,
+                                                           typedef_name_token, enum_);
             struct_type = malloc(sizeof(struct_t));
             if (!parse_struct_or_union_specifier(parser, &struct_or_union, struct_type)) {
                 return false;
             }
         } else if (accept(parser, TK_ENUM, &token)) {
-            assert(false && "Parsing of enums not yet implemented");
+            fprintf(stderr, "Error: %s:%d: Parsing of enums not yet implemented\n", __FILE__, __LINE__);
+            exit(1);
         } else {
             break;
         }
@@ -632,7 +844,17 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
         }
     }
 
-    if (struct_or_union != NULL) {
+    if (typedef_name_token != NULL && typedef_type != NULL) {
+        // If the type was a typedef, then we use the existing type information as a base type and just update the
+        // const/volatile/storage class fields.
+        is_const |= typedef_type->is_const;
+        is_volatile |= typedef_type->is_volatile;
+        const storage_class_t storage_class_value = type->storage_class;
+        *type = *typedef_type;
+        type->is_const = is_const;
+        type->is_volatile = is_volatile;
+        type->storage_class = storage_class_value;
+    } else if (struct_or_union != NULL) {
         type->kind = TYPE_STRUCT_OR_UNION;
         type->struct_or_union = *struct_type;
     } else if (ANY_NON_NULL(bool_, char_, short_, int_, long_long, signed_, unsigned_)) {
@@ -771,6 +993,26 @@ bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct
                 .expected = TK_IDENTIFIER,
             },
         });
+        return true; // can recover
+    }
+
+    // give the struct a generated identifier if it doesn't have one
+    if (struct_type->identifier == NULL) {
+        const char *ident_pfx = "__anon_struct__";
+        // we will just use the next token index to make the identifiers unique
+        char index[64];
+        snprintf(index, 63, "%lu", parser->next_token_index);
+        char *ident_value = malloc(strlen(ident_pfx) + strlen(index) + 1);
+        snprintf(ident_value, strlen(ident_pfx) + strlen(index), "%s%s", ident_pfx, index);
+
+        token_t *token = malloc(sizeof(token_t));
+        *token = (token_t) {
+            .kind = TK_IDENTIFIER,
+            .position = (*keyword)->position,
+            .value = ident_value,
+        };
+
+        struct_type->identifier = token;
     }
 
     return true;
@@ -998,6 +1240,10 @@ bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *declara
         return false;
     }
 
+    // If this is a typedef, move the typedef storage class specifier to the outer type
+    bool is_typedef = base_type.storage_class == STORAGE_CLASS_TYPEDEF;
+    if (is_typedef) base_type.storage_class = STORAGE_CLASS_AUTO;
+
     // Move the base type to the heap
     type_t *base = malloc(sizeof(type_t));
     *base = base_type;
@@ -1016,6 +1262,8 @@ bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *declara
             assert(false); // Invalid type stack
         }
     }
+
+    if (is_typedef) type->storage_class = STORAGE_CLASS_TYPEDEF;
 
     declaration->identifier = identifier;
     declaration->type = type;
@@ -1533,7 +1781,10 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
 
     token_t *begin = NULL;
     if (accept(parser, TK_LBRACE, &begin)) {
-        return parse_compound_statement(parser, stmt, begin);
+        parser_enter_scope(parser);
+        bool success = parse_compound_statement(parser, stmt, begin);
+        parser_leave_scope(parser);
+        return success;
     } else if (accept(parser, TK_IF, &begin)) {
         return parse_if_statement(parser, stmt, begin);
     } else if (accept(parser, TK_RETURN, &begin)) {
@@ -1567,7 +1818,7 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt, const token_t
         if (TOKEN_KIND_ONE_OF(next->kind,  TK_TYPEDEF, TK_EXTERN, TK_STATIC, TK_AUTO, TK_REGISTER,
                               TK_CONST, TK_RESTRICT, TK_VOLATILE, TK_INLINE, TK_VOID, TK_CHAR, TK_SHORT, TK_INT,
                               TK_LONG, TK_FLOAT, TK_DOUBLE, TK_SIGNED, TK_UNSIGNED, TK_BOOL, TK_COMPLEX, TK_STRUCT,
-                              TK_UNION, TK_ENUM)) {
+                              TK_UNION, TK_ENUM) || typedef_name(parser, true, NULL, NULL)) {
             // This is a declaration
             ptr_vector_t declarations = {.buffer = NULL, .size = 0, .capacity = 0};
             if (!parse_declaration(parser, &declarations)) {
@@ -1773,6 +2024,15 @@ bool parse_do_while_statement(parser_t *parser, statement_t *statement) {
 bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyword) {
     if (!require(parser, TK_LPAREN, NULL, "for-statement", NULL)) return false;
 
+    // The for statement initializer begins a new scope
+    // Without this, the following would be rejected by the parser:
+    // ```
+    // int i = 42;
+    // for (int i = 0; i < 10; i += 1) {}
+    // ```
+    const parser_scope_t *prev_scope = parser->symbol_table->current_scope;
+    parser_enter_scope(parser);
+
     statement->type = STATEMENT_FOR;
     statement->for_.keyword = keyword;
 
@@ -1799,7 +2059,7 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
         if (!parse_declaration(parser, statement->for_.initializer.declarations)) {
             free(statement->for_.initializer.declarations);
             statement->for_.initializer.declarations = NULL;
-            return false;
+            goto error;
         }
     } else {
         // This should be an expression statement, or an empty statement
@@ -1808,7 +2068,7 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
         statement_t *initializer = malloc(sizeof(statement_t));
         if (!parse_statement(parser, initializer)) {
             free(initializer);
-            return false;
+            goto error;
         } else {
             if (initializer->type == STATEMENT_EMPTY) {
                 statement->for_.initializer.kind = FOR_INIT_EMPTY;
@@ -1823,7 +2083,7 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
                     .previous_production_name = NULL,
                     .type = PARSE_ERROR_EXPECTED_EXPRESSION,
                 });
-                return false;
+                goto error;
             }
         }
     }
@@ -1833,7 +2093,7 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
         statement->for_.condition = malloc(sizeof(expression_t));
         if (!parse_expression(parser, statement->for_.condition)) {
             free(statement->for_.condition);
-            return false;
+            goto error;
         }
         if (!require(parser, TK_SEMICOLON, NULL, "for-statement", "expression")) return false;
     } else {
@@ -1845,7 +2105,7 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
         statement->for_.post = malloc(sizeof(expression_t));
         if (!parse_expression(parser, statement->for_.post)) {
             free(statement->for_.post);
-            return false;
+            goto error;
         }
         if (!require(parser, TK_RPAREN, NULL, "for-statement", "expression")) return false;
     } else {
@@ -1855,11 +2115,16 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
     statement_t *body = malloc(sizeof(statement_t));
     if (!parse_statement(parser, body)) {
         free(body);
-        return false;
+        goto error;
     }
 
     statement->for_.body = body;
     return true;
+
+error:
+    // leave whatever scopes we've entered
+    while (parser->symbol_table->current_scope != prev_scope) parser_leave_scope(parser);
+    return false;
 }
 
 bool parse_break_statement(parser_t *parser, statement_t *statement) {
@@ -3147,6 +3412,16 @@ bool parse_external_declaration(parser_t *parser, external_declaration_t *extern
     token_t *body_start = NULL;
     if (decl->type->kind == TYPE_FUNCTION && accept(parser, TK_LBRACE, &body_start)) {
         // This is a function definition
+        // register symbol in the parser symbol table for the function
+        parser_symbol_t *symbol = malloc(sizeof(parser_symbol_t));
+        *symbol = (parser_symbol_t) {
+            .kind = SYMBOL_IDENTIFIER,
+            .token = decl->identifier,
+            .next_token_index = parser->next_token_index,
+            .type = NULL,
+        };
+        parser_insert_symbol(parser, symbol);
+
         function_definition_t *fn = malloc(sizeof(function_definition_t));
         if (!parse_function_definition(parser, decl, body_start, fn)) {
             free(fn);
@@ -3176,8 +3451,23 @@ bool parse_external_declaration(parser_t *parser, external_declaration_t *extern
 }
 
 bool parse_function_definition(parser_t *parser, const declaration_t *declarator, const token_t *body_start, function_definition_t *fn) {
+    // Enter the function scope and add the parameters to the symbol table
+    parser_enter_scope(parser);
+    for (int i = 0; i < declarator->type->function.parameter_list->length; i += 1) {
+        parameter_declaration_t *param = declarator->type->function.parameter_list->parameters[i];
+        parser_symbol_t *symbol = malloc(sizeof(parser_symbol_t));
+        *symbol = (parser_symbol_t) {
+            .kind = SYMBOL_IDENTIFIER,
+            .next_token_index = parser->next_token_index,
+            .token = param->identifier,
+            .type = NULL,
+        };
+        parser_insert_symbol(parser, symbol);
+    }
+
     statement_t *body = malloc(sizeof(statement_t));
     if (!parse_compound_statement(parser, body, body_start)) {
+        parser_leave_scope(parser);
         free(body);
         return false;
     }
@@ -3188,6 +3478,6 @@ bool parse_function_definition(parser_t *parser, const declaration_t *declarator
         .parameter_list = declarator->type->function.parameter_list,
         .body = body,
     };
-
+    parser_leave_scope(parser);
     return true;
 }

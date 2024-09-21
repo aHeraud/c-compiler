@@ -1122,8 +1122,8 @@ void test_ir_gen_anonymous_struct() {
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "*struct.__anon_tag_0_0 %0 = alloca struct.__anon_tag_0_0",
-        "*i32 %1 = get_struct_member_ptr *struct.__anon_tag_0_0 %0, i32 0",
+        "*struct.__anon_struct__1_0 %0 = alloca struct.__anon_struct__1_0",
+        "*i32 %1 = get_struct_member_ptr *struct.__anon_struct__1_0 %0, i32 0",
         "store i32 0, *i32 %1",
         "ret i32 0"
     }));

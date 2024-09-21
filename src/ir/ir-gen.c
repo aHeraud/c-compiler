@@ -1179,6 +1179,11 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
     assert(context != NULL && "Context must not be NULL");
     assert(declaration != NULL && "Declaration must not be NULL");
 
+    // Typedef-name resolution is handled by the parser. This is a no-op.
+    if (declaration->type->storage_class == STORAGE_CLASS_TYPEDEF) {
+        return;
+    }
+
     // Does this declare or reference a tag? (TODO: also support enums)
     const tag_t *tag = NULL;
     if (declaration->type->kind == TYPE_STRUCT_OR_UNION) {
@@ -1350,6 +1355,12 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
 void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration) {
     assert(context != NULL && "Context must not be NULL");
     assert(declaration != NULL && "Declaration must not be NULL");
+
+    if (declaration->type->storage_class == STORAGE_CLASS_TYPEDEF) {
+        // Typedefs are a no-op
+        // The actual typedef-name resolution happens in the parser.
+        return;
+    }
 
     // Does this declare or reference a tag? (TODO: also support enums)
     const tag_t *tag = NULL;

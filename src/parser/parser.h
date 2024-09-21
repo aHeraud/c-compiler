@@ -21,6 +21,7 @@ typedef struct ParseError {
         PARSE_ERROR_EXPECTED_EXPRESSION_OR_TYPE_NAME_AFTER_SIZEOF,
         PARSE_ERROR_PARAMETER_TYPE_MALFORMED,
         PARSE_ERROR_EXPECTED_EXPRESSION,
+        PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE,
     } type;
     union {
         struct {
@@ -30,11 +31,17 @@ typedef struct ParseError {
         struct {
             token_kind_t expected;
         } unexpected_end_of_input;
+        struct {
+            const token_t *prev;
+            const token_t *redec;
+        } redeclaration_of_symbol;
     };
 } parse_error_t;
 
 void print_parse_error(FILE *__restrict stream, parse_error_t *error);
 VEC_DEFINE(ParseErrorVector, parse_error_vector_t, parse_error_t)
+
+typedef struct ParserSymbolTable* parser_symbol_table_t;
 
 /**
  * Contains the parser state.
@@ -52,6 +59,7 @@ typedef struct Parser {
      */
     size_t next_token_index;
     parse_error_vector_t errors;
+    parser_symbol_table_t symbol_table;
 } parser_t;
 
 parser_t pinit(lexer_t lexer);
