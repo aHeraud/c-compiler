@@ -76,7 +76,7 @@ typedef struct Field {
     const struct Expression *bitfield_width; // only present for bitfields
 } struct_field_t;
 
-VEC_DEFINE(FieldPtrVector, field_ptr_vector_t, struct_field_t*);
+VEC_DEFINE(FieldPtrVector, field_ptr_vector_t, struct_field_t*)
 
 typedef struct Struct {
     const token_t *identifier; // null for anonymous structs
@@ -115,7 +115,7 @@ typedef struct Type {
             struct Expression *size;
         } array;
         struct_t struct_or_union;
-    };
+    } value;
 } type_t;
 
 bool is_integer_type(const type_t *type);
@@ -173,146 +173,146 @@ static const type_t VOID = {
 };
 
 static const type_t BOOL = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = false,
-                .size = INTEGER_TYPE_BOOL,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = false,
+        .size = INTEGER_TYPE_BOOL,
+    },
 };
 
 static const type_t CHAR = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = true,
-                .size = INTEGER_TYPE_CHAR,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = true,
+        .size = INTEGER_TYPE_CHAR,
+    },
 };
 
 static const type_t CONST_CHAR_PTR = {
-        .kind = TYPE_POINTER,
-        .is_const = true,
+    .kind = TYPE_POINTER,
+    .is_const = true,
+    .is_volatile = false,
+    .value.pointer = {
+        .base = &CHAR,
+        .is_const = false,
         .is_volatile = false,
-        .pointer = {
-            .base = &CHAR,
-            .is_const = false,
-            .is_volatile = false,
-            .is_restrict = false,
-        },
+        .is_restrict = false,
+    },
 };
 
 static const type_t SHORT = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = true,
-                .size = INTEGER_TYPE_SHORT,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = true,
+        .size = INTEGER_TYPE_SHORT,
+    },
 };
 
 static const type_t INT = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = true,
-                .size = INTEGER_TYPE_INT,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = true,
+        .size = INTEGER_TYPE_INT,
+    },
 };
 
 static const type_t LONG = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = true,
-                .size = INTEGER_TYPE_LONG,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = true,
+        .size = INTEGER_TYPE_LONG,
+    },
 };
 
 static const type_t LONG_LONG = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = true,
-                .size = INTEGER_TYPE_INT,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = true,
+        .size = INTEGER_TYPE_INT,
+    },
 };
 
 static const type_t UNSIGNED_CHAR = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = false,
-                .size = INTEGER_TYPE_CHAR,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = false,
+        .size = INTEGER_TYPE_CHAR,
+    },
 };
 
 static const type_t UNSIGNED_SHORT = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = false,
-                .size = INTEGER_TYPE_SHORT,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = false,
+        .size = INTEGER_TYPE_SHORT,
+    },
 };
 
 static const type_t UNSIGNED_INT = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = false,
-                .size = INTEGER_TYPE_INT,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = false,
+        .size = INTEGER_TYPE_INT,
+    },
 };
 
 static const type_t UNSIGNED_LONG = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = false,
-                .size = INTEGER_TYPE_LONG,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = false,
+        .size = INTEGER_TYPE_LONG,
+    },
 };
 
 static const type_t UNSIGNED_LONG_LONG = {
-        .kind = TYPE_INTEGER,
-        .is_const = false,
-        .is_volatile = false,
-        .integer = {
-                .is_signed = false,
-                .size = INTEGER_TYPE_LONG_LONG,
-        },
+    .kind = TYPE_INTEGER,
+    .is_const = false,
+    .is_volatile = false,
+    .value.integer = {
+        .is_signed = false,
+        .size = INTEGER_TYPE_LONG_LONG,
+    },
 };
 
 static const type_t FLOAT = {
-        .kind = TYPE_FLOATING,
-        .floating = FLOAT_TYPE_FLOAT,
-        .is_const = false,
-        .is_volatile = false,
+    .kind = TYPE_FLOATING,
+    .value.floating = FLOAT_TYPE_FLOAT,
+    .is_const = false,
+    .is_volatile = false,
 };
 
 static const type_t DOUBLE = {
-        .kind = TYPE_FLOATING,
-        .floating = FLOAT_TYPE_DOUBLE,
-        .is_const = false,
-        .is_volatile = false,
+    .kind = TYPE_FLOATING,
+    .value.floating = FLOAT_TYPE_DOUBLE,
+    .is_const = false,
+    .is_volatile = false,
 };
 
 static const type_t LONG_DOUBLE = {
-        .kind = TYPE_FLOATING,
-        .floating = FLOAT_TYPE_LONG_DOUBLE,
-        .is_const = false,
-        .is_volatile = false,
+    .kind = TYPE_FLOATING,
+    .value.floating = FLOAT_TYPE_LONG_DOUBLE,
+    .is_const = false,
+    .is_volatile = false,
 };
 
 #endif //C_COMPILER_TYPES_H

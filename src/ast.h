@@ -16,11 +16,11 @@ typedef struct PrimaryExpression {
         PE_CONSTANT,
         PE_STRING_LITERAL,
         PE_EXPRESSION, // e.g. parenthesized expression "(1 + 2)"
-    } type;
+    } kind;
     union {
         token_t token; // value of an identifier, constant, or string literal
         struct Expression* expression;
-    };
+    } value;
 } primary_expression_t;
 
 typedef enum BinaryArithmeticOperator {
@@ -75,17 +75,17 @@ typedef struct BinaryExpression {
         BINARY_COMPARISON,
         BINARY_BITWISE,
         BINARY_LOGICAL,
-    } type;
+    } kind;
     struct Expression *left;
     struct Expression *right;
-    const token_t *operator;
+    const token_t *operator_token;
     union {
-        binary_arithmetic_operator_t arithmetic_operator;
-        binary_bitwise_operator_t bitwise_operator;
-        binary_logical_operator_t logical_operator;
-        binary_comparison_operator_t comparison_operator;
-        binary_assignment_operator_t assignment_operator;
-    };
+        binary_arithmetic_operator_t arithmetic;
+        binary_bitwise_operator_t bitwise;
+        binary_logical_operator_t logical;
+        binary_comparison_operator_t comparison;
+        binary_assignment_operator_t assignment;
+    } operator;
 } binary_expression_t;
 
 typedef struct UnaryExpression {
@@ -145,7 +145,7 @@ typedef struct Expression {
         EXPRESSION_MEMBER_ACCESS,
         EXPRESSION_SIZEOF,
         EXPRESSION_CAST,
-    } type;
+    } kind;
     union {
         primary_expression_t primary;
         binary_expression_t binary;
@@ -156,7 +156,7 @@ typedef struct Expression {
         member_access_expression_t member_access;
         type_t *sizeof_type;
         cast_expression_t cast;
-    };
+    } value;
 } expression_t;
 
 typedef enum StorageClassSpecifier {
@@ -210,7 +210,7 @@ typedef struct Statement {
         STATEMENT_CONTINUE,
         STATEMENT_GOTO,
         STATEMENT_LABEL,
-    } type;
+    } kind;
     union {
         struct {
             const token_t *open_brace;
@@ -246,10 +246,10 @@ typedef struct Statement {
                     FOR_INIT_EXPRESSION,
                     FOR_INIT_EMPTY,
                 } kind;
-                union {
+                // union {
                     ptr_vector_t *declarations;
                     expression_t *expression;
-                };
+                //};
             } initializer;
             expression_t *condition;
             expression_t *post;
@@ -268,7 +268,7 @@ typedef struct Statement {
         struct {
             token_t *keyword;
         } continue_;
-    };
+    } value;
     token_t *terminator;
 } statement_t;
 
@@ -289,17 +289,17 @@ typedef struct Designator {
     union {
         expression_t *index;
         token_t *field;
-    };
+    } value;
 } designator_t;
 
-VEC_DEFINE(DesignatorList, designator_list_t, designator_t);
+VEC_DEFINE(DesignatorList, designator_list_t, designator_t)
 
 typedef struct InitializerListElement {
     designator_list_t *designation;
     struct Initializer *initializer;
 } initializer_list_element_t;
 
-VEC_DEFINE(InitializerList, initializer_list_t, initializer_list_element_t);
+VEC_DEFINE(InitializerList, initializer_list_t, initializer_list_element_t)
 
 typedef struct Initializer {
     enum {
@@ -309,7 +309,7 @@ typedef struct Initializer {
     union {
         expression_t *expression;
         initializer_list_t *list;
-    };
+    } value;
     source_span_t span;
 } initializer_t;
 
@@ -324,25 +324,25 @@ typedef struct BlockItem {
     enum {
         BLOCK_ITEM_STATEMENT,
         BLOCK_ITEM_DECLARATION,
-    } type;
+    } kind;
     union {
         statement_t *statement;
         declaration_t *declaration;
-    };
+    } value;
 } block_item_t;
 
 typedef struct ExternalDeclaration {
     enum {
         EXTERNAL_DECLARATION_FUNCTION_DEFINITION,
         EXTERNAL_DECLARATION_DECLARATION,
-    } type;
+    } kind;
     union {
         function_definition_t *function_definition;
         struct {
             declaration_t **declarations;
             size_t length;
         } declaration;
-    };
+    } value;
 } external_declaration_t;
 
 typedef struct TranslationUnit {

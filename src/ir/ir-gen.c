@@ -13,8 +13,8 @@
 #include "errors.h"
 #include "util/strings.h"
 
-typedef struct Scope scope_t;
-typedef struct Symbol symbol_t;
+struct Scope;
+struct Symbol;
 
 VEC_DEFINE(StatementPtrVector, statement_ptr_vector_t, statement_t*)
 
@@ -43,7 +43,7 @@ typedef struct IrGenContext {
     // List of compilation errors encountered during semantic analysis
     compilation_error_vector_t errors;
     // The current lexical scope
-    scope_t *current_scope;
+    struct Scope *current_scope;
     // Counter for generating unique global variable names
     // These should be unique over the entire module
     unsigned short global_id_counter;
@@ -62,23 +62,22 @@ typedef enum ExpressionResultKind {
     EXPR_RESULT_INDIRECTION,
 } expression_result_kind_t;
 
-typedef struct ExpressionResult expression_result_t;
+struct ExpressionResult;
 typedef struct ExpressionResult {
     expression_result_kind_t kind;
     const type_t *c_type;
     bool is_lvalue;
     bool addr_of;
     bool is_string_literal;
-    union {
-        ir_value_t value;
-        expression_result_t *indirection_inner;
-    };
+    // only 1 of these is initialized, depending on the value of kind
+    ir_value_t value;
+    struct ExpressionResult *indirection_inner;
 } expression_result_t;
 
 typedef struct Scope {
     hash_table_t symbols;
     hash_table_t tags; // separate namespace for struct/union/enum declarations
-    scope_t *parent;
+    struct Scope *parent;
 } scope_t;
 
 enum SymbolKind {
@@ -198,7 +197,7 @@ void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t
 /**
  * Get the C integer type that is the same width as a pointer.
  */
-const type_t *c_ptr_uint_type();
+const type_t *c_ptr_uint_type(void);
 
 /**
  * Get the IR integer type that is the same width as a pointer.
@@ -390,15 +389,15 @@ void ir_visit_translation_unit(ir_gen_context_t *context, const translation_unit
 
     for (size_t i = 0; i < translation_unit->length; i++) {
         external_declaration_t *external_declaration = (external_declaration_t*) translation_unit->external_declarations[i];
-        switch (external_declaration->type) {
+        switch (external_declaration->kind) {
             case EXTERNAL_DECLARATION_FUNCTION_DEFINITION: {
-                ir_visit_function(context, external_declaration->function_definition);
+                ir_visit_function(context, external_declaration->value.function_definition);
                 break;
             }
             case EXTERNAL_DECLARATION_DECLARATION: {
                 // A single declaration may declare multiple variables.
-                for (int j = 0; j < external_declaration->declaration.length; j += 1) {
-                    ir_visit_global_declaration(context, external_declaration->declaration.declarations[j]);
+                for (int j = 0; j < external_declaration->value.declaration.length; j += 1) {
+                    ir_visit_global_declaration(context, external_declaration->value.declaration.declarations[j]);
                 }
                 break;
             }
@@ -423,7 +422,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
 
     const type_t function_c_type = {
         .kind = TYPE_FUNCTION,
-        .function = {
+        .value.function = {
             .return_type = function->return_type,
             .parameter_list = function->parameter_list,
         },
@@ -440,7 +439,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_REDEFINITION_OF_SYMBOL,
                 .location = function->identifier->position,
-                .redefinition_of_symbol = {
+                .value.redefinition_of_symbol = {
                     .redefinition = function->identifier,
                     .previous_definition = entry->identifier,
                 },
@@ -454,7 +453,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_REDEFINITION_OF_SYMBOL,
                 .location = function->identifier->position,
-                .redefinition_of_symbol = {
+                .value.redefinition_of_symbol = {
                     .redefinition = function->identifier,
                     .previous_definition = entry->identifier,
                 },
@@ -493,8 +492,8 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
 
         // Array to pointer decay
         if (c_type->kind == TYPE_ARRAY) {
-            c_type = get_ptr_type(c_type->array.element_type);
-            ir_param_type = get_ir_ptr_type(ir_param_type->array.element);
+            c_type = get_ptr_type(c_type->value.array.element_type);
+            ir_param_type = get_ir_ptr_type(ir_param_type->value.array.element);
         }
 
         ir_var_t ir_param = {
@@ -541,14 +540,14 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     // For every goto statement, there should be an entry in the label_exists map.
     for (int i = 0; i < context->goto_statements.size; i += 1) {
         const statement_t *goto_statement = context->goto_statements.buffer[i];
-        assert(goto_statement != NULL && goto_statement->type == STATEMENT_GOTO);
-        bool valid_label = hash_table_lookup(&context->label_exists, goto_statement->goto_.identifier->value, NULL);
+        assert(goto_statement != NULL && goto_statement->kind == STATEMENT_GOTO);
+        bool valid_label = hash_table_lookup(&context->label_exists, goto_statement->value.goto_.identifier->value, NULL);
         if (!valid_label) {
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_USE_OF_UNDECLARED_LABEL,
-                .location = goto_statement->label_.identifier->position,
-                .use_of_undeclared_label = {
-                    .label = *goto_statement->label_.identifier
+                .location = goto_statement->value.label_.identifier->position,
+                .value.use_of_undeclared_label = {
+                    .label = *goto_statement->value.label_.identifier
                 },
             });
         }
@@ -595,19 +594,19 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
 
         if (bb->instructions.size == 0 || bb->instructions.buffer[bb->instructions.size - 1]->opcode != IR_RET) {
             ir_instruction_t *ret = malloc(sizeof(ir_instruction_t));
-            if (context->function->type->function.return_type->kind == IR_TYPE_VOID) {
+            if (context->function->type->value.function.return_type->kind == IR_TYPE_VOID) {
                 *ret = (ir_instruction_t) {
                     .opcode = IR_RET,
-                    .ret = {
+                    .value.ret = {
                         .has_value = false,
                     }
                 };
             } else {
                 *ret = (ir_instruction_t) {
                     .opcode = IR_RET,
-                    .ret = {
+                    .value.ret = {
                         .has_value = true,
-                        .value = ir_get_zero_value(context, context->function->type->function.return_type),
+                        .value = ir_get_zero_value(context, context->function->type->value.function.return_type),
                     },
                 };
             }
@@ -632,18 +631,18 @@ void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement)
     assert(context != NULL && "Context must not be NULL");
     assert(statement != NULL && "Statement must not be NULL");
 
-    switch (statement->type) {
+    switch (statement->kind) {
         case STATEMENT_COMPOUND: {
             enter_scope(context);
-            for (size_t i = 0; i < statement->compound.block_items.size; i++) {
-                block_item_t *block_item = (block_item_t*) statement->compound.block_items.buffer[i];
-                switch (block_item->type) {
+            for (size_t i = 0; i < statement->value.compound.block_items.size; i++) {
+                block_item_t *block_item = (block_item_t*) statement->value.compound.block_items.buffer[i];
+                switch (block_item->kind) {
                     case BLOCK_ITEM_STATEMENT: {
-                        ir_visit_statement(context, block_item->statement);
+                        ir_visit_statement(context, block_item->value.statement);
                         break;
                     }
                     case BLOCK_ITEM_DECLARATION: {
-                        ir_visit_declaration(context, block_item->declaration);
+                        ir_visit_declaration(context, block_item->value.declaration);
                     }
                 }
             }
@@ -653,7 +652,7 @@ void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement)
             // no-op
             break;
         case STATEMENT_EXPRESSION:
-            ir_visit_expression(context, statement->expression);
+            ir_visit_expression(context, statement->value.expression);
             break;
         case STATEMENT_IF:
             ir_visit_if_statement(context, statement);
@@ -687,10 +686,10 @@ void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement)
 void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *statement) {
     assert(context != NULL && "Context must not be NULL");
     assert(statement != NULL && "Statement must not be NULL");
-    assert(statement->type == STATEMENT_IF);
+    assert(statement->kind == STATEMENT_IF);
 
     // Evaluate the condition
-    expression_result_t condition = ir_visit_expression(context, statement->if_.condition);
+    expression_result_t condition = ir_visit_expression(context, statement->value.if_.condition);
 
     if (condition.is_lvalue) {
         condition = get_rvalue(context, condition);
@@ -700,14 +699,14 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
     if (!is_scalar_type(condition.c_type)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_IF_CONDITION_TYPE,
-            .location = statement->if_.keyword->position,
+            .location = statement->value.if_.keyword->position,
         });
         return;
     }
 
     // Create labels for the false branch and the end of the if statement
     char *false_label = NULL;
-    if (statement->if_.false_branch != NULL) {
+    if (statement->value.if_.false_branch != NULL) {
         false_label = gen_label(context);
     }
     char *end_label = gen_label(context);
@@ -725,7 +724,7 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
               .constant = (ir_const_t) {
                   .kind = IR_CONST_FLOAT,
                   .type = get_ir_type(context,condition.c_type),
-                  .f = 0.0,
+                  .value.f = 0.0,
               },
           } :
           (ir_value_t) {
@@ -733,7 +732,7 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
               .constant = (ir_const_t) {
                   .kind = IR_CONST_INT,
                   .type = get_ir_type(context,condition.c_type),
-                  .i = 0,
+                  .value.i = 0,
               },
           };
     ir_var_t condition_var = (ir_var_t) {
@@ -744,9 +743,9 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
     ir_build_br_cond(context->builder, ir_value_for_var(condition_var), false_label != NULL ? false_label : end_label);
 
     // Generate code for the true branch
-    ir_visit_statement(context, statement->if_.true_branch);
+    ir_visit_statement(context, statement->value.if_.true_branch);
 
-    if (statement->if_.false_branch != NULL) {
+    if (statement->value.if_.false_branch != NULL) {
         // Jump to the end of the if statement
         ir_build_br(context->builder, end_label);
 
@@ -754,7 +753,7 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
         ir_build_nop(context->builder, false_label);
 
         // Generate code for the false branch
-        ir_visit_statement(context, statement->if_.false_branch);
+        ir_visit_statement(context, statement->value.if_.false_branch);
     }
 
     ir_build_nop(context->builder, end_label);
@@ -763,13 +762,13 @@ void ir_visit_if_statement(ir_gen_context_t *context, const statement_t *stateme
 void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *statement) {
     assert(context != NULL && "Context must not be NULL");
     assert(statement != NULL && "Statement must not be NULL");
-    assert(statement->type == STATEMENT_RETURN);
+    assert(statement->kind == STATEMENT_RETURN);
 
-    const ir_type_t *return_type = context->function->type->function.return_type;
+    const ir_type_t *return_type = context->function->type->value.function.return_type;
     const type_t *c_return_type = context->c_function->return_type;
 
-    if (statement->return_.expression != NULL) {
-        expression_result_t value = ir_visit_expression(context, statement->return_.expression);
+    if (statement->value.return_.expression != NULL) {
+        expression_result_t value = ir_visit_expression(context, statement->value.return_.expression);
         // Error occurred while evaluating the return value
         if (value.kind == EXPR_RESULT_ERR) return;
 
@@ -789,8 +788,14 @@ void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *sta
         ir_build_ret(context->builder, value.value);
     } else {
         if (return_type->kind != TYPE_VOID) {
+            // attempting to return void from a function that returns a value
             append_compilation_error(&context->errors, (compilation_error_t) {
-                // TODO
+                .kind = ERR_NON_VOID_FUNCTION_RETURNS_VOID,
+                .location = statement->value.return_.keyword->position,
+                .value.non_void_function_returns_void = {
+                    .ret = statement->value.return_.keyword,
+                    .fn = context->c_function,
+                },
             });
         }
         ir_build_ret_void(context->builder);
@@ -799,7 +804,7 @@ void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *sta
 
 void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *statement) {
     assert(context != NULL && statement != NULL);
-    assert(statement->type == STATEMENT_WHILE || statement->type == STATEMENT_DO_WHILE || statement->type == STATEMENT_FOR);
+    assert(statement->kind == STATEMENT_WHILE || statement->kind == STATEMENT_DO_WHILE || statement->kind == STATEMENT_FOR);
 
     bool post_test = false;
     expression_t *condition_expr = NULL;
@@ -809,14 +814,14 @@ void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *state
     char *loop_end_label = gen_label(context);
     char *loop_exit_label = gen_label(context);
 
-    switch (statement->type) {
+    switch (statement->kind) {
         case STATEMENT_WHILE:
-            body = statement->while_.body;
-            condition_expr = statement->while_.condition;
+            body = statement->value.while_.body;
+            condition_expr = statement->value.while_.condition;
             break;
         case STATEMENT_DO_WHILE:
-            body = statement->do_while.body;
-            condition_expr = statement->do_while.condition;
+            body = statement->value.do_while.body;
+            condition_expr = statement->value.do_while.condition;
             post_test = true;
             break;
         case STATEMENT_FOR: {
@@ -824,17 +829,17 @@ void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *state
             // outside the loop.
             enter_scope(context);
             // Visit the initializer(s)
-            if (statement->for_.initializer.kind == FOR_INIT_DECLARATION) {
-                assert(statement->for_.initializer.declarations != NULL);
-                for (size_t i = 0; i < statement->for_.initializer.declarations->size; i += 1) {
-                    ir_visit_declaration(context, statement->for_.initializer.declarations->buffer[i]);
+            if (statement->value.for_.initializer.kind == FOR_INIT_DECLARATION) {
+                assert(statement->value.for_.initializer.declarations != NULL);
+                for (size_t i = 0; i < statement->value.for_.initializer.declarations->size; i += 1) {
+                    ir_visit_declaration(context, statement->value.for_.initializer.declarations->buffer[i]);
                 }
-            } else if (statement->for_.initializer.kind == FOR_INIT_EXPRESSION) {
-                assert(statement->for_.initializer.expression != NULL);
-                ir_visit_expression(context, statement->for_.initializer.expression);
+            } else if (statement->value.for_.initializer.kind == FOR_INIT_EXPRESSION) {
+                assert(statement->value.for_.initializer.expression != NULL);
+                ir_visit_expression(context, statement->value.for_.initializer.expression);
             }
-            body = statement->for_.body;
-            condition_expr = statement->for_.condition;
+            body = statement->value.for_.body;
+            condition_expr = statement->value.for_.condition;
             break;
         }
         default:
@@ -855,7 +860,7 @@ void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *state
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_INVALID_LOOP_CONDITION_TYPE,
                 .location = condition_expr->span.start,
-                .invalid_loop_condition_type = {
+                .value.invalid_loop_condition_type = {
                     .type = condition.c_type,
                 },
             });
@@ -892,7 +897,7 @@ void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *state
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_INVALID_LOOP_CONDITION_TYPE,
                 .location = condition_expr->span.start,
-                .invalid_loop_condition_type = {
+                .value.invalid_loop_condition_type = {
                     .type = condition.c_type,
                 },
             });
@@ -907,8 +912,8 @@ void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *state
         ir_build_br_cond(context->builder, ir_value_for_var(condition_var), loop_exit_label);
     }
 
-    if (statement->type == STATEMENT_FOR && statement->for_.post != NULL)
-        ir_visit_expression(context, statement->for_.post);
+    if (statement->kind == STATEMENT_FOR && statement->value.for_.post != NULL)
+        ir_visit_expression(context, statement->value.for_.post);
 
     // Jump back to the start of the loop
     ir_build_br(context->builder, loop_start_label);
@@ -916,17 +921,17 @@ void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *state
     // Label to exit the loop
     ir_build_nop(context->builder, loop_exit_label);
 
-    if (statement->type == STATEMENT_FOR) leave_scope(context);
+    if (statement->kind == STATEMENT_FOR) leave_scope(context);
 }
 
 void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *statement) {
-    assert(statement != NULL && statement->type == STATEMENT_BREAK);
+    assert(statement != NULL && statement->kind == STATEMENT_BREAK);
     if (context->break_label == NULL) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE,
-            .location = statement->break_.keyword->position,
-            .break_outside_of_loop_or_switch_case = {
-                .keyword = *statement->break_.keyword,
+            .location = statement->value.break_.keyword->position,
+            .value.break_outside_of_loop_or_switch_case = {
+                .keyword = *statement->value.break_.keyword,
             },
         });
         return;
@@ -936,13 +941,13 @@ void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *stat
 }
 
 void ir_visit_continue_statement(ir_gen_context_t *context, const statement_t *statement) {
-    assert(statement != NULL && statement->type == STATEMENT_CONTINUE);
+    assert(statement != NULL && statement->kind == STATEMENT_CONTINUE);
     if (context->continue_label == NULL) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_CONTINUE_OUTSIDE_OF_LOOP,
-            .location = statement->continue_.keyword->position,
-            .continue_outside_of_loop = {
-                .keyword = *statement->continue_.keyword,
+            .location = statement->value.continue_.keyword->position,
+            .value.continue_outside_of_loop = {
+                .keyword = *statement->value.continue_.keyword,
             },
         });
     }
@@ -951,9 +956,9 @@ void ir_visit_continue_statement(ir_gen_context_t *context, const statement_t *s
 }
 
 void ir_visit_labeled_statement(ir_gen_context_t *context, const statement_t *statement) {
-    assert(statement != NULL && statement->type == STATEMENT_LABEL);
+    assert(statement != NULL && statement->kind == STATEMENT_LABEL);
 
-    const token_t *source_label = statement->label_.identifier;
+    const token_t *source_label = statement->value.label_.identifier;
 
     // check if this is a duplicate label
     statement_t *previous_definition = NULL;
@@ -963,9 +968,9 @@ void ir_visit_labeled_statement(ir_gen_context_t *context, const statement_t *st
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_REDEFINITION_OF_LABEL,
             .location = source_label->position,
-            .redefinition_of_label = {
+            .value.redefinition_of_label = {
                 .label = *source_label,
-                .previous_definition = *previous_definition->label_.identifier,
+                .previous_definition = *previous_definition->value.label_.identifier,
             },
         });
     }
@@ -986,17 +991,17 @@ void ir_visit_labeled_statement(ir_gen_context_t *context, const statement_t *st
     ir_build_nop(context->builder, ir_label);
 
     // visit the inner statement
-    if (statement->label_.statement != NULL) ir_visit_statement(context, statement->label_.statement);
+    if (statement->value.label_.statement != NULL) ir_visit_statement(context, statement->value.label_.statement);
 }
 
 void ir_visit_goto_statement(ir_gen_context_t *context, const statement_t *statement) {
-    assert(statement != NULL && statement->type == STATEMENT_GOTO);
+    assert(statement != NULL && statement->kind == STATEMENT_GOTO);
 
     // add to the function goto statement list so we can validate it later (it may reference a label that hasn't been
     // visited yet)
     VEC_APPEND(&context->goto_statements, statement);
 
-    const token_t *source_label =  statement->goto_.identifier;
+    const token_t *source_label =  statement->value.goto_.identifier;
 
     // check if we've already mapped this label to an ir label
     char *ir_label = NULL;
@@ -1015,8 +1020,8 @@ void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_
 void ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer) {
     const ir_type_t *type = ir_get_type_of_value(ptr);
     assert(type->kind == IR_TYPE_PTR);
-    assert(type->ptr.pointee->kind == IR_TYPE_ARRAY);
-    const ir_type_t *element_type = type->ptr.pointee->array.element;
+    assert(type->value.ptr.pointee->kind == IR_TYPE_ARRAY);
+    const ir_type_t *element_type = type->value.ptr.pointee->value.array.element;
     const ir_type_t *element_ptr_type = get_ir_ptr_type(element_type);
 
     // TODO: if the initializer is constant and contiguous, we can declare it as a global constant and memcpy it
@@ -1027,14 +1032,14 @@ void ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const
             // TODO: handle designators
             fprintf(stderr, "%s:%d: Designators in array initializers are not implemented\n", __FILE__, __LINE__);
         } else {
-            if (i >= type->ptr.pointee->array.length) {
+            if (i >= type->value.ptr.pointee->value.array.length) {
                 // TODO: warn that initializer is longer than array
                 break;
             }
             ir_value_t index = ir_make_const_int(ir_ptr_int_type(context), i);
             ir_var_t element_ptr = temp_var(context, element_ptr_type);
             ir_build_get_array_element_ptr(context->builder, ptr, index, element_ptr);
-            ir_visit_initializer(context, ir_value_for_var(element_ptr), c_type->array.element_type, element.initializer);
+            ir_visit_initializer(context, ir_value_for_var(element_ptr), c_type->value.array.element_type, element.initializer);
         }
     }
 }
@@ -1042,7 +1047,7 @@ void ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const
 void ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
     const ir_type_t *ir_type = ir_get_type_of_value(ptr);
     assert(ir_type->kind == IR_TYPE_PTR);
-    switch (ir_type->ptr.pointee->kind) {
+    switch (ir_type->value.ptr.pointee->kind) {
         case IR_TYPE_ARRAY: {
             ir_visit_array_initializer(context, ptr, c_type, initializer_list);
             break;
@@ -1062,7 +1067,7 @@ void ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const 
 void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer) {
     switch (initializer->kind) {
         case INITIALIZER_EXPRESSION: {
-            expression_result_t result =  ir_visit_expression(context, initializer->expression);
+            expression_result_t result =  ir_visit_expression(context, initializer->value.expression);
 
             // Error occurred while evaluating the initializer
             if (result.kind == EXPR_RESULT_ERR) return;
@@ -1080,7 +1085,7 @@ void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_
             break;
         }
         case INITIALIZER_LIST: {
-            ir_visit_initializer_list(context, ptr, var_ctype, initializer->list);
+            ir_visit_initializer_list(context, ptr, var_ctype, initializer->value.list);
             break;
         }
     }
@@ -1097,8 +1102,8 @@ const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type
     // From section 6.7.2.2 of C99 standard
     // Is this declaring a new tag, modifying a forward declaration, or just referencing an existing one?
 
-    bool incomplete_type = !c_type->struct_or_union.has_body;
-    const token_t *identifier = c_type->struct_or_union.identifier;
+    bool incomplete_type = !c_type->value.struct_or_union.has_body;
+    const token_t *identifier = c_type->value.struct_or_union.identifier;
 
     if (identifier == NULL) {
         // anonymous tag, generate a unique identifier
@@ -1124,7 +1129,7 @@ const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type
     if (tag != NULL && !is_tag_incomplete_type(tag) && !incomplete_type) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_REDEFINITION_OF_TAG,
-            .redefinition_of_tag = {
+            .value.redefinition_of_tag = {
                 .redefinition = identifier,
                 .previous_definition = tag->identifier,
             },
@@ -1209,7 +1214,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .location = declaration->identifier->position,
                     .kind = ERR_REDEFINITION_OF_SYMBOL,
-                    .redefinition_of_symbol = {
+                    .value.redefinition_of_symbol = {
                         .redefinition = declaration->identifier,
                         .previous_definition = symbol->identifier,
                     },
@@ -1220,7 +1225,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .location = declaration->identifier->position,
                     .kind = ERR_REDEFINITION_OF_SYMBOL,
-                    .redefinition_of_symbol = {
+                    .value.redefinition_of_symbol = {
                         .redefinition = declaration->identifier,
                         .previous_definition = symbol->identifier,
                     },
@@ -1236,7 +1241,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .location = declaration->identifier->position,
                     .kind = ERR_REDEFINITION_OF_SYMBOL,
-                    .redefinition_of_symbol = {
+                    .value.redefinition_of_symbol = {
                         .redefinition = declaration->identifier,
                         .previous_definition = symbol->identifier,
                     },
@@ -1307,7 +1312,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
 
         expression_result_t result;
         if (declaration->initializer->kind == INITIALIZER_EXPRESSION) {
-            result = ir_visit_expression(context, declaration->initializer->expression);
+            result = ir_visit_expression(context, declaration->initializer->value.expression);
         } else {
             fprintf(stderr, "%s:%d: Codegen for initializer lists unimplemented\n", __FILE__, __LINE__);
             exit(1);
@@ -1326,7 +1331,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_GLOBAL_INITIALIZER_NOT_CONSTANT,
                 .location = declaration->initializer->span.start,
-                .global_initializer_not_constant = {
+                .value.global_initializer_not_constant = {
                     .declaration = declaration,
                 },
             });
@@ -1340,13 +1345,13 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             global->value = (ir_const_t) {
                 .kind = IR_CONST_FLOAT,
                 .type = symbol->ir_type,
-                .f = 0.0,
+                .value.f = 0.0,
             };
         } else {
             global->value = (ir_const_t) {
                 .kind = IR_CONST_INT,
                 .type = symbol->ir_type,
-                .i = 0,
+                .value.i = 0,
             };
         }
     }
@@ -1380,7 +1385,7 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         append_compilation_error(&context->errors, (compilation_error_t) {
             .location = declaration->identifier->position,
             .kind = ERR_REDEFINITION_OF_SYMBOL,
-            .redefinition_of_symbol = {
+            .value.redefinition_of_symbol = {
                 .redefinition = declaration->identifier,
                 .previous_definition = symbol->identifier,
             },
@@ -1426,7 +1431,7 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
     assert(context != NULL && "Context must not be NULL");
     assert(expression != NULL && "Expression must not be NULL");
 
-    switch (expression->type) {
+    switch (expression->kind) {
         case EXPRESSION_ARRAY_SUBSCRIPT:
             return ir_visit_array_subscript_expression(context, expression);
         case EXPRESSION_BINARY:
@@ -1452,14 +1457,14 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
 }
 
 expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *context, const expression_t *expr) {
-    expression_result_t target = ir_visit_expression(context, expr->array_subscript.array);
+    expression_result_t target = ir_visit_expression(context, expr->value.array_subscript.array);
     if (target.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     // The target must be an array or a pointer
     if (target.c_type->kind != TYPE_ARRAY && target.c_type->kind != TYPE_POINTER) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_SUBSCRIPT_TARGET,
-            .location = expr->array_subscript.array->span.start, // TODO, use the '[' token position?
+            .location = expr->value.array_subscript.array->span.start, // TODO, use the '[' token position?
         });
         return EXPR_ERR;
     }
@@ -1478,11 +1483,11 @@ expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *contex
     }
 
     const ir_type_t *ptr_type = ir_get_type_of_value(base_ptr);
-    const ir_type_t *element_type = ptr_type->ptr.pointee->kind == IR_TYPE_ARRAY
-        ? ptr_type->ptr.pointee->array.element
-        : ptr_type->ptr.pointee;
+    const ir_type_t *element_type = ptr_type->value.ptr.pointee->kind == IR_TYPE_ARRAY
+        ? ptr_type->value.ptr.pointee->value.array.element
+        : ptr_type->value.ptr.pointee;
 
-    expression_result_t index = ir_visit_expression(context, expr->array_subscript.index);
+    expression_result_t index = ir_visit_expression(context, expr->value.array_subscript.index);
     if (index.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (index.is_lvalue) index = get_rvalue(context, index);
     assert(index.kind == EXPR_RESULT_VALUE);
@@ -1491,7 +1496,7 @@ expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *contex
     if (!is_integer_type(index.c_type)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_SUBSCRIPT_TYPE,
-            .location = expr->array_subscript.index->span.start,
+            .location = expr->value.array_subscript.index->span.start,
         });
         return EXPR_ERR;
     }
@@ -1500,8 +1505,8 @@ expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *contex
     ir_build_get_array_element_ptr(context->builder, base_ptr, index.value, result);
 
     const type_t *result_type = target.c_type->kind == TYPE_ARRAY
-        ? target.c_type->array.element_type
-        : target.c_type->pointer.base;
+        ? target.c_type->value.array.element_type
+        : target.c_type->value.pointer.base;
     return (expression_result_t) {
         .kind = EXPR_RESULT_VALUE,
         .c_type = result_type,
@@ -1513,7 +1518,7 @@ expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *contex
 }
 
 expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr) {
-    expression_result_t function = ir_visit_expression(context, expr->call.callee);
+    expression_result_t function = ir_visit_expression(context, expr->value.call.callee);
     ptr_vector_t arguments = (ptr_vector_t) {
         .size = 0,
         .capacity = 0,
@@ -1527,8 +1532,8 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     if (function.c_type->kind != TYPE_FUNCTION) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_CALL_TARGET_NOT_FUNCTION,
-            .location = expr->call.callee->span.start,
-            .call_target_not_function = {
+            .location = expr->value.call.callee->span.start,
+            .value.call_target_not_function = {
                 .type = function.c_type,
             }
         });
@@ -1536,14 +1541,14 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     }
 
     // Check that the number of arguments matches function arity
-    size_t expected_args_count = function.c_type->function.parameter_list->length;
-    bool variadic = function.c_type->function.parameter_list->variadic;
-    size_t actual_args_count = expr->call.arguments.size;
+    size_t expected_args_count = function.c_type->value.function.parameter_list->length;
+    bool variadic = function.c_type->value.function.parameter_list->variadic;
+    size_t actual_args_count = expr->value.call.arguments.size;
     if ((variadic && actual_args_count < expected_args_count) || (!variadic && actual_args_count != expected_args_count)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_CALL_ARGUMENT_COUNT_MISMATCH,
-            .location = expr->call.callee->span.start,
-            .call_argument_count_mismatch = {
+            .location = expr->value.call.callee->span.start,
+            .value.call_argument_count_mismatch = {
                 .expected = expected_args_count,
                 .actual = actual_args_count,
             }
@@ -1554,13 +1559,13 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     // Evaluate the arguments
     ir_value_t *args = malloc(sizeof(ir_value_t) * actual_args_count);
     for (size_t i = 0; i < actual_args_count; i += 1) {
-        expression_result_t arg = ir_visit_expression(context, expr->call.arguments.buffer[i]);
+        expression_result_t arg = ir_visit_expression(context, expr->value.call.arguments.buffer[i]);
 
         // Error occurred while evaluating the argument
         if (arg.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
         if (arg.c_type->kind == TYPE_ARRAY) {
-            arg = convert_to_type(context, arg.value, get_ptr_type(arg.c_type), get_ptr_type(arg.c_type->array.element_type));
+            arg = convert_to_type(context, arg.value, get_ptr_type(arg.c_type), get_ptr_type(arg.c_type->value.array.element_type));
         } else if (arg.is_lvalue) {
             arg = get_rvalue(context, arg);
         }
@@ -1568,15 +1573,15 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         // Implicit conversion to the parameter type
         // Variadic arguments are _NOT_ converted to a specific type, but chars, shorts, and floats are promoted
         // Array arguments are passed as pointers
-        if (i < function.c_type->function.parameter_list->length) {
-            const type_t *param_type = function.c_type->function.parameter_list->parameters[i]->type;
-            if (param_type->kind == TYPE_ARRAY) param_type = get_ptr_type(param_type->array.element_type);
+        if (i < function.c_type->value.function.parameter_list->length) {
+            const type_t *param_type = function.c_type->value.function.parameter_list->parameters[i]->type;
+            if (param_type->kind == TYPE_ARRAY) param_type = get_ptr_type(param_type->value.array.element_type);
             arg = convert_to_type(context, arg.value, arg.c_type, param_type);
         } else {
             if (arg.c_type->kind == TYPE_INTEGER) {
                 const type_t *new_type = type_after_integer_promotion(arg.c_type);
                 arg = convert_to_type(context, arg.value, arg.c_type, new_type);
-            } else if (arg.c_type->kind == TYPE_FLOATING && arg.c_type->floating == FLOAT_TYPE_FLOAT) {
+            } else if (arg.c_type->kind == TYPE_FLOATING && arg.c_type->value.floating == FLOAT_TYPE_FLOAT) {
                 arg = convert_to_type(context, arg.value, arg.c_type, &DOUBLE);
             }
         }
@@ -1589,9 +1594,9 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
 
     // Emit the call instruction
     ir_var_t *result = NULL;
-    if (function.c_type->function.return_type->kind != TYPE_VOID) {
+    if (function.c_type->value.function.return_type->kind != TYPE_VOID) {
         result = (ir_var_t*) malloc(sizeof(ir_var_t));
-        *result = temp_var(context, get_ir_type(context,function.c_type->function.return_type));
+        *result = temp_var(context, get_ir_type(context,function.c_type->value.function.return_type));
     }
     assert(function.value.kind == IR_VALUE_VAR); // TODO: is it possible to directly call a constant?
     ir_build_call(context->builder, function.value.var, args, actual_args_count, result);
@@ -1607,7 +1612,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
 
     return (expression_result_t) {
         .kind = EXPR_RESULT_VALUE,
-        .c_type = function.c_type->function.return_type,
+        .c_type = function.c_type->value.function.return_type,
         .is_lvalue = false,
         .is_string_literal = false,
         .addr_of = false,
@@ -1616,25 +1621,25 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
 }
 
 expression_result_t ir_visit_cast_expression(ir_gen_context_t *context, const expression_t *expr) {
-    assert(expr != NULL && expr->type == EXPRESSION_CAST);
+    assert(expr != NULL && expr->kind == EXPRESSION_CAST);
 
-    expression_result_t value = ir_visit_expression(context, expr->cast.expression);
+    expression_result_t value = ir_visit_expression(context, expr->value.cast.expression);
     if (value.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (value.is_lvalue) value = get_rvalue(context, value);
-    return convert_to_type(context, value.value, value.c_type, expr->cast.type);
+    return convert_to_type(context, value.value, value.c_type, expr->value.cast.type);
 }
 
 expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
-    assert(expr->type == EXPRESSION_BINARY);
+    assert(expr->kind == EXPRESSION_BINARY);
 
-    switch (expr->binary.type) {
+    switch (expr->value.binary.kind) {
         case BINARY_ARITHMETIC: {
-            expression_result_t lhs = ir_visit_expression(context, expr->binary.left);
-            expression_result_t rhs = ir_visit_expression(context, expr->binary.right);
-            if (expr->binary.arithmetic_operator == BINARY_ARITHMETIC_ADD ||
-                expr->binary.arithmetic_operator == BINARY_ARITHMETIC_SUBTRACT) {
+            expression_result_t lhs = ir_visit_expression(context, expr->value.binary.left);
+            expression_result_t rhs = ir_visit_expression(context, expr->value.binary.right);
+            if (expr->value.binary.operator.arithmetic == BINARY_ARITHMETIC_ADD ||
+                expr->value.binary.operator.arithmetic == BINARY_ARITHMETIC_SUBTRACT) {
                 return ir_visit_additive_binexpr(context, expr, lhs, rhs);
             } else {
                 return ir_visit_multiplicative_binexpr(context, expr, lhs, rhs);
@@ -1644,13 +1649,13 @@ expression_result_t ir_visit_binary_expression(ir_gen_context_t *context, const 
             return ir_visit_assignment_binexpr(context, expr);
         }
         case BINARY_BITWISE: {
-            expression_result_t lhs = ir_visit_expression(context, expr->binary.left);
-            expression_result_t rhs = ir_visit_expression(context, expr->binary.right);
+            expression_result_t lhs = ir_visit_expression(context, expr->value.binary.left);
+            expression_result_t rhs = ir_visit_expression(context, expr->value.binary.right);
             return ir_visit_bitwise_binexpr(context, expr, lhs, rhs);
         }
         case BINARY_COMMA: {
             // TODO
-            source_position_t pos = expr->binary.operator->position;
+            source_position_t pos = expr->value.binary.operator_token->position;
             fprintf(stderr, "%s:%d:%d: comma operator not yet implemented\n",
                 pos.path, pos.line, pos.column);
             exit(1);
@@ -1671,8 +1676,8 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
     // Bubble up errors if the operands are invalid.
     if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
-    bool is_addition = expr->binary.operator->kind == TK_PLUS
-                     || expr->binary.operator->kind == TK_PLUS_ASSIGN;
+    bool is_addition = expr->value.binary.operator_token->kind == TK_PLUS
+                     || expr->value.binary.operator_token->kind == TK_PLUS_ASSIGN;
 
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
@@ -1694,16 +1699,16 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
                 .constant = (ir_const_t) {
                     .kind = is_floating_type(result_type) ? IR_CONST_FLOAT : IR_CONST_INT,
                     .type = ir_result_type,
-                    .i = 0,
+                    .value.i = 0,
                 }
             };
 
             if (is_floating_type(result_type)) {
-                result.constant.f = is_addition ? left.value.constant.f + right.value.constant.f
-                                                : left.value.constant.f - right.value.constant.f;
+                result.constant.value.f = is_addition ? left.value.constant.value.f + right.value.constant.value.f
+                                                      : left.value.constant.value.f - right.value.constant.value.f;
             } else {
-                result.constant.i = is_addition ? left.value.constant.i + right.value.constant.i
-                                                : left.value.constant.i - right.value.constant.i;
+                result.constant.value.i = is_addition ? left.value.constant.value.i + right.value.constant.value.i
+                                                      : left.value.constant.value.i - right.value.constant.value.i;
             }
         } else {
             // Generate a temp var to store the result
@@ -1730,9 +1735,9 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
             // For subtraction the lhs must be the pointer
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
-                .location = expr->binary.operator->position,
-                .invalid_binary_expression_operands = {
-                    .operator = expr->binary.operator->value,
+                .location = expr->value.binary.operator_token->position,
+                .value.invalid_binary_expression_operands = {
+                    .operator = expr->value.binary.operator_token->value,
                     .left_type = left.c_type,
                     .right_type = right.c_type,
                 },
@@ -1760,9 +1765,9 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
         // Invalid operand types.
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
-            .location = expr->binary.operator->position,
-            .invalid_binary_expression_operands = {
-                .operator = expr->binary.operator->value,
+            .location = expr->value.binary.operator_token->position,
+            .value.invalid_binary_expression_operands = {
+                .operator = expr->value.binary.operator_token->value,
                 .left_type = left.c_type,
                 .right_type = right.c_type,
             },
@@ -1772,8 +1777,8 @@ expression_result_t ir_visit_additive_binexpr(ir_gen_context_t *context, const e
 }
 
 expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, const expression_t *expr, expression_result_t left, expression_result_t right) {
-    bool is_modulo = expr->binary.operator->kind == TK_PERCENT || expr->binary.operator->kind == TK_MOD_ASSIGN;
-    bool is_division = expr->binary.operator->kind == TK_SLASH || expr->binary.operator->kind == TK_DIVIDE_ASSIGN;
+    bool is_modulo = expr->value.binary.operator_token->kind == TK_PERCENT || expr->value.binary.operator_token->kind == TK_MOD_ASSIGN;
+    bool is_division = expr->value.binary.operator_token->kind == TK_SLASH || expr->value.binary.operator_token->kind == TK_DIVIDE_ASSIGN;
 
     // Bubble up errors if the operands are invalid.
     if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
@@ -1788,9 +1793,9 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
     ) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
-            .location = expr->binary.operator->position,
-            .invalid_binary_expression_operands = {
-                .operator = expr->binary.operator->value,
+            .location = expr->value.binary.operator_token->position,
+            .value.invalid_binary_expression_operands = {
+                .operator = expr->value.binary.operator_token->value,
                 .left_type = left.c_type,
                 .right_type = right.c_type,
             },
@@ -1812,23 +1817,23 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
         ir_const_t value = (ir_const_t) {
             .kind = is_floating_type(result_type) ? IR_CONST_FLOAT : IR_CONST_INT,
             .type = ir_result_type,
-            .i = 0,
+            .value.i = 0,
         };
 
         if (ir_is_integer_type(ir_result_type)) {
             // TODO: emit warning and set undefined value for division by zero
             // For now we will just set the value to 0 and move on
-            if (is_division && right.value.constant.i == 0) {
-                value.i = 0;
+            if (is_division && right.value.constant.value.i == 0) {
+                value.value.i = 0;
             } else {
-                if (is_modulo) value.i = left.value.constant.i % right.value.constant.i;
-                else if (is_division) value.i = left.value.constant.i / right.value.constant.i;
-                else value.i = left.value.constant.i * right.value.constant.i;
+                if (is_modulo) value.value.i = left.value.constant.value.i % right.value.constant.value.i;
+                else if (is_division) value.value.i = left.value.constant.value.i / right.value.constant.value.i;
+                else value.value.i = left.value.constant.value.i * right.value.constant.value.i;
             }
         } else {
             // no modulo operator for floating point
-            if (is_division) value.f = left.value.constant.f / right.value.constant.f;
-            else value.f = left.value.constant.f * right.value.constant.f;
+            if (is_division) value.value.f = left.value.constant.value.f / right.value.constant.value.f;
+            else value.value.f = left.value.constant.value.f * right.value.constant.value.f;
         }
 
         result = (ir_value_t) {
@@ -1864,19 +1869,19 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
     if (left.is_lvalue) left = get_rvalue(context, left);
     if (right.is_lvalue) right = get_rvalue(context, right);
 
-    bool is_lshift = expr->binary.operator->kind == TK_LSHIFT || expr->binary.operator->kind == TK_LSHIFT_ASSIGN;
-    bool is_rshift = expr->binary.operator->kind == TK_RSHIFT || expr->binary.operator->kind == TK_RSHIFT_ASSIGN;
+    bool is_lshift = expr->value.binary.operator_token->kind == TK_LSHIFT || expr->value.binary.operator_token->kind == TK_LSHIFT_ASSIGN;
+    bool is_rshift = expr->value.binary.operator_token->kind == TK_RSHIFT || expr->value.binary.operator_token->kind == TK_RSHIFT_ASSIGN;
     bool is_shift = is_lshift || is_rshift;
-    bool is_and = expr->binary.operator->kind == TK_AMPERSAND || expr->binary.operator->kind == TK_BITWISE_AND_ASSIGN;
-    bool is_or = expr->binary.operator->kind == TK_BITWISE_OR || expr->binary.operator->kind == TK_BITWISE_OR_ASSIGN;
+    bool is_and = expr->value.binary.operator_token->kind == TK_AMPERSAND || expr->value.binary.operator_token->kind == TK_BITWISE_AND_ASSIGN;
+    bool is_or = expr->value.binary.operator_token->kind == TK_BITWISE_OR || expr->value.binary.operator_token->kind == TK_BITWISE_OR_ASSIGN;
 
     // For bitwise operators, both operands must have integer type
     if (!is_integer_type(left.c_type) || !is_integer_type(right.c_type)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
-            .location = expr->binary.operator->position,
-            .invalid_binary_expression_operands = {
-                .operator = expr->binary.operator->value,
+            .location = expr->value.binary.operator_token->position,
+            .value.invalid_binary_expression_operands = {
+                .operator = expr->value.binary.operator_token->value,
                 .left_type = left.c_type,
                 .right_type = right.c_type,
             },
@@ -1897,14 +1902,14 @@ expression_result_t ir_visit_bitwise_binexpr(ir_gen_context_t *context, const ex
         ir_const_t value = {
             .kind = IR_CONST_INT,
             .type = result_type,
-            .i = 0,
+            .value.i = 0,
         };
 
-        if (is_lshift) value.i = left.value.constant.i << right.value.constant.i;
-        else if (is_rshift) value.i = left.value.constant.i >> right.value.constant.i;
-        else if (is_and) value.i = left.value.constant.i & right.value.constant.i;
-        else if (is_or) value.i = left.value.constant.i | right.value.constant.i;
-        else value.i = left.value.constant.i ^ right.value.constant.i;
+        if (is_lshift) value.value.i = left.value.constant.value.i << right.value.constant.value.i;
+        else if (is_rshift) value.value.i = left.value.constant.value.i >> right.value.constant.value.i;
+        else if (is_and) value.value.i = left.value.constant.value.i & right.value.constant.value.i;
+        else if (is_or) value.value.i = left.value.constant.value.i | right.value.constant.value.i;
+        else value.value.i = left.value.constant.value.i ^ right.value.constant.value.i;
 
         result = (ir_value_t) {
             .kind = IR_VALUE_CONST,
@@ -1941,8 +1946,8 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
     assert(expr != NULL && "Expression must not be NULL");
 
     // Evaluate the left and right operands.
-    expression_result_t left = ir_visit_expression(context, expr->binary.left);
-    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+    expression_result_t left = ir_visit_expression(context, expr->value.binary.left);
+    expression_result_t right = ir_visit_expression(context, expr->value.binary.right);
 
     // Bubble up errors if the operands are invalid.
     if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
@@ -1951,13 +1956,13 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
     if (!left.is_lvalue || left.c_type->is_const) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_ASSIGNMENT_TARGET,
-            .location = expr->binary.operator->position,
+            .location = expr->value.binary.operator_token->position,
         });
         return EXPR_ERR;
     }
 
-    if (expr->binary.operator->kind != TK_ASSIGN) {
-        switch (expr->binary.assignment_operator) {
+    if (expr->value.binary.operator_token->kind != TK_ASSIGN) {
+        switch (expr->value.binary.operator.assignment) {
             case BINARY_ADD_ASSIGN:
             case BINARY_SUBTRACT_ASSIGN:
                 right = ir_visit_additive_binexpr(context, expr, left, right);
@@ -2010,11 +2015,11 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
 expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
-    assert(expr->type == EXPRESSION_BINARY && expr->binary.type == BINARY_COMPARISON);
+    assert(expr->kind == EXPRESSION_BINARY && expr->value.binary.kind == BINARY_COMPARISON);
 
     // Evaluate the left and right operands.
-    expression_result_t left = ir_visit_expression(context, expr->binary.left);
-    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+    expression_result_t left = ir_visit_expression(context, expr->value.binary.left);
+    expression_result_t right = ir_visit_expression(context, expr->value.binary.right);
 
     // Bubble up errors if the operands are invalid.
     if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
@@ -2039,14 +2044,14 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
         if (left.kind == EXPR_RESULT_ERR || right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
         ir_value_t result;
-        const binary_comparison_operator_t op = expr->binary.comparison_operator;
+        const binary_comparison_operator_t op = expr->value.binary.operator.comparison;
 
         if (left.value.kind == IR_VALUE_CONST && right.value.kind == IR_VALUE_CONST) {
             // constant folding
             ir_const_t value = {
                 .kind = IR_CONST_INT,
                 .type = &IR_BOOL,
-                .i = 0,
+                .value.i = 0,
             };
             bool floating = is_floating_type(common_type);
             long double leftf;
@@ -2054,30 +2059,30 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
             long long lefti;
             long long righti;
             if (floating) {
-                leftf = left.value.constant.kind == IR_CONST_INT ? left.value.constant.i : left.value.constant.f;
-                rightf = right.value.constant.kind == IR_CONST_INT ? right.value.constant.i : right.value.constant.f;
+                leftf = left.value.constant.kind == IR_CONST_INT ? left.value.constant.value.i : left.value.constant.value.f;
+                rightf = right.value.constant.kind == IR_CONST_INT ? right.value.constant.value.i : right.value.constant.value.f;
             } else {
-                lefti = left.value.constant.kind == IR_CONST_INT ? left.value.constant.i : left.value.constant.f;
-                righti = right.value.constant.kind == IR_CONST_INT ? right.value.constant.i : right.value.constant.f;
+                lefti = left.value.constant.kind == IR_CONST_INT ? left.value.constant.value.i : left.value.constant.value.f;
+                righti = right.value.constant.kind == IR_CONST_INT ? right.value.constant.value.i : right.value.constant.value.f;
             }
             switch (op) {
                 case BINARY_COMPARISON_EQUAL:
-                    value.i = floating ? leftf == rightf : lefti == righti;
+                    value.value.i = floating ? leftf == rightf : lefti == righti;
                     break;
                 case BINARY_COMPARISON_NOT_EQUAL:
-                    value.i = floating ? leftf != rightf : lefti != righti;
+                    value.value.i = floating ? leftf != rightf : lefti != righti;
                     break;
                 case BINARY_COMPARISON_LESS_THAN:
-                    value.i = floating ? leftf < rightf : lefti < righti;
+                    value.value.i = floating ? leftf < rightf : lefti < righti;
                     break;
                 case BINARY_COMPARISON_LESS_THAN_OR_EQUAL:
-                    value.i = floating ? leftf <= rightf : lefti <= righti;
+                    value.value.i = floating ? leftf <= rightf : lefti <= righti;
                     break;
                 case BINARY_COMPARISON_GREATER_THAN:
-                    value.i = floating ? leftf > rightf : lefti > righti;
+                    value.value.i = floating ? leftf > rightf : lefti > righti;
                     break;
                 case BINARY_COMPARISON_GREATER_THAN_OR_EQUAL:
-                    value.i = floating ? leftf >= rightf : lefti >= righti;
+                    value.value.i = floating ? leftf >= rightf : lefti >= righti;
                     break;
                 default:
                     // Invalid comparison operator
@@ -2131,9 +2136,9 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
     } else {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,
-            .location = expr->binary.operator->position,
-            .invalid_binary_expression_operands = {
-                .operator = expr->binary.operator->value,
+            .location = expr->value.binary.operator_token->position,
+            .value.invalid_binary_expression_operands = {
+                .operator = expr->value.binary.operator_token->value,
                 .left_type = left.c_type,
                 .right_type = right.c_type,
             },
@@ -2145,16 +2150,16 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
 expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
-    assert(expr->type == EXPRESSION_BINARY && expr->binary.type == BINARY_LOGICAL);
+    assert(expr->kind == EXPRESSION_BINARY && expr->value.binary.kind == BINARY_LOGICAL);
 
     // Whether the operator is logical AND ('&&') or logical OR ('||')
-    bool is_logical_and = expr->binary.logical_operator == BINARY_LOGICAL_AND;
+    bool is_logical_and = expr->value.binary.operator.logical == BINARY_LOGICAL_AND;
     bool is_logical_or = !is_logical_and;
 
     // Evaluate the left operand
     // The logical && and || operators are short-circuiting, so if the left operand is false (for &&) or true (for ||),
     // then the right operand is not evaluated.
-    expression_result_t left = ir_visit_expression(context, expr->binary.left);
+    expression_result_t left = ir_visit_expression(context, expr->value.binary.left);
     if (left.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (left.is_lvalue) left = get_rvalue(context, left);
 
@@ -2162,8 +2167,8 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     if (!is_scalar_type(left.c_type)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
-            .location = expr->binary.left->span.start,
-            .invalid_logical_binary_expression_operand_type = {
+            .location = expr->value.binary.left->span.start,
+            .value.invalid_logical_binary_expression_operand_type = {
                 .type = left.c_type,
             },
         });
@@ -2173,10 +2178,10 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     // Convert the left operand to a boolean value (if it is not already)
     // We already know that the left operand is a scalar type, so we don't need to check for errors since its a
     // valid conversion.
-    ir_value_t left_bool = get_boolean_value(context, left.value, left.c_type, expr->binary.left).value;
+    ir_value_t left_bool = get_boolean_value(context, left.value, left.c_type, expr->value.binary.left).value;
     if (left_bool.kind == IR_VALUE_CONST) {
         // constant folding
-        if ((is_logical_and && left_bool.constant.i == 0) || (is_logical_or && left_bool.constant.i != 0)) {
+        if ((is_logical_and && left_bool.constant.value.i == 0) || (is_logical_or && left_bool.constant.value.i != 0)) {
             // result is the value of the left operand (false for and, true for or)
             return (expression_result_t) {
                 .kind = EXPR_RESULT_VALUE,
@@ -2188,20 +2193,20 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
             };
         } else {
             // result is the value of the right operand
-            expression_result_t right = ir_visit_expression(context, expr->binary.right);
+            expression_result_t right = ir_visit_expression(context, expr->value.binary.right);
             if (right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
             if (right.is_lvalue) right = get_rvalue(context, right);
             if (!is_scalar_type(right.c_type)) {
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .kind = ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
-                    .location = expr->binary.right->span.start,
-                    .invalid_logical_binary_expression_operand_type = {
+                    .location = expr->value.binary.right->span.start,
+                    .value.invalid_logical_binary_expression_operand_type = {
                         .type = right.c_type,
                     },
                 });
                 return EXPR_ERR;
             }
-            ir_value_t right_bool = get_boolean_value(context, right.value, right.c_type, expr->binary.right).value;
+            ir_value_t right_bool = get_boolean_value(context, right.value, right.c_type, expr->value.binary.right).value;
             return (expression_result_t) {
                 .kind = EXPR_RESULT_VALUE,
                 .c_type = &BOOL,
@@ -2231,7 +2236,7 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     }
 
     // Evaluate the right operand
-    expression_result_t right = ir_visit_expression(context, expr->binary.right);
+    expression_result_t right = ir_visit_expression(context, expr->value.binary.right);
     if (right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (right.is_lvalue) right = get_rvalue(context, right);
 
@@ -2239,8 +2244,8 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
     if (!is_scalar_type(right.c_type)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
-            .location = expr->binary.left->span.start,
-            .invalid_logical_binary_expression_operand_type = {
+            .location = expr->value.binary.left->span.start,
+            .value.invalid_logical_binary_expression_operand_type = {
                 .type = right.c_type,
             },
         });
@@ -2268,8 +2273,8 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
 }
 
 expression_result_t ir_visit_sizeof_expression(ir_gen_context_t *context, const expression_t *expr) {
-    assert(expr != NULL && expr->type == EXPRESSION_SIZEOF);
-    const ir_type_t *type = get_ir_type(context, expr->sizeof_type);
+    assert(expr != NULL && expr->kind == EXPRESSION_SIZEOF);
+    const ir_type_t *type = get_ir_type(context, expr->value.sizeof_type);
     ssize_t size = ir_size_of_type_bytes(context->arch, type);
     const ir_value_t size_val = ir_make_const_int(context->arch->ptr_int_type, (long long) size);
     return (expression_result_t) {
@@ -2285,9 +2290,9 @@ expression_result_t ir_visit_sizeof_expression(ir_gen_context_t *context, const 
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
-    assert(expr->type == EXPRESSION_TERNARY);
+    assert(expr->kind == EXPRESSION_TERNARY);
 
-    expression_result_t condition = ir_visit_expression(context, expr->ternary.condition);
+    expression_result_t condition = ir_visit_expression(context, expr->value.ternary.condition);
     if (condition.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (condition.is_lvalue) condition = get_rvalue(context, condition);
 
@@ -2295,8 +2300,8 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
     if (!is_scalar_type(condition.c_type)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_TERNARY_CONDITION_TYPE,
-            .location = expr->ternary.condition->span.start,
-            .invalid_ternary_condition_type = {
+            .location = expr->value.ternary.condition->span.start,
+            .value.invalid_ternary_condition_type = {
                 .type = condition.c_type,
             },
         });
@@ -2307,7 +2312,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
     const char* merge_label = gen_label(context);
 
     // Get the boolean value of the condition
-    ir_value_t ir_condition = get_boolean_value(context, condition.value, condition.c_type, expr->ternary.condition).value;
+    ir_value_t ir_condition = get_boolean_value(context, condition.value, condition.c_type, expr->value.ternary.condition).value;
 
     expression_result_t true_result;
     expression_result_t false_result;
@@ -2320,21 +2325,21 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         // Even though one of the branches will not be evaluated, we still need to visit it to perform semantic analysis
         // and to decide the type of the result. We will just throw away the generated code afterwards.
 
-        if (ir_condition.constant.i != 0) {
+        if (ir_condition.constant.value.i != 0) {
             // Evaluate the true branch
-            true_result = ir_visit_expression(context, expr->ternary.true_expression);
+            true_result = ir_visit_expression(context, expr->value.ternary.true_expression);
             if (true_result.kind == EXPR_RESULT_ERR) return EXPR_ERR;
             // Throw away the code for the false branch
             ir_instruction_node_t *position = ir_builder_get_position(context->builder);
-            false_result = ir_visit_expression(context, expr->ternary.false_expression);
+            false_result = ir_visit_expression(context, expr->value.ternary.false_expression);
             ir_builder_clear_after(context->builder, position);
         } else {
             // Evaluate the false branch
-            false_result = ir_visit_expression(context, expr->ternary.false_expression);
+            false_result = ir_visit_expression(context, expr->value.ternary.false_expression);
             if (false_result.kind == EXPR_RESULT_ERR) return EXPR_ERR;
             // Throw away the code for the true branch
             ir_instruction_node_t *position = ir_builder_get_position(context->builder);
-            true_result = ir_visit_expression(context, expr->ternary.true_expression);
+            true_result = ir_visit_expression(context, expr->value.ternary.true_expression);
             ir_builder_clear_after(context->builder, position);
         }
     } else {
@@ -2342,14 +2347,14 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
         ir_build_br_cond(context->builder, ir_condition, true_label);
 
         // False branch
-        false_result = ir_visit_expression(context, expr->ternary.false_expression);
+        false_result = ir_visit_expression(context, expr->value.ternary.false_expression);
         if (false_result.kind == EXPR_RESULT_ERR) return EXPR_ERR;
         if (false_result.is_lvalue) false_result = get_rvalue(context, false_result);
         false_branch_end = ir_builder_get_position(context->builder);
 
         // True branch
         ir_build_nop(context->builder, true_label);
-        true_result = ir_visit_expression(context, expr->ternary.true_expression);
+        true_result = ir_visit_expression(context, expr->value.ternary.true_expression);
         if (true_result.kind == EXPR_RESULT_ERR) return EXPR_ERR;
         if (true_result.is_lvalue) true_result = get_rvalue(context, true_result);
         true_branch_end = ir_builder_get_position(context->builder);
@@ -2385,20 +2390,20 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
                 .constant = (ir_const_t) {
                     .kind = IR_CONST_INT,
                     .type = &IR_VOID,
-                    .i = 0,
+                    .value.i = 0,
                 },
             }
         };
     } else if (is_pointer_type(true_result.c_type) && is_pointer_type(false_result.c_type)) {
         // TODO: pointer compatibility checks
         // For now, we will just use the type of the first non void* pointer branch
-        result_type = true_result.c_type->pointer.base->kind == TYPE_VOID ? false_result.c_type : true_result.c_type;
+        result_type = true_result.c_type->value.pointer.base->kind == TYPE_VOID ? false_result.c_type : true_result.c_type;
         ir_result_type = get_ir_type(context,result_type);
     } else {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_TERNARY_EXPRESSION_OPERANDS,
-            .location = expr->ternary.condition->span.start, // TODO: use the '?' token position
-            .invalid_ternary_expression_operands = {
+            .location = expr->value.ternary.condition->span.start, // TODO: use the '?' token position
+            .value.invalid_ternary_expression_operands = {
                 .true_type = true_result.c_type,
                 .false_type = false_result.c_type,
             },
@@ -2409,7 +2414,7 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
     if (ir_condition.kind == IR_VALUE_CONST) {
         // Constant folding
         expression_result_t result_expr;
-        return ir_condition.constant.i != 0
+        return ir_condition.constant.value.i != 0
             ? convert_to_type(context, true_result.value, true_result.c_type, result_type)
             : convert_to_type(context, false_result.value, false_result.c_type, result_type);
     }
@@ -2449,9 +2454,9 @@ expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const
 expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
-    assert(expr->type == EXPRESSION_UNARY);
+    assert(expr->kind == EXPRESSION_UNARY);
 
-    switch (expr->unary.operator) {
+    switch (expr->value.unary.operator) {
         case UNARY_BITWISE_NOT:
             return ir_visit_bitwise_not_unexpr(context, expr);
         case UNARY_LOGICAL_NOT:
@@ -2480,9 +2485,9 @@ expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const e
 expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
-    assert(expr->type == EXPRESSION_UNARY);
+    assert(expr->kind == EXPRESSION_UNARY);
 
-    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    expression_result_t operand = ir_visit_expression(context, expr->value.unary.operand);
     if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (operand.is_lvalue) operand = get_rvalue(context, operand);
 
@@ -2490,10 +2495,10 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
         // The operand must have integer type
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE,
-            .location = expr->unary.operand->span.start,
-            .invalid_unary_arithmetic_operator_type = {
+            .location = expr->value.unary.operand->span.start,
+            .value.invalid_unary_arithmetic_operator_type = {
                 .type = operand.c_type,
-                .operator = *expr->unary.token,
+                .operator = *expr->value.unary.token,
             },
         });
         return EXPR_ERR;
@@ -2506,7 +2511,7 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
             .constant = {
                 .kind = IR_CONST_INT,
                 .type = ir_get_type_of_value(operand.value),
-                .i = ~operand.value.constant.i,
+                .value.i = ~operand.value.constant.value.i,
             },
         };
         return (expression_result_t) {
@@ -2533,18 +2538,18 @@ expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const
 }
 
 expression_result_t ir_visit_logical_not_unexpr(ir_gen_context_t *context, const expression_t *expr) {
-    assert(expr != NULL && expr->type == EXPRESSION_UNARY);
+    assert(expr != NULL && expr->kind == EXPRESSION_UNARY);
 
-    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    expression_result_t operand = ir_visit_expression(context, expr->value.unary.operand);
     if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (operand.is_lvalue) operand = get_rvalue(context, operand);
 
     if (!is_scalar_type(operand.c_type)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE,
-            .location = expr->unary.token->position,
-            .invalid_unary_arithmetic_operator_type = {
-                .operator = *expr->unary.token,
+            .location = expr->value.unary.token->position,
+            .value.invalid_unary_arithmetic_operator_type = {
+                .operator = *expr->value.unary.token,
                 .type = operand.c_type,
             }
         });
@@ -2558,7 +2563,7 @@ expression_result_t ir_visit_logical_not_unexpr(ir_gen_context_t *context, const
     if (operand.value.kind == IR_VALUE_CONST) {
         // constant volding
         assert(operand.value.constant.kind == IR_CONST_INT);
-        result = ir_make_const_int(context->arch->sint, operand.value.constant.i == 0 ? 1 : 0);
+        result = ir_make_const_int(context->arch->sint, operand.value.constant.value.i == 0 ? 1 : 0);
     } else {
         // Get a constant zero of the same type as the operand
         ir_value_t zero = ir_get_zero_value(context, ir_get_type_of_value(operand.value));
@@ -2589,7 +2594,7 @@ expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const 
     // 2. The result of a [] or * operator
     // 3. A lvalue that designates an object that is not a bit-field and does not have the 'register' storage-class specifier
 
-    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    expression_result_t operand = ir_visit_expression(context, expr->value.unary.operand);
     if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     if (operand.is_lvalue) {
@@ -2609,7 +2614,7 @@ expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const 
 }
 
 expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const expression_t *expr) {
-    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    expression_result_t operand = ir_visit_expression(context, expr->value.unary.operand);
     if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     // The operand must be a pointer.
@@ -2623,7 +2628,7 @@ expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const
 
     // If the operand points to a function, the result is a function designator.
     // Otherwise, the result is a lvalue designating the object or function designated by the operand.
-    if (operand.c_type->pointer.base->kind == TYPE_FUNCTION) {
+    if (operand.c_type->value.pointer.base->kind == TYPE_FUNCTION) {
         // TODO: dereference function pointers
         assert(false && "De-referencing function pointers not implemented");
     } else {
@@ -2632,7 +2637,7 @@ expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const
 
         return (expression_result_t) {
             .kind = EXPR_RESULT_INDIRECTION,
-            .c_type = operand.c_type->pointer.base,
+            .c_type = operand.c_type->value.pointer.base,
             .is_lvalue = true,
             .is_string_literal = false,
             .addr_of = false,
@@ -2642,12 +2647,12 @@ expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const
 }
 
 expression_result_t ir_visit_sizeof_unexpr(ir_gen_context_t *context, const expression_t *expr) {
-    assert(expr != NULL && expr->type == EXPRESSION_UNARY);
+    assert(expr != NULL && expr->kind == EXPRESSION_UNARY);
     // TODO: error if sizeof is applied to an expression that designates a bit-field member
-    expression_result_t operand = ir_visit_expression(context, expr->unary.operand);
+    expression_result_t operand = ir_visit_expression(context, expr->value.unary.operand);
     if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     const ir_type_t *ir_type = ir_get_type_of_value(operand.value);
-    if (operand.is_lvalue) ir_type = ir_type->ptr.pointee;
+    if (operand.is_lvalue) ir_type = ir_type->value.ptr.pointee;
     ssize_t size = ir_size_of_type_bytes(context->arch, ir_type);
     ir_value_t size_val = ir_make_const_int(ir_ptr_int_type(context), (long long) size);
     return (expression_result_t) {
@@ -2661,14 +2666,14 @@ expression_result_t ir_visit_sizeof_unexpr(ir_gen_context_t *context, const expr
 }
 
 expression_result_t ir_visit_increment_decrement(ir_gen_context_t *context, const expression_t *expr, bool pre, bool increment) {
-    assert(expr != NULL && expr->type == EXPRESSION_UNARY);
+    assert(expr != NULL && expr->kind == EXPRESSION_UNARY);
 
-    expression_result_t lvalue = ir_visit_expression(context, expr->unary.operand);
+    expression_result_t lvalue = ir_visit_expression(context, expr->value.unary.operand);
     if (lvalue.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     if (!lvalue.is_lvalue || lvalue.kind != EXPR_RESULT_VALUE) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_ASSIGNMENT_TARGET,
-            .location = expr->unary.token->position,
+            .location = expr->value.unary.token->position,
         });
         return EXPR_ERR;
     }
@@ -2681,8 +2686,8 @@ expression_result_t ir_visit_increment_decrement(ir_gen_context_t *context, cons
     if (!is_arithmetic_type(rvalue.c_type) && !is_pointer_type(rvalue.c_type)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_CANNOT_INCREMENT_DECREMENT_TYPE,
-            .location = expr->unary.token->position,
-            .cannot_increment_decrement_type = {
+            .location = expr->value.unary.token->position,
+            .value.cannot_increment_decrement_type = {
                 .type = rvalue.c_type,
             },
         });
@@ -2716,33 +2721,33 @@ expression_result_t ir_visit_increment_decrement(ir_gen_context_t *context, cons
 }
 
 expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context, const expression_t *expr) {
-    assert(expr != NULL && expr->type == EXPRESSION_MEMBER_ACCESS);
-    assert(expr->member_access.operator.kind == TK_ARROW || expr->member_access.operator.kind == TK_DOT);
+    assert(expr != NULL && expr->kind == EXPRESSION_MEMBER_ACCESS);
+    assert(expr->value.member_access.operator.kind == TK_ARROW || expr->value.member_access.operator.kind == TK_DOT);
 
-    expression_result_t target = ir_visit_expression(context, expr->member_access.struct_or_union);
+    expression_result_t target = ir_visit_expression(context, expr->value.member_access.struct_or_union);
     if (target.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
     // The target must be a struct or a pointer to a struct
-    if (expr->member_access.operator.kind == TK_ARROW &&
-        (target.c_type->kind != TYPE_POINTER || target.c_type->pointer.base->kind != TYPE_STRUCT_OR_UNION)) {
+    if (expr->value.member_access.operator.kind == TK_ARROW &&
+        (target.c_type->kind != TYPE_POINTER || target.c_type->value.pointer.base->kind != TYPE_STRUCT_OR_UNION)) {
         // If the operator is '->', then the type of the target must be a pointer to a struct.
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_MEMBER_ACCESS_TARGET,
-            .location = expr->member_access.operator.position,
-            .invalid_member_access_target = {
+            .location = expr->value.member_access.operator.position,
+            .value.invalid_member_access_target = {
                 .type = target.c_type,
-                .operator = expr->member_access.operator
+                .operator = expr->value.member_access.operator
             }
         });
         return EXPR_ERR;
-    } else if (expr->member_access.operator.kind == TK_DOT && target.c_type->kind != TYPE_STRUCT_OR_UNION) {
+    } else if (expr->value.member_access.operator.kind == TK_DOT && target.c_type->kind != TYPE_STRUCT_OR_UNION) {
         // If the operator is '.', then the type of the target must be a struct.
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_MEMBER_ACCESS_TARGET,
-            .location = expr->member_access.operator.position,
-            .invalid_member_access_target = {
+            .location = expr->value.member_access.operator.position,
+            .value.invalid_member_access_target = {
                 .type = target.c_type,
-                .operator = expr->member_access.operator
+                .operator = expr->value.member_access.operator
             }
         });
         return EXPR_ERR;
@@ -2761,20 +2766,20 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
         base_ptr = get_indirect_ptr(context, target);
     }
 
-    const ir_type_t *struct_type = ir_get_type_of_value(base_ptr)->ptr.pointee;
-    const tag_t *tag = lookup_tag_by_uid(context, struct_type->struct_or_union.id);
+    const ir_type_t *struct_type = ir_get_type_of_value(base_ptr)->value.ptr.pointee;
+    const tag_t *tag = lookup_tag_by_uid(context, struct_type->value.struct_or_union.id);
     assert(tag != NULL);
 
     // Look up the field in the struct definition to find its index
     const ir_struct_field_t *ir_field = NULL;
-    hash_table_lookup(&struct_type->struct_or_union.field_map, expr->member_access.member.value, (void**) &ir_field);
+    hash_table_lookup(&struct_type->value.struct_or_union.field_map, expr->value.member_access.member.value, (void**) &ir_field);
     if (ir_field == NULL) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_STRUCT_FIELD_REFERENCE,
-            .location = expr->member_access.operator.position,
-            .invalid_struct_field_reference = {
+            .location = expr->value.member_access.operator.position,
+            .value.invalid_struct_field_reference = {
                 .type = target.c_type,
-                .field = expr->member_access.member
+                .field = expr->value.member_access.member
             }
         });
         return EXPR_ERR;
@@ -2785,9 +2790,9 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
     // field with a matching identifier.
     const type_t *c_struct_type = tag->c_type;
     const struct_field_t *c_field = NULL;
-    for (int i = 0; i < c_struct_type->struct_or_union.fields.size; i += 1) {
-        if (strcmp(ir_field->name, c_struct_type->struct_or_union.fields.buffer[i]->identifier->value) == 0) {
-            c_field = c_struct_type->struct_or_union.fields.buffer[i];
+    for (int i = 0; i < c_struct_type->value.struct_or_union.fields.size; i += 1) {
+        if (strcmp(ir_field->name, c_struct_type->value.struct_or_union.fields.buffer[i]->identifier->value) == 0) {
+            c_field = c_struct_type->value.struct_or_union.fields.buffer[i];
             break;
         }
     }
@@ -2809,18 +2814,18 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
 expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Primary expression must not be NULL");
-    assert(expr->type == EXPRESSION_PRIMARY);
+    assert(expr->kind == EXPRESSION_PRIMARY);
 
-    switch (expr->primary.type) {
+    switch (expr->value.primary.kind) {
         case PE_IDENTIFIER: {
-            symbol_t *symbol = lookup_symbol(context, expr->primary.token.value);
+            symbol_t *symbol = lookup_symbol(context, expr->value.primary.value.token.value);
             if (symbol == NULL) {
-                source_position_t pos = expr->primary.token.position;
+                source_position_t pos = expr->value.primary.value.token.position;
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .kind = ERR_USE_OF_UNDECLARED_IDENTIFIER,
                     .location = pos,
-                    .use_of_undeclared_identifier = {
-                        .identifier = expr->primary.token.value,
+                    .value.use_of_undeclared_identifier = {
+                        .identifier = expr->value.primary.value.token.value,
                     },
                 });
                 return EXPR_ERR;
@@ -2848,30 +2853,30 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
             // - Modifying a string literal results in undefined behavior.
 
             // First we need to replace escape sequences in the string literal
-            char *literal = replace_escape_sequences(expr->primary.token.value);
+            char *literal = replace_escape_sequences(expr->value.primary.value.token.value);
 
             // Maybe there should be a special expression node type for static lengths?
             expression_t *array_length_expr = malloc(sizeof(expression_t));
             *array_length_expr = (expression_t) {
-                .type = EXPRESSION_PRIMARY,
-                .primary = {
-                    .type = PE_CONSTANT,
-                    .token = {
+                .kind = EXPRESSION_PRIMARY,
+                .value.primary = {
+                    .kind = PE_CONSTANT,
+                    .value.token = {
                         .kind = TK_INTEGER_CONSTANT,
                         .value = malloc(32),
-                        .position = expr->primary.token.position,
+                        .position = expr->value.primary.value.token.position,
                     },
                 },
             };
             char *val = malloc(32);
             snprintf(val, 32, "%zu", strlen(literal) + 1);
-            array_length_expr->primary.token.value = val;
+            array_length_expr->value.primary.value.token.value = val;
 
             // The C type is an array of characters
             type_t *c_type = malloc(sizeof(type_t));
             *c_type = (type_t) {
                 .kind = TYPE_ARRAY,
-                .array = {
+                .value.array = {
                     .element_type = &CHAR,
                     .size = array_length_expr,
                 },
@@ -2880,7 +2885,7 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
             ir_type_t *ir_type = malloc(sizeof(ir_type_t));
             *ir_type = (ir_type_t) {
                 .kind = IR_TYPE_ARRAY,
-                .array = {
+                .value.array = {
                     .element = &IR_I8,
                     .length = strlen(literal) + 1,
                 },
@@ -2894,7 +2899,7 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
                 .value = (ir_const_t) {
                     .type = ir_type,
                     .kind = IR_CONST_STRING,
-                    .s = literal,
+                    .value.s = literal,
                 },
             };
             ir_append_global_ptr(&context->module->globals, global);
@@ -2912,7 +2917,7 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
             };
         }
         case PE_EXPRESSION: {
-            return ir_visit_expression(context, expr->primary.expression);
+            return ir_visit_expression(context, expr->value.primary.value.expression);
         }
         default: {
             // Unreachable
@@ -2925,13 +2930,13 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
 expression_result_t ir_visit_constant(ir_gen_context_t *context, const expression_t *expr) {
     assert(context != NULL && "Context must not be NULL");
     assert(expr != NULL && "Expression must not be NULL");
-    assert(expr->type == EXPRESSION_PRIMARY && expr->primary.type == PE_CONSTANT);
-    assert(expr->primary.token.value != NULL && "Token value must not be NULL");
+    assert(expr->kind == EXPRESSION_PRIMARY && expr->value.primary.kind == PE_CONSTANT);
+    assert(expr->value.primary.value.token.value != NULL && "Token value must not be NULL");
 
-    switch (expr->primary.token.kind) {
+    switch (expr->value.primary.value.token.kind) {
         case TK_CHAR_LITERAL: {
             // TODO: Handle escape sequences, wide character literals.
-            char c = expr->primary.token.value[0];
+            char c = expr->value.primary.value.token.value[0];
             // In C char literals are ints
             return (expression_result_t) {
                 .kind = EXPR_RESULT_VALUE,
@@ -2944,7 +2949,7 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_INT,
                         .type = &IR_I32,
-                        .i = (int)c,
+                        .value.i = (int)c,
                     }
                 }
             };
@@ -2952,7 +2957,7 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
         case TK_INTEGER_CONSTANT: {
             unsigned long long value;
             const type_t *c_type;
-            decode_integer_constant(&expr->primary.token, &value, &c_type);
+            decode_integer_constant(&expr->value.primary.value.token, &value, &c_type);
             return (expression_result_t) {
                 .kind = EXPR_RESULT_VALUE,
                 .c_type = c_type,
@@ -2964,7 +2969,7 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
                     .constant = (ir_const_t) {
                             .kind = IR_CONST_INT,
                             .type = get_ir_type(context,c_type),
-                            .i = value,
+                            .value.i = value,
                     }
                 }
             };
@@ -2972,7 +2977,7 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
         case TK_FLOATING_CONSTANT: {
             long double value;
             const type_t *c_type;
-            decode_float_constant(&expr->primary.token, &value, &c_type);
+            decode_float_constant(&expr->value.primary.value.token, &value, &c_type);
             return (expression_result_t) {
                 .kind = EXPR_RESULT_VALUE,
                 .c_type = c_type,
@@ -2984,7 +2989,7 @@ expression_result_t ir_visit_constant(ir_gen_context_t *context, const expressio
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_FLOAT,
                         .type = get_ir_type(context,c_type),
-                        .f = value,
+                        .value.f = value,
                     }
                 }
             };
@@ -3022,7 +3027,7 @@ ir_var_t temp_var(ir_gen_context_t *context, const ir_type_t *type) {
     };
 }
 
-const type_t *c_ptr_uint_type() {
+const type_t *c_ptr_uint_type(void) {
     // TODO: arch dependent
     return &UNSIGNED_LONG;
 }
@@ -3032,8 +3037,8 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
 
     switch (c_type->kind) {
         case TYPE_INTEGER: {
-            if (c_type->integer.is_signed) {
-                switch (c_type->integer.size) {
+            if (c_type->value.integer.is_signed) {
+                switch (c_type->value.integer.size) {
                     case INTEGER_TYPE_BOOL:
                         return &IR_BOOL;
                     case INTEGER_TYPE_CHAR:
@@ -3050,7 +3055,7 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
                         return context->arch->sint;
                 }
             } else {
-                switch (c_type->integer.size) {
+                switch (c_type->value.integer.size) {
                     case INTEGER_TYPE_BOOL:
                         return &IR_BOOL;
                     case INTEGER_TYPE_CHAR:
@@ -3069,7 +3074,7 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
             }
         }
         case TYPE_FLOATING: {
-            switch (c_type->floating) {
+            switch (c_type->value.floating) {
                 case FLOAT_TYPE_FLOAT:
                     return context->arch->_float;
                 case FLOAT_TYPE_DOUBLE:
@@ -3081,43 +3086,43 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
             }
         }
         case TYPE_POINTER: {
-            const ir_type_t *pointee = get_ir_type(context, c_type->pointer.base);
+            const ir_type_t *pointee = get_ir_type(context, c_type->value.pointer.base);
             ir_type_t *ir_type = malloc(sizeof(ir_type_t));
             *ir_type = (ir_type_t) {
                 .kind = IR_TYPE_PTR,
-                .ptr = {
+                .value.ptr = {
                     .pointee = pointee,
                 },
             };
             return ir_type;
         }
         case TYPE_FUNCTION: {
-            const ir_type_t *ir_return_type = get_ir_type(context, c_type->function.return_type);
-            const ir_type_t **ir_param_types = malloc(c_type->function.parameter_list->length * sizeof(ir_type_t*));
-            for (size_t i = 0; i < c_type->function.parameter_list->length; i++) {
-                const parameter_declaration_t *param = c_type->function.parameter_list->parameters[i];
+            const ir_type_t *ir_return_type = get_ir_type(context, c_type->value.function.return_type);
+            const ir_type_t **ir_param_types = malloc(c_type->value.function.parameter_list->length * sizeof(ir_type_t*));
+            for (size_t i = 0; i < c_type->value.function.parameter_list->length; i++) {
+                const parameter_declaration_t *param = c_type->value.function.parameter_list->parameters[i];
                 const ir_type_t *ir_type = get_ir_type(context,param->type);
                 ir_param_types[i] = ir_type->kind == IR_TYPE_ARRAY
-                    ? get_ir_ptr_type(ir_type->array.element) // array to pointer decay
+                    ? get_ir_ptr_type(ir_type->value.array.element) // array to pointer decay
                     : ir_type;
             }
             ir_type_t *ir_type = malloc(sizeof(ir_type_t));
             *ir_type = (ir_type_t) {
                 .kind = IR_TYPE_FUNCTION,
-                .function = {
+                .value.function = {
                     .return_type = ir_return_type,
                     .params = ir_param_types,
-                    .num_params = c_type->function.parameter_list->length,
-                    .is_variadic = c_type->function.parameter_list->variadic
+                    .num_params = c_type->value.function.parameter_list->length,
+                    .is_variadic = c_type->value.function.parameter_list->variadic
                 },
             };
             return ir_type;
         }
         case TYPE_ARRAY: {
-            const ir_type_t *element_type = get_ir_type(context,c_type->array.element_type);
+            const ir_type_t *element_type = get_ir_type(context,c_type->value.array.element_type);
             size_t length = 0;
-            if (c_type->array.size != NULL) {
-                expression_result_t array_len = ir_visit_expression(context, c_type->array.size);
+            if (c_type->value.array.size != NULL) {
+                expression_result_t array_len = ir_visit_expression(context, c_type->value.array.size);
                 if (array_len.kind == EXPR_RESULT_ERR) assert(false && "Invalid array size"); // TODO: handle error
                 if (array_len.is_lvalue) array_len = get_rvalue(context, array_len);
                 ir_value_t length_val = array_len.value;
@@ -3125,13 +3130,13 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
                     // TODO: handle non-constant array sizes
                     assert(false && "Non-constant array sizes not implemented");
                 }
-                length = length_val.constant.i;
+                length = length_val.constant.value.i;
             }
 
             ir_type_t *ir_type = malloc(sizeof(ir_type_t));
             *ir_type = (ir_type_t) {
                 .kind = IR_TYPE_ARRAY,
-                .array = {
+                .value.array = {
                     .element = element_type,
                     .length = length,
                 }
@@ -3141,7 +3146,7 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
         case TYPE_STRUCT_OR_UNION: {
             // This is only for looking up existing struct types, creating a new one should be done through
             // the function get_ir_struct_type
-            const tag_t *tag = lookup_tag(context, c_type->struct_or_union.identifier->value);
+            const tag_t *tag = lookup_tag(context, c_type->value.struct_or_union.identifier->value);
             if (tag == NULL) {
                 // Any valid declaration that declares a struct also creates the tag (for example: `struct Foo *foo`)
                 // If the tag isn't valid here, then there was some other error earlier in the program
@@ -3164,8 +3169,8 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
 
     // get field list
     ir_struct_field_ptr_vector_t fields = VEC_INIT;
-    for (size_t i = 0; i < c_type->struct_or_union.fields.size; i++) {
-        const struct_field_t *c_field = c_type->struct_or_union.fields.buffer[i];
+    for (size_t i = 0; i < c_type->value.struct_or_union.fields.size; i++) {
+        const struct_field_t *c_field = c_type->value.struct_or_union.fields.buffer[i];
         assert(c_field->index == i); // assuming they're in order
         ir_struct_field_t *ir_field = malloc(sizeof(ir_struct_field_t));
         const ir_type_t *ir_field_type = NULL;
@@ -3189,14 +3194,14 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
         .id = id,
         .fields = fields,
         .field_map = field_map,
-        .is_union = c_type->struct_or_union.is_union,
+        .is_union = c_type->value.struct_or_union.is_union,
     };
-    if (!c_type->struct_or_union.packed && !c_type->struct_or_union.is_union) definition = ir_pad_struct(context->arch, &definition);
+    if (!c_type->value.struct_or_union.packed && !c_type->value.struct_or_union.is_union) definition = ir_pad_struct(context->arch, &definition);
 
     ir_type_t *ir_type = malloc(sizeof(ir_type_t));
     *ir_type = (ir_type_t) {
         .kind = IR_TYPE_STRUCT_OR_UNION,
-        .struct_or_union = definition,
+        .value.struct_or_union = definition,
     };
     return ir_type;
 }
@@ -3206,7 +3211,7 @@ const ir_type_t *get_ir_ptr_type(const ir_type_t *pointee) {
     ir_type_t *ir_type = malloc(sizeof(ir_type_t));
     *ir_type = (ir_type_t) {
         .kind = IR_TYPE_PTR,
-        .ptr = {
+        .value.ptr = {
             .pointee = pointee,
         },
     };
@@ -3220,7 +3225,7 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
             .constant = (ir_const_t) {
                 .kind = IR_CONST_INT,
                 .type = type,
-                .i = 0,
+                .value.i = 0,
             }
         };
     } else if (ir_is_float_type(type)) {
@@ -3229,7 +3234,7 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
             .constant = (ir_const_t) {
                 .kind = IR_CONST_FLOAT,
                 .type = type,
-                .f = 0.0,
+                .value.f = 0.0,
             }
         };
     } else if (type->kind == IR_TYPE_PTR) {
@@ -3264,7 +3269,7 @@ expression_result_t get_boolean_value(
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_CONVERSION_TO_BOOLEAN,
             .location = expr->span.start,
-            .invalid_conversion_to_boolean = {
+            .value.invalid_conversion_to_boolean = {
                 .type = c_type,
             },
         });
@@ -3277,7 +3282,7 @@ expression_result_t get_boolean_value(
         ir_const_t constant = {
             .kind = IR_CONST_INT,
             .type = &IR_BOOL,
-            .i =  ir_is_float_type(ir_type) ? value.constant.f != 0.0 : value.constant.i != 0,
+            .value.i =  ir_is_float_type(ir_type) ? value.constant.value.f != 0.0 : value.constant.value.i != 0,
         };
         result = (ir_value_t) {
             .kind = IR_VALUE_CONST,
@@ -3334,7 +3339,7 @@ expression_result_t convert_to_type(
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_INT,
                         .type = result_type,
-                        .i = value.constant.i,
+                        .value.i = value.constant.value.i,
                     }
                 };
                 return (expression_result_t) {
@@ -3364,7 +3369,7 @@ expression_result_t convert_to_type(
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_INT,
                         .type = result_type,
-                        .i = (long long)value.constant.f,
+                        .value.i = (long long)value.constant.value.f,
                     },
                 };
                 return (expression_result_t) {
@@ -3384,7 +3389,7 @@ expression_result_t convert_to_type(
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_INT,
                         .type = result_type,
-                        .i = value.constant.i,
+                        .value.i = value.constant.value.i,
                     }
                 };
                 return (expression_result_t) {
@@ -3413,7 +3418,7 @@ expression_result_t convert_to_type(
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_FLOAT,
                         .type = result_type,
-                        .f = value.constant.f,
+                        .value.f = value.constant.value.f,
                     }
                 };
                 return (expression_result_t) {
@@ -3443,7 +3448,7 @@ expression_result_t convert_to_type(
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_FLOAT,
                         .type = result_type,
-                        .f = (double)value.constant.i,
+                        .value.f = (double)value.constant.value.i,
                     }
                 };
                 return (expression_result_t) {
@@ -3472,7 +3477,7 @@ expression_result_t convert_to_type(
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_INT,
                         .type = result_type,
-                        .i = value.constant.i,
+                        .value.i = value.constant.value.i,
                     }
                 };
                 return (expression_result_t) {
@@ -3493,7 +3498,7 @@ expression_result_t convert_to_type(
                     .constant = (ir_const_t) {
                         .kind = IR_CONST_INT,
                         .type = result_type,
-                        .i = value.constant.i,
+                        .value.i = value.constant.value.i,
                     }
                 };
                 return (expression_result_t) {
@@ -3564,7 +3569,7 @@ ir_value_t get_indirect_ptr(ir_gen_context_t *context, expression_result_t res) 
     // Starting at the base pointer, repeatedly load the new pointer
     ir_value_t ptr = e->value;
     for (int i = 0; i < indirection_level; i += 1) {
-        ir_var_t temp = temp_var(context, ir_get_type_of_value(ptr)->ptr.pointee);
+        ir_var_t temp = temp_var(context, ir_get_type_of_value(ptr)->value.ptr.pointee);
         ir_build_load(context->builder, ptr, temp);
         ptr = ir_value_for_var(temp);
     }
@@ -3576,7 +3581,7 @@ expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t re
     assert(res.is_lvalue && "Expected lvalue");
     if (res.kind == EXPR_RESULT_VALUE) {
         assert(ir_get_type_of_value(res.value)->kind == IR_TYPE_PTR && "Expected pointer type");
-        ir_var_t temp = temp_var(context, ir_get_type_of_value(res.value)->ptr.pointee);
+        ir_var_t temp = temp_var(context, ir_get_type_of_value(res.value)->value.ptr.pointee);
         ir_var_t ptr = (ir_var_t) {
             .name = res.value.var.name,
             .type = res.value.var.type,
@@ -3592,7 +3597,7 @@ expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t re
         ir_value_t ptr = get_indirect_ptr(context, res);
 
         // Then finally, load the result
-        ir_var_t result = temp_var(context, ir_get_type_of_value(ptr)->ptr.pointee);
+        ir_var_t result = temp_var(context, ir_get_type_of_value(ptr)->value.ptr.pointee);
         ir_build_load(context->builder, ptr, result);
         return (expression_result_t) {
             .kind = EXPR_RESULT_VALUE,
@@ -3631,7 +3636,7 @@ ir_value_t ir_make_const_int(const ir_type_t *type, long long value) {
         .constant = {
             .kind = IR_CONST_INT,
             .type = type,
-            .i = value,
+            .value.i = value,
         }
     };
 }
@@ -3642,7 +3647,7 @@ ir_value_t ir_make_const_float(const ir_type_t *type, double value) {
         .constant = {
             .kind = IR_CONST_FLOAT,
             .type = type,
-            .f = value,
+            .value.f = value,
         },
     };
 }

@@ -22,7 +22,7 @@ typedef struct ParseError {
         PARSE_ERROR_PARAMETER_TYPE_MALFORMED,
         PARSE_ERROR_EXPECTED_EXPRESSION,
         PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE,
-    } type;
+    } kind;
     union {
         struct {
             size_t expected_count;
@@ -35,7 +35,7 @@ typedef struct ParseError {
             const token_t *prev;
             const token_t *redec;
         } redeclaration_of_symbol;
-    };
+    } value;
 } parse_error_t;
 
 void print_parse_error(FILE *__restrict stream, parse_error_t *error);

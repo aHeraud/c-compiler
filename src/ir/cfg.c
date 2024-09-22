@@ -66,7 +66,7 @@ const char* jump_target(const ir_instruction_t *instr) {
     switch (instr->opcode) {
         case IR_BR:
         case IR_BR_COND:
-            return instr->branch.label;
+            return instr->value.branch.label;
         default:
             return NULL;
     }

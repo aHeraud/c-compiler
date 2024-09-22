@@ -1,6 +1,6 @@
 #include "ir/arch.h"
 
-const ir_arch_t IR_ARCH_X86 = (ir_arch_t) {
+const ir_arch_t IR_ARCH_X86 = {
     .name = "i386",
     .uchar = &IR_U8,
     .schar = &IR_I8,

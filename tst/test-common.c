@@ -70,17 +70,17 @@ source_span_t dummy_span() {
 expression_t *primary(primary_expression_t primary) {
     expression_t *expr = malloc(sizeof(expression_t));
     *expr = (expression_t) {
-        .type = EXPRESSION_PRIMARY,
+        .kind = EXPRESSION_PRIMARY,
         .span = dummy_span(),
-        .primary = primary,
+        .value.primary = primary,
     };
     return expr;
 }
 
 expression_t *integer_constant(char* value) {
     return primary((primary_expression_t) {
-        .type = PE_CONSTANT,
-        .token = (token_t) {
+        .kind = PE_CONSTANT,
+        .value.token = (token_t) {
             .kind = TK_INTEGER_CONSTANT,
             .value = value,
             .position = dummy_position(),
@@ -90,8 +90,8 @@ expression_t *integer_constant(char* value) {
 
 expression_t *float_constant(char* value) {
     return primary((primary_expression_t) {
-        .type = PE_CONSTANT,
-        .token = (token_t) {
+        .kind = PE_CONSTANT,
+        .value.token = (token_t) {
             .kind = TK_FLOATING_CONSTANT,
             .value = value,
             .position = dummy_position(),
@@ -106,7 +106,7 @@ type_t *ptr_to(const type_t *type) {
         .is_volatile = false,
         .is_const = false,
         .storage_class = STORAGE_CLASS_AUTO,
-        .pointer = {
+        .value.pointer = {
             .base = type,
         },
     };
@@ -120,7 +120,7 @@ type_t *array_of(const type_t *type, expression_t *size) {
         .is_volatile = false,
         .is_const = false,
         .storage_class = STORAGE_CLASS_AUTO,
-        .array = {
+        .value.array = {
             .element_type = type,
             .size = size,
         },

@@ -8,21 +8,21 @@
 
 expression_t *make_identifier(char* value) {
     return primary((primary_expression_t) {
-            .type = PE_IDENTIFIER,
-            .token = (token_t) {
-                    .kind = TK_IDENTIFIER,
-                    .value = value,
-                    .position = dummy_position(),
-            },
+        .kind = PE_IDENTIFIER,
+        .value.token = (token_t) {
+            .kind = TK_IDENTIFIER,
+            .value = value,
+            .position = dummy_position(),
+        },
     });
 }
 
 expression_t *binary(binary_expression_t binary) {
     expression_t *expr = malloc(sizeof(expression_t));
     *expr = (expression_t) {
-            .type = EXPRESSION_BINARY,
-            .span = dummy_span(),
-            .binary = binary,
+        .kind = EXPRESSION_BINARY,
+        .span = dummy_span(),
+        .value.binary = binary,
     };
     return expr;
 }
@@ -30,9 +30,9 @@ expression_t *binary(binary_expression_t binary) {
 token_t *token(token_kind_t kind, const char* value) {
     token_t *token = malloc(sizeof(token_t));
     *token = (token_t) {
-            .kind = kind,
-            .value = value,
-            .position = dummy_position(),
+        .kind = kind,
+        .value = value,
+        .position = dummy_position(),
     };
     return token;
 }
@@ -40,12 +40,12 @@ token_t *token(token_kind_t kind, const char* value) {
 statement_t *return_statement(expression_t *expression) {
     statement_t *stmt = malloc(sizeof(statement_t));
     *stmt = (statement_t) {
-            .type = STATEMENT_RETURN,
-            .return_ = {
-                    .keyword = token(TK_RETURN, "return"),
-                    .expression = expression,
-            },
-            .terminator = token(TK_SEMICOLON, ";"),
+        .kind = STATEMENT_RETURN,
+        .value.return_ = {
+            .keyword = token(TK_RETURN, "return"),
+            .expression = expression,
+        },
+        .terminator = token(TK_SEMICOLON, ";"),
     };
     return stmt;
 }
@@ -53,9 +53,9 @@ statement_t *return_statement(expression_t *expression) {
 statement_t *expression_statement(expression_t *expression) {
     statement_t *stmt = malloc(sizeof(statement_t));
     *stmt = (statement_t) {
-            .type = STATEMENT_EXPRESSION,
-            .expression = expression,
-            .terminator = token(TK_SEMICOLON, ";"),
+        .kind = STATEMENT_EXPRESSION,
+        .value.expression = expression,
+        .terminator = token(TK_SEMICOLON, ";"),
     };
     return stmt;
 }
@@ -63,8 +63,8 @@ statement_t *expression_statement(expression_t *expression) {
 statement_t *if_statement(expression_t *condition, statement_t *true_branch, statement_t *false_branch) {
     statement_t *stmt = malloc(sizeof(statement_t));
     *stmt = (statement_t) {
-        .type = STATEMENT_IF,
-        .if_ = {
+        .kind = STATEMENT_IF,
+        .value.if_ = {
             .keyword = token(TK_IF, "if"),
             .condition = condition,
             .true_branch = true_branch,
@@ -77,8 +77,8 @@ statement_t *if_statement(expression_t *condition, statement_t *true_branch, sta
 block_item_t *block_item_s(statement_t *statement) {
     block_item_t *item = malloc(sizeof(block_item_t));
     *item = (block_item_t) {
-            .type = BLOCK_ITEM_STATEMENT,
-            .statement = statement,
+        .kind = BLOCK_ITEM_STATEMENT,
+        .value.statement = statement,
     };
     return item;
 }
@@ -86,8 +86,8 @@ block_item_t *block_item_s(statement_t *statement) {
 block_item_t *block_item_d(declaration_t *declaration) {
     block_item_t *item = malloc(sizeof(block_item_t));
     *item = (block_item_t) {
-            .type = BLOCK_ITEM_DECLARATION,
-            .declaration = declaration,
+        .kind = BLOCK_ITEM_DECLARATION,
+        .value.declaration = declaration,
     };
     return item;
 }
@@ -96,7 +96,7 @@ const type_t *pointer_to(const type_t *type) {
     type_t *pointer = malloc(sizeof(type_t));
     *pointer = (type_t) {
         .kind = TYPE_POINTER,
-        .pointer = {
+        .value.pointer = {
             .base = type,
             .is_const = false,
             .is_volatile = false,
@@ -114,8 +114,8 @@ void test_parse_primary_expression_ident() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_primary_expression(&parser, &node))
     expression_t *expected = primary((primary_expression_t) {
-        .type = PE_IDENTIFIER,
-        .token = (token_t) {
+        .kind = PE_IDENTIFIER,
+        .value.token = (token_t) {
             .kind = TK_IDENTIFIER,
             .value = "bar",
             .position = dummy_position(),
@@ -132,8 +132,8 @@ void test_parse_primary_expression_int() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_primary_expression(&parser, &node))
     expression_t *expected = primary((primary_expression_t) {
-        .type = PE_CONSTANT,
-        .token = (token_t) {
+        .kind = PE_CONSTANT,
+        .value.token = (token_t) {
             .kind = TK_INTEGER_CONSTANT,
             .value = "42",
             .position = dummy_position(),
@@ -150,8 +150,8 @@ void test_parse_primary_expression_float() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_primary_expression(&parser, &node))
     expression_t *expected = primary((primary_expression_t) {
-        .type = PE_CONSTANT,
-        .token = (token_t) {
+        .kind = PE_CONSTANT,
+        .value.token = (token_t) {
             .kind = TK_FLOATING_CONSTANT,
             .value = "42.0",
             .position = dummy_position(),
@@ -168,10 +168,10 @@ void test_parse_primary_expression_char() {
     expression_t node;
     bool matches = parse_primary_expression(&parser, &node);
     CU_ASSERT_TRUE_FATAL(matches)
-    CU_ASSERT_EQUAL_FATAL(node.type, EXPRESSION_PRIMARY)
-    CU_ASSERT_EQUAL_FATAL(node.primary.type, PE_CONSTANT)
-    CU_ASSERT_EQUAL_FATAL(node.primary.token.kind, TK_CHAR_LITERAL)
-    CU_ASSERT_STRING_EQUAL_FATAL(node.primary.token.value, "'a'")
+    CU_ASSERT_EQUAL_FATAL(node.kind, EXPRESSION_PRIMARY)
+    CU_ASSERT_EQUAL_FATAL(node.value.primary.kind, PE_CONSTANT)
+    CU_ASSERT_EQUAL_FATAL(node.value.primary.value.token.kind, TK_CHAR_LITERAL)
+    CU_ASSERT_STRING_EQUAL_FATAL(node.value.primary.value.token.value, "'a'")
 }
 
 void test_parse_primary_expression_parenthesized() {
@@ -182,8 +182,8 @@ void test_parse_primary_expression_parenthesized() {
     expression_t expr;
     CU_ASSERT_TRUE_FATAL(parse_primary_expression(&parser, &expr))
     expression_t *expected = primary((primary_expression_t) {
-            .type = PE_EXPRESSION,
-            .expression = integer_constant("42"),
+        .kind = PE_EXPRESSION,
+        .value.expression = integer_constant("42"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
 }
@@ -206,8 +206,8 @@ void test_parse_postfix_expression_function_call() {
     };
     expression_t expected = (expression_t) {
         .span = dummy_span(),
-        .type = EXPRESSION_CALL,
-        .call = (call_expression_t) {
+        .kind = EXPRESSION_CALL,
+        .value.call = (call_expression_t) {
             .callee = make_identifier("pow"),
             .arguments = arguments,
         },
@@ -224,15 +224,15 @@ void test_parse_postfix_expression_array_subscript() {
     CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr))
     expression_t expected = (expression_t) {
             .span = dummy_span(),
-            .type = EXPRESSION_ARRAY_SUBSCRIPT,
-            .array_subscript = (array_subscript_expression_t) {
+            .kind = EXPRESSION_ARRAY_SUBSCRIPT,
+            .value.array_subscript = (array_subscript_expression_t) {
                 .array = make_identifier("arr"),
                 .index = binary((binary_expression_t) {
-                    .type = BINARY_ARITHMETIC,
+                    .kind = BINARY_ARITHMETIC,
                     .left = integer_constant("1"),
                     .right = integer_constant("1"),
-                    .operator = token(TK_PLUS, "+"),
-                    .arithmetic_operator = BINARY_ARITHMETIC_ADD,
+                    .operator_token = token(TK_PLUS, "+"),
+                    .operator.arithmetic = BINARY_ARITHMETIC_ADD,
                 }),
             },
     };
@@ -248,12 +248,12 @@ void test_parse_postfix_expression_2d_array_subscript() {
     CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr))
     expression_t expected = (expression_t) {
         .span = dummy_span(),
-        .type = EXPRESSION_ARRAY_SUBSCRIPT,
-        .array_subscript = (array_subscript_expression_t) {
+        .kind = EXPRESSION_ARRAY_SUBSCRIPT,
+        .value.array_subscript = (array_subscript_expression_t) {
             .array = &(expression_t) {
                 .span = dummy_span(),
-                .type = EXPRESSION_ARRAY_SUBSCRIPT,
-                .array_subscript = (array_subscript_expression_t) {
+                .kind = EXPRESSION_ARRAY_SUBSCRIPT,
+                .value.array_subscript = (array_subscript_expression_t) {
                     .array = make_identifier("arr"),
                     .index = make_identifier("i"),
                 },
@@ -272,21 +272,21 @@ void test_parse_postfix_expression_member_access() {
     expression_t expr;
     CU_ASSERT_TRUE_FATAL(parse_postfix_expression(&parser, &expr))
     expression_t expected = (expression_t) {
-            .span = dummy_span(),
-            .type = EXPRESSION_MEMBER_ACCESS,
-            .member_access = (member_access_expression_t) {
-                    .struct_or_union = make_identifier("foo"),
-                    .operator = (token_t) {
-                            .kind = TK_DOT,
-                            .value = ".",
-                            .position = dummy_position(),
-                    },
-                    .member = (token_t) {
-                            .kind = TK_IDENTIFIER,
-                            .value = "bar",
-                            .position = dummy_position(),
-                    },
+        .span = dummy_span(),
+        .kind = EXPRESSION_MEMBER_ACCESS,
+        .value.member_access = (member_access_expression_t) {
+            .struct_or_union = make_identifier("foo"),
+            .operator = (token_t) {
+                .kind = TK_DOT,
+                .value = ".",
+                .position = dummy_position(),
             },
+            .member = (token_t) {
+                .kind = TK_IDENTIFIER,
+                .value = "bar",
+                .position = dummy_position(),
+            },
+        },
     };
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
@@ -310,8 +310,8 @@ void test_parse_unary_sizeof_constant() {
     CU_ASSERT_TRUE_FATAL(parse_unary_expression(&parser, &expr))
     expression_t expected = (expression_t) {
             .span = dummy_span(),
-            .type = EXPRESSION_UNARY,
-            .unary = (unary_expression_t) {
+            .kind = EXPRESSION_UNARY,
+            .value.unary = (unary_expression_t) {
                     .operator = UNARY_SIZEOF,
                     .operand = integer_constant("1"),
             }
@@ -328,8 +328,8 @@ void test_parse_unary_sizeof_type() {
     CU_ASSERT_TRUE_FATAL(parse_unary_expression(&parser, &expr))
     expression_t expected = (expression_t) {
             .span = dummy_span(),
-            .type = EXPRESSION_SIZEOF,
-            .sizeof_type = &INT,
+            .kind = EXPRESSION_SIZEOF,
+            .value.sizeof_type = &INT,
     };
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
@@ -343,10 +343,10 @@ void test_parse_unary_sizeof_function_pointer_type() {
     CU_ASSERT_TRUE_FATAL(parse_unary_expression(&parser, &expr))
     expression_t expected = (expression_t) {
         .span = dummy_span(),
-        .type = EXPRESSION_SIZEOF,
-        .sizeof_type = pointer_to(&(type_t) {
+        .kind = EXPRESSION_SIZEOF,
+        .value.sizeof_type = pointer_to(&(type_t) {
             .kind = TYPE_FUNCTION,
-            .function = {
+            .value.function = {
                 .return_type = &INT,
                 .parameter_list = &(parameter_type_list_t) {
                     .length = 0,
@@ -368,15 +368,15 @@ void test_parse_unary_sizeof_parenthesized_expression() {
     CU_ASSERT_TRUE_FATAL(parse_unary_expression(&parser, &expr))
     expression_t expected = (expression_t) {
             .span = dummy_span(),
-            .type = EXPRESSION_UNARY,
-            .unary = (unary_expression_t) {
+            .kind = EXPRESSION_UNARY,
+            .value.unary = (unary_expression_t) {
                 .operator = UNARY_SIZEOF,
                 .operand = binary((binary_expression_t) {
-                    .type = BINARY_ARITHMETIC,
+                    .kind = BINARY_ARITHMETIC,
                     .left = integer_constant("1"),
                     .right = integer_constant("1"),
-                    .operator = token(TK_PLUS, "+"),
-                    .arithmetic_operator = BINARY_ARITHMETIC_ADD,
+                    .operator_token = token(TK_PLUS, "+"),
+                    .operator.arithmetic = BINARY_ARITHMETIC_ADD,
                 }),
             },
     };
@@ -392,12 +392,12 @@ void test_parse_prefix_increment() {
     CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
     expression_t expected = (expression_t) {
         .span = dummy_span(),
-        .type = EXPRESSION_UNARY,
-        .unary = {
+        .kind = EXPRESSION_UNARY,
+        .value.unary = {
             .operator = UNARY_PRE_INCREMENT,
             .operand = primary((primary_expression_t) {
-                .type = PE_IDENTIFIER,
-                .token = *token(TK_IDENTIFIER, "a"),
+                .kind = PE_IDENTIFIER,
+                .value.token = *token(TK_IDENTIFIER, "a"),
             }),
         },
     };
@@ -413,12 +413,12 @@ void test_parse_prefix_decrement() {
     CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
     expression_t expected = (expression_t) {
         .span = dummy_span(),
-        .type = EXPRESSION_UNARY,
-        .unary = {
+        .kind = EXPRESSION_UNARY,
+        .value.unary = {
             .operator = UNARY_PRE_DECREMENT,
             .operand = primary((primary_expression_t) {
-                .type = PE_IDENTIFIER,
-                .token = *token(TK_IDENTIFIER, "b"),
+                .kind = PE_IDENTIFIER,
+                .value.token = *token(TK_IDENTIFIER, "b"),
             }),
         },
     };
@@ -434,12 +434,12 @@ void test_parse_postfix_increment() {
     CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
     expression_t expected = (expression_t) {
         .span = dummy_span(),
-        .type = EXPRESSION_UNARY,
-        .unary = {
+        .kind = EXPRESSION_UNARY,
+        .value.unary = {
             .operator = UNARY_POST_INCREMENT,
             .operand = primary((primary_expression_t) {
-                .type = PE_IDENTIFIER,
-                .token = *token(TK_IDENTIFIER, "a"),
+                .kind = PE_IDENTIFIER,
+                .value.token = *token(TK_IDENTIFIER, "a"),
             }),
         },
     };
@@ -455,12 +455,12 @@ void test_parse_postfix_decrement() {
     CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
     expression_t expected = (expression_t) {
         .span = dummy_span(),
-        .type = EXPRESSION_UNARY,
-        .unary = {
+        .kind = EXPRESSION_UNARY,
+        .value.unary = {
             .operator = UNARY_POST_DECREMENT,
             .operand = primary((primary_expression_t) {
-                .type = PE_IDENTIFIER,
-                .token = *token(TK_IDENTIFIER, "b"),
+                .kind = PE_IDENTIFIER,
+                .value.token = *token(TK_IDENTIFIER, "b"),
             }),
         },
     };
@@ -476,8 +476,8 @@ void test_parse_cast_expression() {
     CU_ASSERT_TRUE_FATAL(parse_cast_expression(&parser, &expr))
     expression_t expected = (expression_t) {
             .span = dummy_span(),
-            .type = EXPRESSION_CAST,
-            .cast = (cast_expression_t) {
+            .kind = EXPRESSION_CAST,
+            .value.cast = (cast_expression_t) {
                     .type = &FLOAT,
                     .expression = integer_constant("14"),
             },
@@ -493,23 +493,23 @@ void test_parse_multiplicative_expression() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_multiplicative_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
+        .left = binary((binary_expression_t) {
             .left = binary((binary_expression_t) {
-                    .left = binary((binary_expression_t) {
-                            .type = BINARY_ARITHMETIC,
-                            .arithmetic_operator = BINARY_ARITHMETIC_DIVIDE,
-                            .left = integer_constant("1"),
-                            .right = integer_constant("2"),
-                            .operator = token(TK_SLASH, "/"),
-                    }),
-                    .right = integer_constant("3"),
-                    .type = BINARY_ARITHMETIC,
-                    .arithmetic_operator = BINARY_ARITHMETIC_MULTIPLY,
-                    .operator = token(TK_STAR, "*"),
+                .kind = BINARY_ARITHMETIC,
+                .operator.arithmetic = BINARY_ARITHMETIC_DIVIDE,
+                .left = integer_constant("1"),
+                .right = integer_constant("2"),
+                .operator_token = token(TK_SLASH, "/"),
             }),
-            .right = integer_constant("4"),
-            .type = BINARY_ARITHMETIC,
-            .arithmetic_operator = BINARY_ARITHMETIC_MODULO,
-            .operator = token(TK_PERCENT, "%"),
+            .right = integer_constant("3"),
+            .kind = BINARY_ARITHMETIC,
+            .operator.arithmetic = BINARY_ARITHMETIC_MULTIPLY,
+            .operator_token = token(TK_STAR, "*"),
+        }),
+        .right = integer_constant("4"),
+        .kind = BINARY_ARITHMETIC,
+        .operator.arithmetic = BINARY_ARITHMETIC_MODULO,
+        .operator_token = token(TK_PERCENT, "%"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -522,17 +522,17 @@ void test_parse_additive_expression() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_additive_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
-            .left = binary((binary_expression_t) {
-                    .left = integer_constant("1"),
-                    .right = integer_constant("2"),
-                    .type = BINARY_ARITHMETIC,
-                    .arithmetic_operator = BINARY_ARITHMETIC_ADD,
-                    .operator = token(TK_PLUS, "+"),
-            }),
-            .right = integer_constant("3"),
-            .type = BINARY_ARITHMETIC,
-            .arithmetic_operator = BINARY_ARITHMETIC_SUBTRACT,
-            .operator = token(TK_MINUS, "-"),
+        .left = binary((binary_expression_t) {
+            .left = integer_constant("1"),
+            .right = integer_constant("2"),
+            .kind = BINARY_ARITHMETIC,
+            .operator.arithmetic = BINARY_ARITHMETIC_ADD,
+            .operator_token = token(TK_PLUS, "+"),
+        }),
+        .right = integer_constant("3"),
+        .kind = BINARY_ARITHMETIC,
+        .operator.arithmetic = BINARY_ARITHMETIC_SUBTRACT,
+        .operator_token = token(TK_MINUS, "-"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -551,13 +551,13 @@ void test_parse_additive_expression_2() {
         .right = binary((binary_expression_t) {
             .left = integer_constant("2"),
             .right = integer_constant("3"),
-            .type = BINARY_ARITHMETIC,
-            .arithmetic_operator = BINARY_ARITHMETIC_MULTIPLY,
-            .operator = token(TK_STAR, "*"),
+            .kind = BINARY_ARITHMETIC,
+            .operator.arithmetic = BINARY_ARITHMETIC_MULTIPLY,
+            .operator_token = token(TK_STAR, "*"),
         }),
-        .operator = token(TK_PLUS, "+"),
-        .type = BINARY_ARITHMETIC,
-        .arithmetic_operator = BINARY_ARITHMETIC_ADD,
+        .operator_token = token(TK_PLUS, "+"),
+        .kind = BINARY_ARITHMETIC,
+        .operator.arithmetic = BINARY_ARITHMETIC_ADD,
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
 }
@@ -570,17 +570,17 @@ void test_parse_shift_expression() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_shift_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
-            .left = binary((binary_expression_t) {
-                    .left = integer_constant("1"),
-                    .right = integer_constant("2"),
-                    .type = BINARY_BITWISE,
-                    .bitwise_operator = BINARY_BITWISE_SHIFT_LEFT,
-                    .operator = token(TK_LSHIFT, "<<"),
-            }),
-            .right = integer_constant("3"),
-            .type = BINARY_BITWISE,
-            .bitwise_operator = BINARY_BITWISE_SHIFT_RIGHT,
-            .operator = token(TK_RSHIFT, ">>"),
+        .left = binary((binary_expression_t) {
+            .left = integer_constant("1"),
+            .right = integer_constant("2"),
+            .kind = BINARY_BITWISE,
+            .operator.bitwise = BINARY_BITWISE_SHIFT_LEFT,
+            .operator_token = token(TK_LSHIFT, "<<"),
+        }),
+        .right = integer_constant("3"),
+        .kind = BINARY_BITWISE,
+        .operator.bitwise = BINARY_BITWISE_SHIFT_RIGHT,
+        .operator_token = token(TK_RSHIFT, ">>"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -593,29 +593,29 @@ void test_parse_relational_expression() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_relational_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
+        .left = binary((binary_expression_t) {
             .left = binary((binary_expression_t) {
-                    .left = binary((binary_expression_t) {
-                            .left = binary((binary_expression_t) {
-                                    .left = integer_constant("1"),
-                                    .right = integer_constant("2"),
-                                    .type = BINARY_COMPARISON,
-                                    .comparison_operator = BINARY_COMPARISON_LESS_THAN,
-                                    .operator = token(TK_LESS_THAN, "<"),
-                            }),
-                            .right = integer_constant("3"),
-                            .type = BINARY_COMPARISON,
-                            .comparison_operator = BINARY_COMPARISON_GREATER_THAN,
-                            .operator = token(TK_GREATER_THAN, ">"),
-                    }),
-                    .right = integer_constant("4"),
-                    .type = BINARY_COMPARISON,
-                    .comparison_operator = BINARY_COMPARISON_LESS_THAN_OR_EQUAL,
-                    .operator = token(TK_LESS_THAN_EQUAL, "<="),
+                .left = binary((binary_expression_t) {
+                    .left = integer_constant("1"),
+                    .right = integer_constant("2"),
+                    .kind = BINARY_COMPARISON,
+                    .operator.comparison = BINARY_COMPARISON_LESS_THAN,
+                    .operator_token = token(TK_LESS_THAN, "<"),
+                }),
+                .right = integer_constant("3"),
+                .kind = BINARY_COMPARISON,
+                .operator.comparison = BINARY_COMPARISON_GREATER_THAN,
+                .operator_token = token(TK_GREATER_THAN, ">"),
             }),
-            .right = integer_constant("5"),
-            .type = BINARY_COMPARISON,
-            .comparison_operator = BINARY_COMPARISON_GREATER_THAN_OR_EQUAL,
-            .operator = token(TK_GREATER_THAN_EQUAL, ">="),
+            .right = integer_constant("4"),
+            .kind = BINARY_COMPARISON,
+            .operator.comparison = BINARY_COMPARISON_LESS_THAN_OR_EQUAL,
+            .operator_token = token(TK_LESS_THAN_EQUAL, "<="),
+        }),
+        .right = integer_constant("5"),
+        .kind = BINARY_COMPARISON,
+        .operator.comparison = BINARY_COMPARISON_GREATER_THAN_OR_EQUAL,
+        .operator_token = token(TK_GREATER_THAN_EQUAL, ">="),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -628,17 +628,17 @@ void test_parse_equality_expression() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_equality_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
-            .left = binary((binary_expression_t) {
-                    .left = integer_constant("1"),
-                    .right = integer_constant("2"),
-                    .type = BINARY_COMPARISON,
-                    .comparison_operator = BINARY_COMPARISON_EQUAL,
-                    .operator = token(TK_EQUALS, "=="),
-            }),
-            .right = integer_constant("3"),
-            .type = BINARY_COMPARISON,
-            .comparison_operator = BINARY_COMPARISON_NOT_EQUAL,
-            .operator = token(TK_NOT_EQUALS, "!="),
+        .left = binary((binary_expression_t) {
+            .left = integer_constant("1"),
+            .right = integer_constant("2"),
+            .kind = BINARY_COMPARISON,
+            .operator.comparison = BINARY_COMPARISON_EQUAL,
+            .operator_token = token(TK_EQUALS, "=="),
+        }),
+        .right = integer_constant("3"),
+        .kind = BINARY_COMPARISON,
+        .operator.comparison = BINARY_COMPARISON_NOT_EQUAL,
+        .operator_token = token(TK_NOT_EQUALS, "!="),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -652,11 +652,11 @@ void test_parse_and_expression() {
     CU_ASSERT_TRUE_FATAL(parse_and_expression(&parser, &node))
     CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
     expression_t *expected = binary((binary_expression_t) {
-            .left = integer_constant("1"),
-            .right = integer_constant("2"),
-            .type = BINARY_BITWISE,
-            .bitwise_operator = BINARY_BITWISE_AND,
-            .operator = token(TK_AMPERSAND, "&"),
+        .left = integer_constant("1"),
+        .right = integer_constant("2"),
+        .kind = BINARY_BITWISE,
+        .operator.bitwise = BINARY_BITWISE_AND,
+        .operator_token = token(TK_AMPERSAND, "&"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -670,11 +670,11 @@ void test_parse_xor_expression() {
     CU_ASSERT_TRUE_FATAL(parse_exclusive_or_expression(&parser, &node))
     CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
     expression_t *expected = binary((binary_expression_t) {
-            .left = integer_constant("1"),
-            .right = integer_constant("2"),
-            .type = BINARY_BITWISE,
-            .bitwise_operator = BINARY_BITWISE_XOR,
-            .operator = token(TK_BITWISE_XOR, "^"),
+        .left = integer_constant("1"),
+        .right = integer_constant("2"),
+        .kind = BINARY_BITWISE,
+        .operator.bitwise = BINARY_BITWISE_XOR,
+        .operator_token = token(TK_BITWISE_XOR, "^"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -688,11 +688,11 @@ void test_parse_inclusive_or_expression() {
     CU_ASSERT_TRUE_FATAL(parse_inclusive_or_expression(&parser, &node))
     CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
     expression_t *expected = binary((binary_expression_t) {
-            .left = integer_constant("1"),
-            .right = integer_constant("2"),
-            .type = BINARY_BITWISE,
-            .bitwise_operator = BINARY_BITWISE_OR,
-            .operator = token(TK_BITWISE_OR, "|"),
+        .left = integer_constant("1"),
+        .right = integer_constant("2"),
+        .kind = BINARY_BITWISE,
+        .operator.bitwise = BINARY_BITWISE_OR,
+        .operator_token = token(TK_BITWISE_OR, "|"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -706,11 +706,11 @@ void test_parse_logical_and_expression() {
     CU_ASSERT_TRUE_FATAL(parse_logical_and_expression(&parser, &node))
     CU_ASSERT_TRUE(lscan(&parser.lexer).kind == TK_EOF)
     expression_t *expected = binary((binary_expression_t) {
-            .left = integer_constant("1"),
-            .right = integer_constant("2"),
-            .type = BINARY_LOGICAL,
-            .logical_operator = BINARY_LOGICAL_AND,
-            .operator = token(TK_LOGICAL_AND, "&&"),
+        .left = integer_constant("1"),
+        .right = integer_constant("2"),
+        .kind = BINARY_LOGICAL,
+        .operator.logical = BINARY_LOGICAL_AND,
+        .operator_token = token(TK_LOGICAL_AND, "&&"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -726,9 +726,9 @@ void test_parse_logical_and_expression_float_operands() {
     expression_t *expected = binary((binary_expression_t) {
         .left = float_constant("0.0"),
         .right = float_constant("1.0"),
-        .type = BINARY_LOGICAL,
-        .logical_operator = BINARY_LOGICAL_AND,
-        .operator = token(TK_LOGICAL_AND, "&&"),
+        .kind = BINARY_LOGICAL,
+        .operator.logical = BINARY_LOGICAL_AND,
+        .operator_token = token(TK_LOGICAL_AND, "&&"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -742,11 +742,11 @@ void test_parse_logical_or_expression() {
 
     CU_ASSERT_TRUE_FATAL(parse_logical_or_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
-            .left = integer_constant("1"),
-            .right = integer_constant("2"),
-            .type = BINARY_LOGICAL,
-            .logical_operator = BINARY_LOGICAL_OR,
-            .operator = token(TK_LOGICAL_OR, "||"),
+        .left = integer_constant("1"),
+        .right = integer_constant("2"),
+        .kind = BINARY_LOGICAL,
+        .operator.logical = BINARY_LOGICAL_OR,
+        .operator_token = token(TK_LOGICAL_OR, "||"),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -760,13 +760,13 @@ void test_parse_conditional_expression() {
 
     CU_ASSERT_TRUE_FATAL(parse_conditional_expression(&parser, &node))
     expression_t expected = (expression_t) {
-            .span = dummy_span(),
-            .type = EXPRESSION_TERNARY,
-            .ternary = (ternary_expression_t) {
-                    .condition = integer_constant("1"),
-                    .true_expression = integer_constant("2"),
-                    .false_expression = integer_constant("3"),
-            },
+        .span = dummy_span(),
+        .kind = EXPRESSION_TERNARY,
+        .value.ternary = (ternary_expression_t) {
+            .condition = integer_constant("1"),
+            .true_expression = integer_constant("2"),
+            .false_expression = integer_constant("3"),
+        },
     };
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, &expected))
 }
@@ -780,11 +780,11 @@ void test_parse_assignment_expression() {
 
     CU_ASSERT_TRUE_FATAL(parse_assignment_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
-            .left = make_identifier("val"),
-            .right = integer_constant("2"),
-            .type = BINARY_ASSIGNMENT,
-            .assignment_operator = BINARY_ASSIGN,
-            .operator = token(TK_ASSIGN, "="),
+        .left = make_identifier("val"),
+        .right = integer_constant("2"),
+        .kind = BINARY_ASSIGNMENT,
+        .operator.assignment = BINARY_ASSIGN,
+        .operator_token = token(TK_ASSIGN, "="),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -797,11 +797,11 @@ void test_parse_compound_assignment_expression_add() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_assignment_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
-            .left = make_identifier("val"),
-            .right = integer_constant("3"),
-            .type = BINARY_ASSIGNMENT,
-            .assignment_operator = BINARY_ADD_ASSIGN,
-            .operator = token(TK_PLUS_ASSIGN, "+="),
+        .left = make_identifier("val"),
+        .right = integer_constant("3"),
+        .kind = BINARY_ASSIGNMENT,
+        .operator.assignment = BINARY_ADD_ASSIGN,
+        .operator_token = token(TK_PLUS_ASSIGN, "+="),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -814,11 +814,11 @@ void test_parse_compound_assignment_expression_div() {
     expression_t node;
     CU_ASSERT_TRUE_FATAL(parse_assignment_expression(&parser, &node))
     expression_t *expected = binary((binary_expression_t) {
-            .left = make_identifier("val"),
-            .right = integer_constant("3"),
-            .type = BINARY_ASSIGNMENT,
-            .assignment_operator = BINARY_DIVIDE_ASSIGN,
-            .operator = token(TK_DIVIDE_ASSIGN, "/="),
+        .left = make_identifier("val"),
+        .right = integer_constant("3"),
+        .kind = BINARY_ASSIGNMENT,
+        .operator.assignment = BINARY_DIVIDE_ASSIGN,
+        .operator_token = token(TK_DIVIDE_ASSIGN, "/="),
     });
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
@@ -855,16 +855,16 @@ void test_parse_struct_definition() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
     CU_ASSERT_EQUAL_FATAL(type.kind, TYPE_STRUCT_OR_UNION)
-    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.is_union, false)
-    CU_ASSERT_STRING_EQUAL_FATAL(type.struct_or_union.identifier->value, "Foo")
-    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.fields.size, 2)
+    CU_ASSERT_EQUAL_FATAL(type.value.struct_or_union.is_union, false)
+    CU_ASSERT_STRING_EQUAL_FATAL(type.value.struct_or_union.identifier->value, "Foo")
+    CU_ASSERT_EQUAL_FATAL(type.value.struct_or_union.fields.size, 2)
 
-    struct_field_t *field = type.struct_or_union.fields.buffer[0];
+    struct_field_t *field = type.value.struct_or_union.fields.buffer[0];
     CU_ASSERT_STRING_EQUAL_FATAL(field->identifier->value, "a")
     CU_ASSERT_TRUE_FATAL(types_equal(field->type, &INT))
     CU_ASSERT_TRUE_FATAL(field->bitfield_width == NULL)
 
-    field = type.struct_or_union.fields.buffer[1];
+    field = type.value.struct_or_union.fields.buffer[1];
     CU_ASSERT_STRING_EQUAL_FATAL(field->identifier->value, "b")
     CU_ASSERT_TRUE_FATAL(types_equal(field->type, array_of(&FLOAT, integer_constant("10"))))
     CU_ASSERT_TRUE_FATAL(field->bitfield_width == NULL)
@@ -881,9 +881,9 @@ void test_parse_union_definition() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
     CU_ASSERT_EQUAL_FATAL(type.kind, TYPE_STRUCT_OR_UNION)
-    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.is_union, true)
-    CU_ASSERT_STRING_EQUAL_FATAL(type.struct_or_union.identifier->value, "Foo")
-    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.fields.size, 2)
+    CU_ASSERT_EQUAL_FATAL(type.value.struct_or_union.is_union, true)
+    CU_ASSERT_STRING_EQUAL_FATAL(type.value.struct_or_union.identifier->value, "Foo")
+    CU_ASSERT_EQUAL_FATAL(type.value.struct_or_union.fields.size, 2)
 }
 
 void test_parse_struct_definition_with_bitfields() {
@@ -898,17 +898,17 @@ void test_parse_struct_definition_with_bitfields() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
     CU_ASSERT_EQUAL_FATAL(type.kind, TYPE_STRUCT_OR_UNION)
-    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.is_union, false)
-    CU_ASSERT_STRING_EQUAL_FATAL(type.struct_or_union.identifier->value, "Foo")
-    CU_ASSERT_EQUAL_FATAL(type.struct_or_union.fields.size, 2)
+    CU_ASSERT_EQUAL_FATAL(type.value.struct_or_union.is_union, false)
+    CU_ASSERT_STRING_EQUAL_FATAL(type.value.struct_or_union.identifier->value, "Foo")
+    CU_ASSERT_EQUAL_FATAL(type.value.struct_or_union.fields.size, 2)
 
-    struct_field_t *field = type.struct_or_union.fields.buffer[0];
+    struct_field_t *field = type.value.struct_or_union.fields.buffer[0];
     CU_ASSERT_STRING_EQUAL_FATAL(field->identifier->value, "a")
     CU_ASSERT_TRUE_FATAL(types_equal(field->type, &INT))
     CU_ASSERT_TRUE_FATAL(field->bitfield_width != NULL)
     CU_ASSERT_TRUE_FATAL(expression_eq(field->bitfield_width, integer_constant("1")))
 
-    field = type.struct_or_union.fields.buffer[1];
+    field = type.value.struct_or_union.fields.buffer[1];
     CU_ASSERT_PTR_NULL_FATAL(field->identifier)
     CU_ASSERT_TRUE_FATAL(types_equal(field->type, &INT))
     CU_ASSERT_TRUE_FATAL(field->bitfield_width != NULL)
@@ -924,7 +924,7 @@ void test_parse_initializer_expression_simple() {
     CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_EXPRESSION)
-    CU_ASSERT_TRUE_FATAL(expression_eq(initializer.expression, integer_constant("14")))
+    CU_ASSERT_TRUE_FATAL(expression_eq(initializer.value.expression, integer_constant("14")))
 }
 
 void test_parse_initializer_list_array() {
@@ -936,14 +936,14 @@ void test_parse_initializer_list_array() {
     CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_LIST)
-    CU_ASSERT_EQUAL_FATAL(initializer.list->size, 3)
+    CU_ASSERT_EQUAL_FATAL(initializer.value.list->size, 3)
     for (int i = 0; i < 3; i += 1) {
-        initializer_list_element_t element = initializer.list->buffer[i];
+        initializer_list_element_t element = initializer.value.list->buffer[i];
         CU_ASSERT_PTR_NULL_FATAL(element.designation)
         CU_ASSERT_TRUE_FATAL(element.initializer->kind == INITIALIZER_EXPRESSION)
         char buffer[8];
         sprintf(buffer, "%d", i);
-        CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->expression, integer_constant(buffer)))
+        CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->value.expression, integer_constant(buffer)))
     }
 }
 
@@ -956,14 +956,14 @@ void test_parse_initializer_list_array_trailing_comma() {
     CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_LIST)
-    CU_ASSERT_EQUAL_FATAL(initializer.list->size, 3)
+    CU_ASSERT_EQUAL_FATAL(initializer.value.list->size, 3)
     for (int i = 0; i < 3; i += 1) {
-        initializer_list_element_t element = initializer.list->buffer[i];
+        initializer_list_element_t element = initializer.value.list->buffer[i];
         CU_ASSERT_PTR_NULL_FATAL(element.designation)
         CU_ASSERT_TRUE_FATAL(element.initializer->kind == INITIALIZER_EXPRESSION)
         char buffer[8];
         sprintf(buffer, "%d", i);
-        CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->expression, integer_constant(buffer)))
+        CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->value.expression, integer_constant(buffer)))
     }
 }
 
@@ -976,15 +976,15 @@ void test_parse_initializer_list_array_index_designator() {
     CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_LIST)
-    CU_ASSERT_EQUAL_FATAL(initializer.list->size, 1)
-    initializer_list_element_t element = initializer.list->buffer[0];
+    CU_ASSERT_EQUAL_FATAL(initializer.value.list->size, 1)
+    initializer_list_element_t element = initializer.value.list->buffer[0];
     CU_ASSERT_PTR_NOT_NULL_FATAL(element.designation)
     CU_ASSERT_EQUAL_FATAL(element.designation->size, 1)
     designator_t designator = element.designation->buffer[0];
     CU_ASSERT_TRUE_FATAL(designator.kind == DESIGNATOR_INDEX)
-    CU_ASSERT_TRUE_FATAL(expression_eq(designator.index, integer_constant("0")))
+    CU_ASSERT_TRUE_FATAL(expression_eq(designator.value.index, integer_constant("0")))
     CU_ASSERT_TRUE_FATAL(element.initializer->kind == INITIALIZER_EXPRESSION)
-    CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->expression, integer_constant("0")))
+    CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->value.expression, integer_constant("0")))
 }
 
 void test_parse_initializer_list_struct() {
@@ -996,32 +996,32 @@ void test_parse_initializer_list_struct() {
     CU_ASSERT_TRUE_FATAL(parse_initializer(&parser, &initializer))
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(initializer.kind == INITIALIZER_LIST)
-    CU_ASSERT_EQUAL_FATAL(initializer.list->size, 2)
+    CU_ASSERT_EQUAL_FATAL(initializer.value.list->size, 2)
 
-    initializer_list_element_t element_a = initializer.list->buffer[0];
+    initializer_list_element_t element_a = initializer.value.list->buffer[0];
     CU_ASSERT_PTR_NOT_NULL_FATAL(element_a.designation)
     CU_ASSERT_EQUAL_FATAL(element_a.designation->size, 1)
     designator_t designator_a = element_a.designation->buffer[0];
     CU_ASSERT_TRUE_FATAL(designator_a.kind == DESIGNATOR_FIELD)
-    CU_ASSERT_STRING_EQUAL_FATAL(designator_a.field->value, "a")
+    CU_ASSERT_STRING_EQUAL_FATAL(designator_a.value.field->value, "a")
     CU_ASSERT_TRUE_FATAL(element_a.initializer->kind == INITIALIZER_EXPRESSION)
-    CU_ASSERT_TRUE_FATAL(expression_eq(element_a.initializer->expression, integer_constant("0")))
+    CU_ASSERT_TRUE_FATAL(expression_eq(element_a.initializer->value.expression, integer_constant("0")))
 
-    initializer_list_element_t element_b = initializer.list->buffer[1];
+    initializer_list_element_t element_b = initializer.value.list->buffer[1];
     CU_ASSERT_PTR_NOT_NULL_FATAL(element_b.designation)
     CU_ASSERT_EQUAL_FATAL(element_b.designation->size, 1)
     designator_t designator_b = element_b.designation->buffer[0];
     CU_ASSERT_TRUE_FATAL(designator_b.kind == DESIGNATOR_FIELD)
-    CU_ASSERT_STRING_EQUAL_FATAL(designator_b.field->value, "b")
+    CU_ASSERT_STRING_EQUAL_FATAL(designator_b.value.field->value, "b")
     CU_ASSERT_TRUE_FATAL(element_b.initializer->kind == INITIALIZER_LIST)
-    CU_ASSERT_EQUAL_FATAL(element_b.initializer->list->size, 1)
+    CU_ASSERT_EQUAL_FATAL(element_b.initializer->value.list->size, 1)
 
-    initializer_list_element_t element_c = element_b.initializer->list->buffer[0];
+    initializer_list_element_t element_c = element_b.initializer->value.list->buffer[0];
     CU_ASSERT_PTR_NOT_NULL_FATAL(element_c.designation)
     CU_ASSERT_EQUAL_FATAL(element_c.designation->size, 1)
     designator_t designator_c = element_c.designation->buffer[0];
     CU_ASSERT_TRUE_FATAL(designator_c.kind == DESIGNATOR_FIELD)
-    CU_ASSERT_STRING_EQUAL_FATAL(designator_c.field->value, "c")
+    CU_ASSERT_STRING_EQUAL_FATAL(designator_c.value.field->value, "c")
 }
 
 void test_parse_empty_declaration() {
@@ -1076,18 +1076,18 @@ void test_parse_simple_declaration_with_initializer() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
     declaration_t expected = (declaration_t) {
-            .type = &INT,
-            .identifier = token(TK_IDENTIFIER, "a"),
-            .initializer = &(initializer_t) {
-                .kind = INITIALIZER_EXPRESSION,
-                .expression = binary((binary_expression_t) {
-                    .type = BINARY_BITWISE,
-                    .bitwise_operator = BINARY_BITWISE_AND,
-                    .left = integer_constant("1"),
-                    .right = integer_constant("1"),
-                    .operator = token(TK_AMPERSAND, "&"),
-                }),
-            },
+        .type = &INT,
+        .identifier = token(TK_IDENTIFIER, "a"),
+        .initializer = &(initializer_t) {
+            .kind = INITIALIZER_EXPRESSION,
+            .value.expression = binary((binary_expression_t) {
+                .kind = BINARY_BITWISE,
+                .operator.bitwise = BINARY_BITWISE_AND,
+                .left = integer_constant("1"),
+                .right = integer_constant("1"),
+                .operator_token = token(TK_AMPERSAND, "&"),
+            }),
+        },
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
@@ -1098,20 +1098,20 @@ void test_parse_declaration_boolean() {
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     ptr_vector_t declarations = {
-            .size = 0,
-            .capacity = 0,
-            .buffer = NULL,
+        .size = 0,
+        .capacity = 0,
+        .buffer = NULL,
     };
     CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
     CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     declaration_t expected = (declaration_t) {
-            .type = &BOOL,
-            .identifier = token(TK_IDENTIFIER, "a"),
-            .initializer = & (initializer_t) {
-                .kind = INITIALIZER_EXPRESSION,
-                .expression = integer_constant("1"),
-            },
+        .type = &BOOL,
+        .identifier = token(TK_IDENTIFIER, "a"),
+        .initializer = & (initializer_t) {
+            .kind = INITIALIZER_EXPRESSION,
+            .value.expression = integer_constant("1"),
+        },
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
@@ -1126,9 +1126,9 @@ void test_parse_pointer_declaration() {
     CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     declaration_t expected = (declaration_t) {
-            .type = pointer_to(&VOID),
-            .identifier = token(TK_IDENTIFIER, "a"),
-            .initializer = NULL,
+        .type = pointer_to(&VOID),
+        .identifier = token(TK_IDENTIFIER, "a"),
+        .initializer = NULL,
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
@@ -1144,35 +1144,35 @@ void test_parse_compound_declaration() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
     declaration_t expected_a = (declaration_t) {
-            .type = &INT,
-            .identifier = token(TK_IDENTIFIER, "a"),
-            .initializer = NULL,
+        .type = &INT,
+        .identifier = token(TK_IDENTIFIER, "a"),
+        .initializer = NULL,
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected_a))
 
     declaration_t expected_b = (declaration_t) {
-            .type = &INT,
-            .identifier = token(TK_IDENTIFIER, "b"),
-            .initializer = & (initializer_t) {
-                .kind = INITIALIZER_EXPRESSION,
-                .expression = integer_constant("0"),
-            },
+        .type = &INT,
+        .identifier = token(TK_IDENTIFIER, "b"),
+        .initializer = & (initializer_t) {
+            .kind = INITIALIZER_EXPRESSION,
+            .value.expression = integer_constant("0"),
+        },
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[1], &expected_b))
 
     declaration_t expected_c = (declaration_t) {
-            .type = &INT,
-            .identifier = token(TK_IDENTIFIER, "c"),
-            .initializer = & (initializer_t) {
-                .kind = INITIALIZER_EXPRESSION,
-                .expression = binary((binary_expression_t) {
-                    .type = BINARY_ARITHMETIC,
-                    .arithmetic_operator = BINARY_ARITHMETIC_ADD,
-                    .left = make_identifier("d"),
-                    .right = integer_constant("1"),
-                    .operator = token(TK_PLUS, "+"),
-                }),
-            },
+        .type = &INT,
+        .identifier = token(TK_IDENTIFIER, "c"),
+        .initializer = & (initializer_t) {
+            .kind = INITIALIZER_EXPRESSION,
+            .value.expression = binary((binary_expression_t) {
+                .kind = BINARY_ARITHMETIC,
+                .operator.arithmetic = BINARY_ARITHMETIC_ADD,
+                .left = make_identifier("d"),
+                .right = integer_constant("1"),
+                .operator_token = token(TK_PLUS, "+"),
+            }),
+        },
     };
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[2], &expected_c))
 }
@@ -1194,17 +1194,17 @@ void test_parse_function_declaration_no_parameters() {
     };
 
     type_t type = {
-            .kind = TYPE_FUNCTION,
-            .function = {
-                    .return_type = &INT,
-                    .parameter_list = &parameters,
-            },
+        .kind = TYPE_FUNCTION,
+        .value.function = {
+            .return_type = &INT,
+            .parameter_list = &parameters,
+        },
     };
 
     declaration_t expected = (declaration_t) {
-            .type = &type,
-            .identifier = token(TK_IDENTIFIER, "foo"),
-            .initializer = NULL,
+        .type = &type,
+        .identifier = token(TK_IDENTIFIER, "foo"),
+        .initializer = NULL,
     };
 
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
@@ -1232,7 +1232,7 @@ void test_parse_function_declaration_with_parameters() {
             &(parameter_declaration_t) {
                 .type = pointer_to(&(type_t) {
                     .kind = TYPE_FUNCTION,
-                    .function = {
+                    .value.function = {
                         .return_type = &FLOAT,
                         .parameter_list = &(parameter_type_list_t) {
                             .variadic = false,
@@ -1248,7 +1248,7 @@ void test_parse_function_declaration_with_parameters() {
     declaration_t expected = (declaration_t) {
         .type = &(type_t) {
             .kind = TYPE_FUNCTION,
-            .function = {
+            .value.function = {
                 .return_type = &INT,
                 .parameter_list = &parameter_type_list,
             },
@@ -1271,17 +1271,17 @@ void test_parse_function_declaration_returning_pointer() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
     parameter_type_list_t parameters = (parameter_type_list_t) {
-            .variadic = false,
-            .parameters = NULL,
-            .length = 0,
+        .variadic = false,
+        .parameters = NULL,
+        .length = 0,
     };
 
     type_t type = {
-            .kind = TYPE_FUNCTION,
-            .function = {
-                    .return_type = pointer_to(&INT),
-                    .parameter_list = &parameters,
-            },
+        .kind = TYPE_FUNCTION,
+        .value.function = {
+            .return_type = pointer_to(&INT),
+            .parameter_list = &parameters,
+        },
     };
 
     declaration_t expected = (declaration_t) {
@@ -1305,11 +1305,11 @@ void test_parse_array_declaration() {
 
     declaration_t *declaration = declarations.buffer[0];
     type_t expected_type = {
-            .kind = TYPE_ARRAY,
-            .array = {
-                    .element_type = &INT,
-                    .size = integer_constant("10"),
-            },
+        .kind = TYPE_ARRAY,
+        .value.array = {
+            .element_type = &INT,
+            .size = integer_constant("10"),
+        },
     };
     CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "foo")
     CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected_type))
@@ -1328,7 +1328,7 @@ void test_parse_array_declaration_with_initializer() {
     declaration_t *declaration = declarations.buffer[0];
     type_t expected_type = {
         .kind = TYPE_ARRAY,
-        .array = {
+        .value.array = {
             .element_type = &INT,
             .size = integer_constant("3"),
         },
@@ -1349,18 +1349,18 @@ void test_parse_2d_array_declaration() {
 
     declaration_t *declaration = declarations.buffer[0];
     type_t inner_type = {
-            .kind = TYPE_ARRAY,
-            .array = {
-                    .element_type = &INT,
-                    .size = integer_constant("2"),
-            },
+        .kind = TYPE_ARRAY,
+        .value.array = {
+            .element_type = &INT,
+            .size = integer_constant("2"),
+        },
     };
     type_t expected_type = {
-            .kind = TYPE_ARRAY,
-            .array = {
-                    .element_type = &inner_type,
-                    .size = integer_constant("1"),
-            },
+        .kind = TYPE_ARRAY,
+        .value.array = {
+            .element_type = &inner_type,
+            .size = integer_constant("1"),
+        },
     };
     CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "bar")
     CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected_type))
@@ -1377,14 +1377,14 @@ void test_parse_array_of_functions_declaration() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 
     parameter_type_list_t parameter_list = (parameter_type_list_t) {
-            .variadic = false,
-            .parameters = NULL,
-            .length = 0,
+        .variadic = false,
+        .parameters = NULL,
+        .length = 0,
     };
 
     type_t fn = {
         .kind = TYPE_FUNCTION,
-        .function = {
+        .value.function = {
             .return_type = &INT,
             .parameter_list = &parameter_list,
         },
@@ -1392,7 +1392,7 @@ void test_parse_array_of_functions_declaration() {
 
     type_t type = {
         .kind = TYPE_ARRAY,
-        .array = {
+        .value.array = {
             .element_type = &fn,
             .size = NULL,
         }
@@ -1422,7 +1422,7 @@ void test_parse_function_pointer() {
         .is_volatile = false,
         .is_const = false,
         .kind = TYPE_POINTER,
-        .pointer = {
+        .value.pointer = {
             .is_const = false,
             .is_volatile = false,
             .is_restrict = false,
@@ -1431,7 +1431,7 @@ void test_parse_function_pointer() {
                 .is_volatile = false,
                 .is_const = false,
                 .kind = TYPE_FUNCTION,
-                .function = {
+                .value.function = {
                     .return_type = &INT,
                     .parameter_list = &(parameter_type_list_t) {
                         .variadic = false,
@@ -1463,21 +1463,21 @@ void test_parse_complex_declaration() {
         .is_const = false,
         .is_volatile = false,
         .kind = TYPE_ARRAY,
-        .array = {
+        .value.array = {
             .size = integer_constant("1"),
             .element_type = &(type_t) {
                 .storage_class = STORAGE_CLASS_AUTO,
                 .is_const = false,
                 .is_volatile = false,
                 .kind = TYPE_ARRAY,
-                .array = {
+                .value.array = {
                     .size = integer_constant("2"),
                     .element_type = ptr_to(&(type_t) {
                         .storage_class = STORAGE_CLASS_AUTO,
                         .is_const = false,
                         .is_volatile = false,
                         .kind = TYPE_FUNCTION,
-                        .function = {
+                        .value.function = {
                             .parameter_list = &(parameter_type_list_t) {
                                 .variadic = false,
                                 .parameters = NULL,
@@ -1488,7 +1488,7 @@ void test_parse_complex_declaration() {
                                 .is_const = false,
                                 .is_volatile = false,
                                 .kind = TYPE_FUNCTION,
-                                .function = {
+                                .value.function = {
                                     .return_type = ptr_to(&FLOAT),
                                     .parameter_list = &(parameter_type_list_t) {
                                         .variadic = false,
@@ -1548,21 +1548,21 @@ void test_parse_typedef_struct_type() {
     CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF) // should have consumed the entire input
 
     CU_ASSERT_EQUAL_FATAL(translation_unit.length, 2)
-    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[0]->type, EXTERNAL_DECLARATION_DECLARATION)
-    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[0]->declaration.length, 1)
-    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[1]->type, EXTERNAL_DECLARATION_DECLARATION)
-    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[1]->declaration.length, 1)
+    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[0]->kind, EXTERNAL_DECLARATION_DECLARATION)
+    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[0]->value.declaration.length, 1)
+    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[1]->kind, EXTERNAL_DECLARATION_DECLARATION)
+    CU_ASSERT_EQUAL_FATAL(translation_unit.external_declarations[1]->value.declaration.length, 1)
 
     // The first external declaration declares the typedef name
-    const declaration_t *decl = translation_unit.external_declarations[0]->declaration.declarations[0];
+    const declaration_t *decl = translation_unit.external_declarations[0]->value.declaration.declarations[0];
     CU_ASSERT_STRING_EQUAL_FATAL(decl->identifier->value, "foo")
     CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_STRUCT_OR_UNION)
     CU_ASSERT_EQUAL_FATAL(decl->type->storage_class, STORAGE_CLASS_TYPEDEF)
-    CU_ASSERT_STRING_EQUAL_FATAL(decl->type->struct_or_union.identifier->value, "Foo")
+    CU_ASSERT_STRING_EQUAL_FATAL(decl->type->value.struct_or_union.identifier->value, "Foo")
 
     // The second external declaration declares a global variable "value" using the type referred to by the typedef
     // name "foo".
-    decl = translation_unit.external_declarations[1]->declaration.declarations[0];
+    decl = translation_unit.external_declarations[1]->value.declaration.declarations[0];
     CU_ASSERT_STRING_EQUAL_FATAL(decl->identifier->value, "value")
     CU_ASSERT_EQUAL_FATAL(decl->type->storage_class, STORAGE_CLASS_AUTO)
     CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_STRUCT_OR_UNION)
@@ -1576,7 +1576,7 @@ void test_abstract_declarator_pointer_int() {
     type_t *result;
     CU_ASSERT_TRUE_FATAL(parse_abstract_declarator(&parser, INT, &result))
     CU_ASSERT_TRUE_FATAL(result->kind == TYPE_POINTER);
-    CU_ASSERT_TRUE_FATAL(result->pointer.base->kind == TYPE_INTEGER);
+    CU_ASSERT_TRUE_FATAL(result->value.pointer.base->kind == TYPE_INTEGER);
 }
 
 void test_abstract_declarator_function_pointer() {
@@ -1587,7 +1587,7 @@ void test_abstract_declarator_function_pointer() {
     type_t *result;
     CU_ASSERT_TRUE_FATAL(parse_abstract_declarator(&parser, INT, &result))
     CU_ASSERT_TRUE_FATAL(result->kind == TYPE_POINTER)
-    CU_ASSERT_TRUE_FATAL(result->pointer.base->kind == TYPE_FUNCTION)
+    CU_ASSERT_TRUE_FATAL(result->value.pointer.base->kind == TYPE_FUNCTION)
 }
 
 void test_parse_function_prototype_void() {
@@ -1602,7 +1602,7 @@ void test_parse_function_prototype_void() {
 
     type_t type = {
         .kind = TYPE_FUNCTION,
-        .function = {
+        .value.function = {
             .return_type = &FLOAT,
             .parameter_list = &(parameter_type_list_t) {
                 .variadic = false,
@@ -1651,7 +1651,7 @@ void test_parse_function_prototype() {
 
     type_t type = {
             .kind = TYPE_FUNCTION,
-            .function = {
+            .value.function = {
                     .return_type = &DOUBLE,
                     .parameter_list = &parameter_list,
             },
@@ -1676,7 +1676,7 @@ void test_parse_empty_statement() {
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
     statement_t *expected = malloc(sizeof(statement_t));
     *expected = (statement_t) {
-            .type = STATEMENT_EMPTY,
+            .kind = STATEMENT_EMPTY,
             .terminator = token(TK_SEMICOLON, ";"),
     };
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
@@ -1692,8 +1692,8 @@ void test_parse_expression_statement() {
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
     statement_t *expected = malloc(sizeof(statement_t));
     *expected = (statement_t) {
-            .type = STATEMENT_EXPRESSION,
-            .expression = integer_constant("1"),
+            .kind = STATEMENT_EXPRESSION,
+            .value.expression = integer_constant("1"),
             .terminator = token(TK_SEMICOLON, ";"),
     };
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
@@ -1710,23 +1710,23 @@ void test_parse_compound_statement() {
 
     statement_t *expected = malloc(sizeof(statement_t));
     statement_t *statements[3] = {
-            expression_statement(integer_constant("1")),
-            expression_statement(primary((primary_expression_t) {
-                    .type = PE_CONSTANT,
-                    .token = (token_t) {
-                            .kind = TK_CHAR_LITERAL,
-                            .value = "'a'",
-                            .position = dummy_position(),
-                    },
-            })),
-            expression_statement(primary((primary_expression_t) {
-                    .type = PE_CONSTANT,
-                    .token = (token_t) {
-                            .kind = TK_FLOATING_CONSTANT,
-                            .value = "1.0",
-                            .position = dummy_position(),
-                    },
-            })),
+        expression_statement(integer_constant("1")),
+        expression_statement(primary((primary_expression_t) {
+            .kind = PE_CONSTANT,
+            .value.token = (token_t) {
+                .kind = TK_CHAR_LITERAL,
+                .value = "'a'",
+                .position = dummy_position(),
+            },
+        })),
+        expression_statement(primary((primary_expression_t) {
+            .kind = PE_CONSTANT,
+            .value.token = (token_t) {
+                .kind = TK_FLOATING_CONSTANT,
+                .value = "1.0",
+                .position = dummy_position(),
+            },
+        })),
     };
     block_item_t *block_items[3] = {
             block_item_s(statements[0]),
@@ -1735,8 +1735,8 @@ void test_parse_compound_statement() {
     };
 
     *expected = (statement_t) {
-        .type = STATEMENT_COMPOUND,
-        .compound = {
+        .kind = STATEMENT_COMPOUND,
+        .value.compound = {
             .block_items = {
                 .size = 3,
                 .capacity = 3,
@@ -1762,15 +1762,15 @@ void test_parse_compound_statement_with_error() {
             block_item_s(expression_statement(integer_constant("1"))),
     };
     *expected = (statement_t) {
-            .type = STATEMENT_COMPOUND,
-            .compound = {
-                    .block_items = {
-                            .size = 1,
-                            .capacity = 1,
-                            .buffer = (void**) block_items,
-                    },
+        .kind = STATEMENT_COMPOUND,
+        .value.compound = {
+            .block_items = {
+                .size = 1,
+                .capacity = 1,
+                .buffer = (void**) block_items,
             },
-            .terminator = token(TK_RBRACE, "}"),
+        },
+        .terminator = token(TK_RBRACE, "}"),
     };
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
     CU_ASSERT_TRUE_FATAL(parser.errors.size == 1)
@@ -1786,8 +1786,8 @@ void test_parse_if_statement() {
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
     statement_t *expected = malloc(sizeof(statement_t));
     *expected = (statement_t) {
-        .type = STATEMENT_IF,
-        .if_ = {
+        .kind = STATEMENT_IF,
+        .value.if_ = {
             .keyword = token(TK_IF, "if"),
             .condition = integer_constant("1"),
             .true_branch = expression_statement(integer_constant("2")),
@@ -1807,8 +1807,8 @@ void test_parse_if_else_statement() {
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
     statement_t *expected = malloc(sizeof(statement_t));
     *expected = (statement_t) {
-        .type = STATEMENT_IF,
-        .if_ = {
+        .kind = STATEMENT_IF,
+        .value.if_ = {
             .keyword = token(TK_IF, "if"),
             .condition = integer_constant("1"),
             .true_branch = expression_statement(integer_constant("2")),
@@ -1828,13 +1828,13 @@ void test_parse_if_else_if_else_statement() {
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
     statement_t *expected = malloc(sizeof(statement_t));
     *expected = (statement_t) {
-            .type = STATEMENT_IF,
-            .if_ = {
-                    .keyword = token(TK_IF, "if"),
-                    .condition = integer_constant("1"),
-                    .true_branch = expression_statement(integer_constant("2")),
-                    .false_branch = if_statement(integer_constant("3"), expression_statement(integer_constant("4")), expression_statement(integer_constant("5"))),
-            },
+        .kind = STATEMENT_IF,
+        .value.if_ = {
+            .keyword = token(TK_IF, "if"),
+            .condition = integer_constant("1"),
+            .true_branch = expression_statement(integer_constant("2")),
+            .false_branch = if_statement(integer_constant("3"), expression_statement(integer_constant("4")), expression_statement(integer_constant("5"))),
+        },
     };
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
@@ -1849,12 +1849,12 @@ void test_parse_return_statement() {
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
     statement_t *expected = malloc(sizeof(statement_t));
     *expected = (statement_t) {
-            .type = STATEMENT_RETURN,
-            .return_ = {
-                    .keyword = token(TK_RETURN, "return"),
-                    .expression = integer_constant("1"),
-            },
-            .terminator = token(TK_SEMICOLON, ";"),
+        .kind = STATEMENT_RETURN,
+        .value.return_ = {
+            .keyword = token(TK_RETURN, "return"),
+            .expression = integer_constant("1"),
+        },
+        .terminator = token(TK_SEMICOLON, ";"),
     };
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
@@ -1874,9 +1874,9 @@ void test_parse_while_statement() {
     // Make sure the statement is parsed correctly
     // We have other tests to validate the condition and body, so just make sure
     // they're present and have the expected types.
-    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_WHILE)
-    CU_ASSERT_EQUAL_FATAL(node.while_.condition->type, EXPRESSION_BINARY)
-    CU_ASSERT_EQUAL_FATAL(node.while_.body->type, STATEMENT_COMPOUND)
+    CU_ASSERT_EQUAL_FATAL(node.kind, STATEMENT_WHILE)
+    CU_ASSERT_EQUAL_FATAL(node.value.while_.condition->kind, EXPRESSION_BINARY)
+    CU_ASSERT_EQUAL_FATAL(node.value.while_.body->kind, STATEMENT_COMPOUND)
 }
 
 void test_parse_while_statement_with_empty_body() {
@@ -1890,9 +1890,9 @@ void test_parse_while_statement_with_empty_body() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
 
-    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_WHILE)
-    CU_ASSERT_EQUAL_FATAL(node.while_.condition->type, EXPRESSION_PRIMARY)
-    CU_ASSERT_EQUAL_FATAL(node.while_.body->type, STATEMENT_EMPTY)
+    CU_ASSERT_EQUAL_FATAL(node.kind, STATEMENT_WHILE)
+    CU_ASSERT_EQUAL_FATAL(node.value.while_.condition->kind, EXPRESSION_PRIMARY)
+    CU_ASSERT_EQUAL_FATAL(node.value.while_.body->kind, STATEMENT_EMPTY)
 }
 
 void test_parse_do_while_statement() {
@@ -1910,9 +1910,9 @@ void test_parse_do_while_statement() {
     // Make sure the statement is parsed correctly
     // We have other tests to validate the condition and body, so just make sure
     // they're present and have the expected types.
-    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_DO_WHILE)
-    CU_ASSERT_EQUAL_FATAL(node.do_while.condition->type, EXPRESSION_BINARY)
-    CU_ASSERT_EQUAL_FATAL(node.do_while.body->type, STATEMENT_COMPOUND)
+    CU_ASSERT_EQUAL_FATAL(node.kind, STATEMENT_DO_WHILE)
+    CU_ASSERT_EQUAL_FATAL(node.value.do_while.condition->kind, EXPRESSION_BINARY)
+    CU_ASSERT_EQUAL_FATAL(node.value.do_while.body->kind, STATEMENT_COMPOUND)
 }
 
 void test_parse_for_statement() {
@@ -1929,17 +1929,17 @@ void test_parse_for_statement() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
 
-    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_FOR)
-    CU_ASSERT_EQUAL_FATAL(node.for_.initializer.kind, FOR_INIT_DECLARATION)
-    CU_ASSERT_PTR_NOT_NULL_FATAL(node.for_.initializer.declarations)
+    CU_ASSERT_EQUAL_FATAL(node.kind, STATEMENT_FOR)
+    CU_ASSERT_EQUAL_FATAL(node.value.for_.initializer.kind, FOR_INIT_DECLARATION)
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.value.for_.initializer.declarations)
 
-    CU_ASSERT_PTR_NOT_NULL_FATAL(node.for_.condition)
-    CU_ASSERT_EQUAL_FATAL(node.for_.condition->type, EXPRESSION_BINARY)
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.value.for_.condition)
+    CU_ASSERT_EQUAL_FATAL(node.value.for_.condition->kind, EXPRESSION_BINARY)
 
-    CU_ASSERT_PTR_NOT_NULL_FATAL(node.for_.post)
-    CU_ASSERT_EQUAL_FATAL(node.for_.post->type, EXPRESSION_BINARY)
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.value.for_.post)
+    CU_ASSERT_EQUAL_FATAL(node.value.for_.post->kind, EXPRESSION_BINARY)
 
-    CU_ASSERT_EQUAL_FATAL(node.for_.body->type, STATEMENT_COMPOUND)
+    CU_ASSERT_EQUAL_FATAL(node.value.for_.body->kind, STATEMENT_COMPOUND)
 }
 
 void test_parse_for_statement_no_optional_parts() {
@@ -1953,11 +1953,11 @@ void test_parse_for_statement_no_optional_parts() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
 
-    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_FOR)
-    CU_ASSERT_EQUAL_FATAL(node.for_.initializer.kind, FOR_INIT_EMPTY)
-    CU_ASSERT_PTR_NULL_FATAL(node.for_.condition)
-    CU_ASSERT_PTR_NULL_FATAL(node.for_.post)
-    CU_ASSERT_EQUAL_FATAL(node.for_.body->type, STATEMENT_EMPTY)
+    CU_ASSERT_EQUAL_FATAL(node.kind, STATEMENT_FOR)
+    CU_ASSERT_EQUAL_FATAL(node.value.for_.initializer.kind, FOR_INIT_EMPTY)
+    CU_ASSERT_PTR_NULL_FATAL(node.value.for_.condition)
+    CU_ASSERT_PTR_NULL_FATAL(node.value.for_.post)
+    CU_ASSERT_EQUAL_FATAL(node.value.for_.body->kind, STATEMENT_EMPTY)
 }
 
 void test_parse_for_statement_expr_initializer() {
@@ -1971,9 +1971,9 @@ void test_parse_for_statement_expr_initializer() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
     CU_ASSERT_TRUE_FATAL(lscan(&parser.lexer).kind == TK_EOF)
 
-    CU_ASSERT_EQUAL_FATAL(node.type, STATEMENT_FOR)
-    CU_ASSERT_EQUAL_FATAL(node.for_.initializer.kind, FOR_INIT_EXPRESSION)
-    CU_ASSERT_PTR_NOT_NULL_FATAL(node.for_.initializer.expression)
+    CU_ASSERT_EQUAL_FATAL(node.kind, STATEMENT_FOR)
+    CU_ASSERT_EQUAL_FATAL(node.value.for_.initializer.kind, FOR_INIT_EXPRESSION)
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.value.for_.initializer.expression)
 }
 
 void parse_external_declaration_declaration() {
@@ -1988,13 +1988,13 @@ void parse_external_declaration_declaration() {
         .identifier = token(TK_IDENTIFIER, "a"),
         .initializer = & (initializer_t) {
             .kind = INITIALIZER_EXPRESSION,
-            .expression = integer_constant("4"),
+            .value.expression = integer_constant("4"),
         },
     };
 
-    CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_DECLARATION)
-    CU_ASSERT_EQUAL_FATAL(node.declaration.length, 1)
-    CU_ASSERT_TRUE_FATAL(declaration_eq(node.declaration.declarations[0], &expected))
+    CU_ASSERT_TRUE_FATAL(node.kind == EXTERNAL_DECLARATION_DECLARATION)
+    CU_ASSERT_EQUAL_FATAL(node.value.declaration.length, 1)
+    CU_ASSERT_TRUE_FATAL(declaration_eq(node.value.declaration.declarations[0], &expected))
 }
 
 void parse_external_definition_prototype_var_args() {
@@ -2004,15 +2004,15 @@ void parse_external_definition_prototype_var_args() {
     parser_t parser = pinit(lexer);
     external_declaration_t node;
     CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &node))
-    CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_DECLARATION)
+    CU_ASSERT_TRUE_FATAL(node.kind == EXTERNAL_DECLARATION_DECLARATION)
 
-    declaration_t *declaration = node.declaration.declarations[0];
+    declaration_t *declaration = node.value.declaration.declarations[0];
 
     type_t *expected_type = &(type_t) {
         .kind = TYPE_FUNCTION,
         .is_const = false,
         .is_volatile = false,
-        .function = {
+        .value.function = {
             .return_type = &INT,
             .parameter_list = &(parameter_type_list_t) {
                 .variadic = true,
@@ -2039,31 +2039,31 @@ void parse_external_declaration_function_definition() {
 
     external_declaration_t node;
     CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &node))
-    CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_FUNCTION_DEFINITION)
+    CU_ASSERT_TRUE_FATAL(node.kind == EXTERNAL_DECLARATION_FUNCTION_DEFINITION)
 
-    CU_ASSERT_TRUE_FATAL(types_equal(node.function_definition->return_type, &FLOAT))
-    CU_ASSERT_TRUE_FATAL(strcmp(node.function_definition->identifier->value, "square") == 0)
+    CU_ASSERT_TRUE_FATAL(types_equal(node.value.function_definition->return_type, &FLOAT))
+    CU_ASSERT_TRUE_FATAL(strcmp(node.value.function_definition->identifier->value, "square") == 0)
 
     // validate the argument list
-    CU_ASSERT_EQUAL_FATAL(node.function_definition->parameter_list->length, 1)
-    CU_ASSERT_TRUE_FATAL(types_equal(node.function_definition->parameter_list->parameters[0]->type, &FLOAT))
-    CU_ASSERT_TRUE_FATAL(strcmp(node.function_definition->parameter_list->parameters[0]->identifier->value, "val") == 0)
+    CU_ASSERT_EQUAL_FATAL(node.value.function_definition->parameter_list->length, 1)
+    CU_ASSERT_TRUE_FATAL(types_equal(node.value.function_definition->parameter_list->parameters[0]->type, &FLOAT))
+    CU_ASSERT_TRUE_FATAL(strcmp(node.value.function_definition->parameter_list->parameters[0]->identifier->value, "val") == 0)
 
     // validate the body is parsed correctly
     statement_t *ret = {
         return_statement(binary((binary_expression_t) {
-            .type = BINARY_ARITHMETIC,
-            .arithmetic_operator = BINARY_ARITHMETIC_MULTIPLY,
+            .kind = BINARY_ARITHMETIC,
+            .operator.arithmetic = BINARY_ARITHMETIC_MULTIPLY,
             .left = make_identifier("val"),
             .right = make_identifier("val"),
-            .operator = token(TK_STAR, "*"),
+            .operator_token = token(TK_STAR, "*"),
         })),
     };
     block_item_t *block_item = block_item_s(ret);
     statement_t body = {
-        .type = STATEMENT_COMPOUND,
+        .kind = STATEMENT_COMPOUND,
         .terminator = token(TK_RBRACE, "}"),
-        .compound = {
+        .value.compound = {
             .block_items = {
                 .size = 1,
                 .capacity = 1,
@@ -2071,7 +2071,7 @@ void parse_external_declaration_function_definition() {
             },
         },
     };
-    CU_ASSERT_TRUE_FATAL(statement_eq(node.function_definition->body, &body))
+    CU_ASSERT_TRUE_FATAL(statement_eq(node.value.function_definition->body, &body))
 }
 
 void parse_external_definition_function_taking_void() {
@@ -2082,13 +2082,13 @@ void parse_external_definition_function_taking_void() {
 
     external_declaration_t node;
     CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &node))
-    CU_ASSERT_TRUE_FATAL(node.type == EXTERNAL_DECLARATION_FUNCTION_DEFINITION)
+    CU_ASSERT_TRUE_FATAL(node.kind == EXTERNAL_DECLARATION_FUNCTION_DEFINITION)
 
-    CU_ASSERT_TRUE_FATAL(types_equal(node.function_definition->return_type, &INT))
-    CU_ASSERT_TRUE_FATAL(strcmp(node.function_definition->identifier->value, "main") == 0)
+    CU_ASSERT_TRUE_FATAL(types_equal(node.value.function_definition->return_type, &INT))
+    CU_ASSERT_TRUE_FATAL(strcmp(node.value.function_definition->identifier->value, "main") == 0)
 
     // validate the argument list
-    CU_ASSERT_EQUAL_FATAL(node.function_definition->parameter_list->length, 0)
+    CU_ASSERT_EQUAL_FATAL(node.value.function_definition->parameter_list->length, 0)
 
     // validate the body is parsed correctly
     statement_t *ret = {
@@ -2096,9 +2096,9 @@ void parse_external_definition_function_taking_void() {
     };
     block_item_t *block_item = block_item_s(ret);
     statement_t body = {
-        .type = STATEMENT_COMPOUND,
+        .kind = STATEMENT_COMPOUND,
         .terminator = token(TK_RBRACE, "}"),
-        .compound = {
+        .value.compound = {
             .block_items = {
                 .size = 1,
                 .capacity = 1,
@@ -2106,7 +2106,7 @@ void parse_external_definition_function_taking_void() {
             },
         },
     };
-    CU_ASSERT_TRUE_FATAL(statement_eq(node.function_definition->body, &body))
+    CU_ASSERT_TRUE_FATAL(statement_eq(node.value.function_definition->body, &body))
 }
 
 void test_parse_external_declaration_typedef() {
@@ -2116,10 +2116,10 @@ void test_parse_external_declaration_typedef() {
     parser_t parser = pinit(lexer);
     external_declaration_t external_declaration;
     parse_external_declaration(&parser, &external_declaration);
-    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.length == 1)
-    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.declarations[0]->type->storage_class == STORAGE_CLASS_TYPEDEF);
-    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.declarations[0]->type->kind == TYPE_INTEGER);
-    CU_ASSERT_STRING_EQUAL_FATAL(external_declaration.declaration.declarations[0]->identifier->value, "integer")
+    CU_ASSERT_TRUE_FATAL(external_declaration.value.declaration.length == 1)
+    CU_ASSERT_TRUE_FATAL(external_declaration.value.declaration.declarations[0]->type->storage_class == STORAGE_CLASS_TYPEDEF);
+    CU_ASSERT_TRUE_FATAL(external_declaration.value.declaration.declarations[0]->type->kind == TYPE_INTEGER);
+    CU_ASSERT_STRING_EQUAL_FATAL(external_declaration.value.declaration.declarations[0]->identifier->value, "integer")
 }
 
 void test_parse_external_declaration_typedef_ptr() {
@@ -2130,11 +2130,11 @@ void test_parse_external_declaration_typedef_ptr() {
     external_declaration_t external_declaration;
     CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &external_declaration))
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
-    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.length == 1)
-    const declaration_t *decl = external_declaration.declaration.declarations[0];
+    CU_ASSERT_TRUE_FATAL(external_declaration.value.declaration.length == 1)
+    const declaration_t *decl = external_declaration.value.declaration.declarations[0];
     CU_ASSERT_EQUAL_FATAL(decl->type->storage_class, STORAGE_CLASS_TYPEDEF)
     CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_POINTER)
-    CU_ASSERT_EQUAL_FATAL(decl->type->pointer.base->storage_class, STORAGE_CLASS_AUTO)
+    CU_ASSERT_EQUAL_FATAL(decl->type->value.pointer.base->storage_class, STORAGE_CLASS_AUTO)
 }
 
 void test_parse_external_declaration_typedef_const_ptr() {
@@ -2145,12 +2145,12 @@ void test_parse_external_declaration_typedef_const_ptr() {
     external_declaration_t external_declaration;
     CU_ASSERT_TRUE_FATAL(parse_external_declaration(&parser, &external_declaration))
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
-    CU_ASSERT_TRUE_FATAL(external_declaration.declaration.length == 1)
-    const declaration_t *decl = external_declaration.declaration.declarations[0];
+    CU_ASSERT_TRUE_FATAL(external_declaration.value.declaration.length == 1)
+    const declaration_t *decl = external_declaration.value.declaration.declarations[0];
     CU_ASSERT_EQUAL_FATAL(decl->type->storage_class, STORAGE_CLASS_TYPEDEF)
     CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_POINTER)
-    CU_ASSERT_TRUE_FATAL(decl->type->pointer.is_const)
-    CU_ASSERT_EQUAL_FATAL(decl->type->pointer.base->storage_class, STORAGE_CLASS_AUTO)
+    CU_ASSERT_TRUE_FATAL(decl->type->value.pointer.is_const)
+    CU_ASSERT_EQUAL_FATAL(decl->type->value.pointer.base->storage_class, STORAGE_CLASS_AUTO)
 }
 
 void test_parse_external_declaration_that_uses_typedef() {
@@ -2163,8 +2163,8 @@ void test_parse_external_declaration_that_uses_typedef() {
 
     CU_ASSERT_TRUE_FATAL(program.length == 2)
     const external_declaration_t *external_declaration = program.external_declarations[1];
-    CU_ASSERT_TRUE_FATAL(external_declaration->declaration.length == 1)
-    const declaration_t *decl = external_declaration->declaration.declarations[0];
+    CU_ASSERT_TRUE_FATAL(external_declaration->value.declaration.length == 1)
+    const declaration_t *decl = external_declaration->value.declaration.declarations[0];
     CU_ASSERT_STRING_EQUAL_FATAL(decl->identifier->value, "foo")
     CU_ASSERT_TRUE_FATAL(decl->type->kind == TYPE_FLOATING)
 }
@@ -2177,7 +2177,7 @@ void test_parse_break_statement() {
 
     statement_t statement;
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
-    CU_ASSERT_TRUE_FATAL(statement.type == STATEMENT_BREAK)
+    CU_ASSERT_TRUE_FATAL(statement.kind == STATEMENT_BREAK)
 }
 
 void test_parse_continue_statement() {
@@ -2188,7 +2188,7 @@ void test_parse_continue_statement() {
 
     statement_t statement;
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
-    CU_ASSERT_TRUE_FATAL(statement.type == STATEMENT_CONTINUE)
+    CU_ASSERT_TRUE_FATAL(statement.kind == STATEMENT_CONTINUE)
 }
 
 void test_parse_goto_statement() {
@@ -2199,9 +2199,9 @@ void test_parse_goto_statement() {
 
     statement_t statement;
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
-    CU_ASSERT_TRUE_FATAL(statement.type == STATEMENT_GOTO)
-    CU_ASSERT_TRUE_FATAL(statement.goto_.identifier != NULL)
-    CU_ASSERT_STRING_EQUAL_FATAL(statement.goto_.identifier->value, "foo")
+    CU_ASSERT_TRUE_FATAL(statement.kind == STATEMENT_GOTO)
+    CU_ASSERT_TRUE_FATAL(statement.value.goto_.identifier != NULL)
+    CU_ASSERT_STRING_EQUAL_FATAL(statement.value.goto_.identifier->value, "foo")
 }
 
 void test_parse_labeled_statement() {
@@ -2212,9 +2212,9 @@ void test_parse_labeled_statement() {
 
     statement_t statement;
     CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
-    CU_ASSERT_TRUE_FATAL(statement.type == STATEMENT_LABEL)
-    CU_ASSERT_STRING_EQUAL_FATAL(statement.label_.identifier->value, "yoshi")
-    CU_ASSERT_TRUE_FATAL(statement.label_.statement->type == STATEMENT_EMPTY)
+    CU_ASSERT_TRUE_FATAL(statement.kind == STATEMENT_LABEL)
+    CU_ASSERT_STRING_EQUAL_FATAL(statement.value.label_.identifier->value, "yoshi")
+    CU_ASSERT_TRUE_FATAL(statement.value.label_.statement->kind == STATEMENT_EMPTY)
 }
 
 void test_parse_program() {

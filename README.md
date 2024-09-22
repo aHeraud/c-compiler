@@ -213,6 +213,7 @@ Types:
 - [ ] Constant array initializers
 - [ ] Designated array initializers
 - [x] Structs
+- [ ] Bitfields
 - [ ] Struct initializers
 - [ ] Enums
 - [x] Pointers

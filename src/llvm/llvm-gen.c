@@ -15,7 +15,7 @@ typedef struct IncompletePhiNode {
     LLVMValueRef llvm_phi;
 } incomplete_phi_node_t;
 
-VEC_DEFINE(IncompletePhiNodeVector, incomplete_phi_node_vector_t, incomplete_phi_node_t);
+VEC_DEFINE(IncompletePhiNodeVector, incomplete_phi_node_vector_t, incomplete_phi_node_t)
 
 typedef struct LLVMGenContext {
     LLVMModuleRef llvm_module;
@@ -81,7 +81,7 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
         const ir_global_t *global = module->globals.buffer[i];
         // Get the actual type. The globals IR type is a pointer to the actual type.
         assert(global->type->kind == IR_TYPE_PTR);
-        const ir_type_t *ir_type = global->type->ptr.pointee;
+        const ir_type_t *ir_type = global->type->value.ptr.pointee;
         const char *name = global->name;
         if (name[0] == '@') {
             if (isdigit(name[1])) {
@@ -96,23 +96,23 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
         LLVMValueRef value;
         switch (global->value.kind) {
             case IR_CONST_STRING: {
-                value = LLVMConstString(global->value.s, strlen(global->value.s), false);
+                value = LLVMConstString(global->value.value.s, strlen(global->value.value.s), false);
                 break;
             }
             case IR_CONST_INT: {
-                value = LLVMConstInt(ir_to_llvm_type(&context, ir_type), global->value.i, true);
+                value = LLVMConstInt(ir_to_llvm_type(&context, ir_type), global->value.value.i, true);
                 break;
             }
             case IR_CONST_FLOAT: {
-                value = LLVMConstReal(ir_to_llvm_type(&context, ir_type), global->value.f);
+                value = LLVMConstReal(ir_to_llvm_type(&context, ir_type), global->value.value.f);
                 break;
             }
             case IR_CONST_ARRAY: {
-                LLVMTypeRef element_type = ir_to_llvm_type(&context, global->value.type->array.element);
-                int len = global->value.array.length;
+                LLVMTypeRef element_type = ir_to_llvm_type(&context, global->value.type->value.array.element);
+                int len = global->value.value.array.length;
                 LLVMValueRef *elements = malloc(sizeof(LLVMValueRef) * len);
                 for (int i = 0; i < len; i += 1) {
-                    ir_value_t element = { .kind = IR_VALUE_CONST, .constant = global->value.array.values[i] };
+                    ir_value_t element = { .kind = IR_VALUE_CONST, .constant = global->value.value.array.values[i] };
                     elements[i] = ir_to_llvm_value(&context, &element);
                 }
                 value = LLVMConstArray(element_type, elements, len);
@@ -245,200 +245,200 @@ void llvm_gen_visit_instruction(
         case IR_NOP:
             break;
         case IR_ADD: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(instr->binary_op.result.type)) {
+            if (ir_is_float_type(instr->value.binary_op.result.type)) {
                 result = LLVMBuildFAdd(context->llvm_builder, lhs, rhs, "");
             } else {
                 result = LLVMBuildAdd(context->llvm_builder, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_SUB: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(instr->binary_op.result.type)) {
+            if (ir_is_float_type(instr->value.binary_op.result.type)) {
                 result = LLVMBuildFSub(context->llvm_builder, lhs, rhs, "");
             } else {
                 result = LLVMBuildSub(context->llvm_builder, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_MUL: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(instr->binary_op.result.type)) {
+            if (ir_is_float_type(instr->value.binary_op.result.type)) {
                 result = LLVMBuildFMul(context->llvm_builder, lhs, rhs, "");
             } else {
                 result = LLVMBuildMul(context->llvm_builder, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_DIV: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(instr->binary_op.result.type)) {
+            if (ir_is_float_type(instr->value.binary_op.result.type)) {
                 result = LLVMBuildFDiv(context->llvm_builder, lhs, rhs, "");
-            } else if (ir_is_signed_integer_type(instr->binary_op.result.type)) {
+            } else if (ir_is_signed_integer_type(instr->value.binary_op.result.type)) {
                 result = LLVMBuildSDiv(context->llvm_builder, lhs, rhs, "");
             } else {
                 result = LLVMBuildUDiv(context->llvm_builder, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_MOD: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(instr->binary_op.result.type)) {
+            if (ir_is_float_type(instr->value.binary_op.result.type)) {
                 result = LLVMBuildFRem(context->llvm_builder, lhs, rhs, "");
             } else {
                 result = LLVMBuildSRem(context->llvm_builder, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_ASSIGN: {
-            LLVMValueRef value = ir_to_llvm_value(context, &instr->assign.value);
-            hash_table_insert(&context->local_var_map, instr->assign.result.name, value);
+            LLVMValueRef value = ir_to_llvm_value(context, &instr->value.assign.value);
+            hash_table_insert(&context->local_var_map, instr->value.assign.result.name, value);
             break;
         }
         case IR_AND: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result = LLVMBuildAnd(context->llvm_builder, lhs, rhs, "");
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_OR: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result = LLVMBuildOr(context->llvm_builder, lhs, rhs, "");
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_SHL: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result = LLVMBuildShl(context->llvm_builder, lhs, rhs, "");
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_SHR: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+            if (ir_is_signed_integer_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildAShr(context->llvm_builder, lhs, rhs, "");
             } else {
                 result = LLVMBuildLShr(context->llvm_builder, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_XOR: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result = LLVMBuildXor(context->llvm_builder, lhs, rhs, "");
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_NOT: {
-            LLVMValueRef operand = ir_to_llvm_value(context, &instr->unary_op.operand);
+            LLVMValueRef operand = ir_to_llvm_value(context, &instr->value.unary_op.operand);
             LLVMValueRef result = LLVMBuildNot(context->llvm_builder, operand, "");
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         case IR_EQ: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+            if (ir_is_float_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOEQ, lhs, rhs, "");
             } else {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntEQ, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_NE: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+            if (ir_is_float_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildFCmp(context->llvm_builder, LLVMRealONE, lhs, rhs, "");
             } else {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntNE, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_LT: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+            if (ir_is_float_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOLT, lhs, rhs, "");
-            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntSLT, lhs, rhs, "");
             } else {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntULT, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_LE: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+            if (ir_is_float_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOLE, lhs, rhs, "");
-            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntSLE, lhs, rhs, "");
             } else {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntULE, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_GT: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+            if (ir_is_float_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOGT, lhs, rhs, "");
-            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntSGT, lhs, rhs, "");
             } else {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntUGT, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_GE: {
-            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->binary_op.right);
+            LLVMValueRef lhs = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef rhs = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
-            if (ir_is_float_type(ir_get_type_of_value(instr->binary_op.left))) {
+            if (ir_is_float_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildFCmp(context->llvm_builder, LLVMRealOGE, lhs, rhs, "");
-            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->binary_op.left))) {
+            } else if (ir_is_signed_integer_type(ir_get_type_of_value(instr->value.binary_op.left))) {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntSGE, lhs, rhs, "");
             } else {
                 result = LLVMBuildICmp(context->llvm_builder, LLVMIntUGE, lhs, rhs, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_BR: {
-            const char* label = instr->branch.label;
+            const char* label = instr->value.branch.label;
             const ir_ssa_basic_block_t *target_block;
             assert(hash_table_lookup(&context->ir_cfg->label_to_block_map, label, (void**)&target_block));
             LLVMBasicBlockRef llvm_block = llvm_get_or_create_basic_block(context, target_block);
@@ -446,72 +446,72 @@ void llvm_gen_visit_instruction(
             break;
         }
         case IR_BR_COND: {
-            const char* label = instr->branch.label;
+            const char* label = instr->value.branch.label;
             const ir_ssa_basic_block_t *ir_true_block;
             assert(hash_table_lookup(&context->ir_cfg->label_to_block_map, label, (void**)&ir_true_block));
             const ir_ssa_basic_block_t *ir_false_block = ir_block->fall_through;
             assert(ir_false_block != NULL);
 
-            LLVMValueRef cond = ir_to_llvm_value(context, &instr->branch.cond);
+            LLVMValueRef cond = ir_to_llvm_value(context, &instr->value.branch.cond);
             LLVMBasicBlockRef true_block = llvm_get_or_create_basic_block(context, ir_true_block);
             LLVMBasicBlockRef false_block = llvm_get_or_create_basic_block(context, ir_false_block);
             LLVMBuildCondBr(context->llvm_builder, cond, true_block, false_block);
             break;
         }
         case IR_CALL: {
-            LLVMTypeRef fn_type = ir_to_llvm_type(context, instr->call.function.type);
-            LLVMValueRef fn = llvm_get_or_add_function(context, instr->call.function.name, fn_type);
-            LLVMValueRef *args = malloc(instr->call.num_args * sizeof(LLVMValueRef));
-            for (int i = 0; i < instr->call.num_args; i += 1) {
-                args[i] = ir_to_llvm_value(context, &instr->call.args[i]);
+            LLVMTypeRef fn_type = ir_to_llvm_type(context, instr->value.call.function.type);
+            LLVMValueRef fn = llvm_get_or_add_function(context, instr->value.call.function.name, fn_type);
+            LLVMValueRef *args = malloc(instr->value.call.num_args * sizeof(LLVMValueRef));
+            for (int i = 0; i < instr->value.call.num_args; i += 1) {
+                args[i] = ir_to_llvm_value(context, &instr->value.call.args[i]);
             }
-            LLVMValueRef result = LLVMBuildCall2(context->llvm_builder, fn_type, fn, args, instr->call.num_args, "");
-            if (instr->call.result != NULL) {
-                hash_table_insert(&context->local_var_map, instr->call.result->name, result);
+            LLVMValueRef result = LLVMBuildCall2(context->llvm_builder, fn_type, fn, args, instr->value.call.num_args, "");
+            if (instr->value.call.result != NULL) {
+                hash_table_insert(&context->local_var_map, instr->value.call.result->name, result);
             }
             break;
         }
         case IR_RET: {
-            if (!instr->ret.has_value) {
+            if (!instr->value.ret.has_value) {
                 LLVMBuildRetVoid(context->llvm_builder);
             } else {
-                LLVMValueRef value = ir_to_llvm_value(context, &instr->ret.value);
+                LLVMValueRef value = ir_to_llvm_value(context, &instr->value.ret.value);
                 LLVMBuildRet(context->llvm_builder, value);
             }
             break;
         }
         case IR_ALLOCA: {
-            LLVMValueRef result = LLVMBuildAlloca(context->llvm_builder, ir_to_llvm_type(context, instr->alloca.type), "");
-            hash_table_insert(&context->local_var_map, instr->alloca.result.name, result);
+            LLVMValueRef result = LLVMBuildAlloca(context->llvm_builder, ir_to_llvm_type(context, instr->value.alloca.type), "");
+            hash_table_insert(&context->local_var_map, instr->value.alloca.result.name, result);
             break;
         }
         case IR_LOAD: {
-            ir_value_t ptr = instr->unary_op.operand;
+            ir_value_t ptr = instr->value.unary_op.operand;
             const ir_type_t *ptr_type = ir_get_type_of_value(ptr);
             LLVMValueRef result = LLVMBuildLoad2(
                 context->llvm_builder,
-                ir_to_llvm_type(context, ptr_type->ptr.pointee),
+                ir_to_llvm_type(context, ptr_type->value.ptr.pointee),
                 ir_to_llvm_value(context, &ptr),
                 ""
             );
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         case IR_STORE:
             LLVMBuildStore(context->llvm_builder,
-                           ir_to_llvm_value(context, &instr->store.value),
-                           ir_to_llvm_value(context, &instr->store.ptr));
+                           ir_to_llvm_value(context, &instr->value.store.value),
+                           ir_to_llvm_value(context, &instr->value.store.ptr));
             break;
         case IR_MEMCPY:
             assert(false && "Not implemented");
             break;
         case IR_GET_ARRAY_ELEMENT_PTR: {
-            ir_value_t ptr = instr->binary_op.left;
+            ir_value_t ptr = instr->value.binary_op.left;
             const ir_type_t *ptr_type = ir_get_type_of_value(ptr);
             assert(ptr_type->kind == IR_TYPE_PTR);
-            const ir_type_t *var_type = ptr_type->ptr.pointee;
-            LLVMValueRef llvm_ptr = ir_to_llvm_value(context, &instr->binary_op.left);
-            LLVMValueRef index = ir_to_llvm_value(context, &instr->binary_op.right);
+            const ir_type_t *var_type = ptr_type->value.ptr.pointee;
+            LLVMValueRef llvm_ptr = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            LLVMValueRef index = ir_to_llvm_value(context, &instr->value.binary_op.right);
             LLVMValueRef result;
             if (var_type->kind == IR_TYPE_ARRAY) {
                 LLVMValueRef indices[2] = {
@@ -523,117 +523,117 @@ void llvm_gen_visit_instruction(
                 LLVMValueRef indices[1] = { index };
                 result = LLVMBuildGEP2(context->llvm_builder, ir_to_llvm_type(context, var_type), llvm_ptr, indices, 1, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_GET_STRUCT_MEMBER_PTR: {
-            ir_value_t ptr = instr->binary_op.left;
+            ir_value_t ptr = instr->value.binary_op.left;
             const ir_type_t *ptr_type = ir_get_type_of_value(ptr);
-            assert(ptr_type->kind == IR_TYPE_PTR && ptr_type->ptr.pointee->kind == IR_TYPE_STRUCT_OR_UNION);
-            const ir_type_t *struct_type = ptr_type->ptr.pointee;
-            LLVMValueRef llvm_ptr = ir_to_llvm_value(context, &instr->binary_op.left);
-            ir_value_t index_value = instr->binary_op.right;
+            assert(ptr_type->kind == IR_TYPE_PTR && ptr_type->value.ptr.pointee->kind == IR_TYPE_STRUCT_OR_UNION);
+            const ir_type_t *struct_type = ptr_type->value.ptr.pointee;
+            LLVMValueRef llvm_ptr = ir_to_llvm_value(context, &instr->value.binary_op.left);
+            ir_value_t index_value = instr->value.binary_op.right;
             assert(index_value.kind == IR_VALUE_CONST && index_value.constant.kind == IR_CONST_INT);
-            int index = index_value.constant.i;
+            int index = index_value.constant.value.i;
 
             LLVMValueRef result = NULL;
-            if (struct_type->struct_or_union.is_union) {
+            if (struct_type->value.struct_or_union.is_union) {
                 // This is a union, so the field we want to access always has an offset of 0
                 // We just need to cast the pointer to the type of the selected field
                 // Note: This seems to only be required for older versions of LLVM, as in newer versions pointers are
                 //       untyped
-                const ir_struct_field_t *field = struct_type->struct_or_union.fields.buffer[index];
+                const ir_struct_field_t *field = struct_type->value.struct_or_union.fields.buffer[index];
                 LLVMTypeRef llvm_field_type = ir_to_llvm_type(context, field->type);
                 result = LLVMBuildPointerCast(context->llvm_builder, llvm_ptr, LLVMPointerType(llvm_field_type, 0), "");
             } else {
                 result = LLVMBuildStructGEP2(context->llvm_builder, ir_to_llvm_type(context, struct_type), llvm_ptr, index, "");
             }
-            hash_table_insert(&context->local_var_map, instr->binary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.binary_op.result.name, result);
             break;
         }
         case IR_TRUNC: {
             LLVMValueRef result;
-            if (ir_is_float_type(ir_get_type_of_value(instr->unary_op.operand))) {
+            if (ir_is_float_type(ir_get_type_of_value(instr->value.unary_op.operand))) {
                 result = LLVMBuildFPTrunc(context->llvm_builder,
-                    ir_to_llvm_value(context, &instr->unary_op.operand),
-                    ir_to_llvm_type(context, instr->unary_op.result.type),
+                    ir_to_llvm_value(context, &instr->value.unary_op.operand),
+                    ir_to_llvm_type(context, instr->value.unary_op.result.type),
                     "");
             } else {
                 result = LLVMBuildTrunc(context->llvm_builder,
-                    ir_to_llvm_value(context, &instr->unary_op.operand),
-                    ir_to_llvm_type(context, instr->unary_op.result.type),
+                    ir_to_llvm_value(context, &instr->value.unary_op.operand),
+                    ir_to_llvm_type(context, instr->value.unary_op.result.type),
                     "");
             }
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         case IR_EXT: {
             LLVMValueRef result;
-            if (ir_is_float_type(ir_get_type_of_value(instr->unary_op.operand))) {
+            if (ir_is_float_type(ir_get_type_of_value(instr->value.unary_op.operand))) {
                 result = LLVMBuildFPExt(context->llvm_builder,
-                    ir_to_llvm_value(context, &instr->unary_op.operand),
-                    ir_to_llvm_type(context, instr->unary_op.result.type),
+                    ir_to_llvm_value(context, &instr->value.unary_op.operand),
+                    ir_to_llvm_type(context, instr->value.unary_op.result.type),
                     "");
             } else {
-                if (ir_is_signed_integer_type(ir_get_type_of_value(instr->unary_op.operand))) {
+                if (ir_is_signed_integer_type(ir_get_type_of_value(instr->value.unary_op.operand))) {
                     result = LLVMBuildSExt(context->llvm_builder,
-                        ir_to_llvm_value(context, &instr->unary_op.operand),
-                        ir_to_llvm_type(context, instr->unary_op.result.type),
+                        ir_to_llvm_value(context, &instr->value.unary_op.operand),
+                        ir_to_llvm_type(context, instr->value.unary_op.result.type),
                         "");
                 } else {
                     result = LLVMBuildZExt(context->llvm_builder,
-                        ir_to_llvm_value(context, &instr->unary_op.operand),
-                        ir_to_llvm_type(context, instr->unary_op.result.type),
+                        ir_to_llvm_value(context, &instr->value.unary_op.operand),
+                        ir_to_llvm_type(context, instr->value.unary_op.result.type),
                         "");
                 }
             }
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         case IR_FTOI: {
-            LLVMValueRef operand = ir_to_llvm_value(context, &instr->unary_op.operand);
+            LLVMValueRef operand = ir_to_llvm_value(context, &instr->value.unary_op.operand);
             LLVMValueRef result;
-            if (ir_is_signed_integer_type(instr->unary_op.result.type)) {
-                result = LLVMBuildFPToSI(context->llvm_builder, operand, ir_to_llvm_type(context, instr->unary_op.result.type), "");
+            if (ir_is_signed_integer_type(instr->value.unary_op.result.type)) {
+                result = LLVMBuildFPToSI(context->llvm_builder, operand, ir_to_llvm_type(context, instr->value.unary_op.result.type), "");
             } else {
-                result = LLVMBuildFPToUI(context->llvm_builder, operand, ir_to_llvm_type(context, instr->unary_op.result.type), "");
+                result = LLVMBuildFPToUI(context->llvm_builder, operand, ir_to_llvm_type(context, instr->value.unary_op.result.type), "");
             }
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         case IR_ITOF: {
-            LLVMValueRef operand = ir_to_llvm_value(context, &instr->unary_op.operand);
+            LLVMValueRef operand = ir_to_llvm_value(context, &instr->value.unary_op.operand);
             LLVMValueRef result;
-            if (ir_is_signed_integer_type(ir_get_type_of_value(instr->unary_op.operand))) {
-                result = LLVMBuildSIToFP(context->llvm_builder, operand, ir_to_llvm_type(context, instr->unary_op.result.type), "");
+            if (ir_is_signed_integer_type(ir_get_type_of_value(instr->value.unary_op.operand))) {
+                result = LLVMBuildSIToFP(context->llvm_builder, operand, ir_to_llvm_type(context, instr->value.unary_op.result.type), "");
             } else {
-                result = LLVMBuildUIToFP(context->llvm_builder, operand, ir_to_llvm_type(context, instr->unary_op.result.type), "");
+                result = LLVMBuildUIToFP(context->llvm_builder, operand, ir_to_llvm_type(context, instr->value.unary_op.result.type), "");
             }
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         case IR_PTOI: {
             LLVMValueRef result = LLVMBuildPtrToInt(context->llvm_builder,
-                ir_to_llvm_value(context, &instr->unary_op.operand),
-                ir_to_llvm_type(context, instr->unary_op.result.type),
+                ir_to_llvm_value(context, &instr->value.unary_op.operand),
+                ir_to_llvm_type(context, instr->value.unary_op.result.type),
                 "");
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         case IR_ITOP: {
             LLVMValueRef result = LLVMBuildIntToPtr(context->llvm_builder,
-                ir_to_llvm_value(context, &instr->unary_op.operand),
-                ir_to_llvm_type(context, instr->unary_op.result.type),
+                ir_to_llvm_value(context, &instr->value.unary_op.operand),
+                ir_to_llvm_type(context, instr->value.unary_op.result.type),
                 "");
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         case IR_BITCAST: {
             LLVMValueRef result = LLVMBuildBitCast(context->llvm_builder,
-                ir_to_llvm_value(context, &instr->unary_op.operand),
-                ir_to_llvm_type(context, instr->unary_op.result.type),
+                ir_to_llvm_value(context, &instr->value.unary_op.operand),
+                ir_to_llvm_type(context, instr->value.unary_op.result.type),
                 "");
-            hash_table_insert(&context->local_var_map, instr->unary_op.result.name, result);
+            hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
             break;
         }
         default:
@@ -671,44 +671,44 @@ LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type) 
         case IR_TYPE_F64:
             return LLVMDoubleType();
         case IR_TYPE_PTR:
-            return LLVMPointerType(ir_to_llvm_type(context, type->ptr.pointee), 0);
+            return LLVMPointerType(ir_to_llvm_type(context, type->value.ptr.pointee), 0);
         case IR_TYPE_ARRAY:
-            return LLVMArrayType(ir_to_llvm_type(context, type->array.element), type->array.length);
+            return LLVMArrayType(ir_to_llvm_type(context, type->value.array.element), type->value.array.length);
         case IR_TYPE_STRUCT_OR_UNION: {
             // If we've already seen this type then it should be in the struct type map
             LLVMTypeRef llvm_type = NULL;
-            if (hash_table_lookup(&context->llvm_struct_types_map, type->struct_or_union.id, (void**) &llvm_type)) {
+            if (hash_table_lookup(&context->llvm_struct_types_map, type->value.struct_or_union.id, (void**) &llvm_type)) {
                 return llvm_type;
             }
 
             // We need to create the LLVM type
-            if (type->struct_or_union.is_union) {
+            if (type->value.struct_or_union.is_union) {
                 // If the type is a union, we will just represent it as an array of bytes, where the size is equal
                 // to the size of the largest field
                 int size = ir_size_of_type_bytes(context->target->arch->ir_arch, type);
                 llvm_type = LLVMArrayType(LLVMInt8Type(), size);
             } else {
                 // Build the LLVM struct type
-                int element_count = type->struct_or_union.fields.size;
+                int element_count = type->value.struct_or_union.fields.size;
                 LLVMTypeRef *element_types = malloc(element_count * sizeof(element_types));
                 for (int i = 0; i < element_count; i += 1) {
-                    element_types[i] = ir_to_llvm_type(context, type->struct_or_union.fields.buffer[i]->type);
+                    element_types[i] = ir_to_llvm_type(context, type->value.struct_or_union.fields.buffer[i]->type);
                 }
                 // Note: packed = true here because the IR struct definition has already had padding applied
                 llvm_type = LLVMStructType(element_types, element_count, true);
             }
 
             // Add the new type to the map
-            hash_table_insert(&context->llvm_struct_types_map, type->struct_or_union.id, llvm_type);
+            hash_table_insert(&context->llvm_struct_types_map, type->value.struct_or_union.id, llvm_type);
 
             return llvm_type;
         }
         case IR_TYPE_FUNCTION: {
-            LLVMTypeRef *param_types = malloc(type->function.num_params * sizeof(LLVMTypeRef));
-            for (int i = 0; i < type->function.num_params; i += 1) {
-                param_types[i] = ir_to_llvm_type(context, type->function.params[i]);
+            LLVMTypeRef *param_types = malloc(type->value.function.num_params * sizeof(LLVMTypeRef));
+            for (int i = 0; i < type->value.function.num_params; i += 1) {
+                param_types[i] = ir_to_llvm_type(context, type->value.function.params[i]);
             }
-            return LLVMFunctionType(ir_to_llvm_type(context, type->function.return_type), param_types, type->function.num_params, type->function.is_variadic);
+            return LLVMFunctionType(ir_to_llvm_type(context, type->value.function.return_type), param_types, type->value.function.num_params, type->value.function.is_variadic);
         }
     }
 }
@@ -719,9 +719,9 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
             const ir_type_t *ir_type = value->constant.type;
             switch (value->constant.kind) {
                 case IR_CONST_INT:
-                    return LLVMConstInt(ir_to_llvm_type(context, ir_type), value->constant.i, false);
+                    return LLVMConstInt(ir_to_llvm_type(context, ir_type), value->constant.value.i, false);
                 case IR_CONST_FLOAT:
-                    return LLVMConstReal(ir_to_llvm_type(context, ir_type), value->constant.f);
+                    return LLVMConstReal(ir_to_llvm_type(context, ir_type), value->constant.value.f);
                 case IR_CONST_STRING:
                     // This is _probably_ unreachable, since this should be handled when visiting the ir globals
                     fprintf(stderr, "%s:%d: LLVM codegen for IR constant strings not implemented\n", __FILE__, __LINE__);

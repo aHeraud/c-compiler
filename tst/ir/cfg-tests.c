@@ -14,7 +14,7 @@ void test_cfg_create_basic() {
         .name = "main",
         .type = & (ir_type_t) {
             .kind = IR_TYPE_FUNCTION,
-            .function = {
+            .value.function = {
                 .return_type = & (ir_type_t) {
                     .kind = IR_TYPE_VOID,
                 },
@@ -49,16 +49,16 @@ void test_cfg_create_if_else() {
 
     ir_function_builder_t *builder = ir_builder_create();
     ir_build_br_cond(builder, (ir_value_t) { .kind = IR_VALUE_VAR, .var = cond }, "l0");
-    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .i = 1 } });
+    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .value.i = 1 } });
     ir_build_nop(builder, "l0");
-    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .i = 0 } });
+    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .value.i = 0 } });
     ir_instruction_vector_t body = ir_builder_finalize(builder);
 
     ir_function_definition_t function = {
         .name = "main",
         .type = & (ir_type_t) {
             .kind = IR_TYPE_FUNCTION,
-            .function = {
+            .value.function = {
                 .return_type = & (ir_type_t) {
                     .kind = IR_TYPE_VOID,
                 },
@@ -92,14 +92,14 @@ void test_cfg_prune() {
 
     ir_function_builder_t *builder = ir_builder_create();
     ir_build_br_cond(builder, (ir_value_t) { .kind = IR_VALUE_VAR, .var = cond }, "l0");
-    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .type = &IR_I32, .i = 1 } });
+    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .type = &IR_I32, .value.i = 1 } });
     ir_build_br(builder, "l1"); // never reached, since the previous instruction doesn't fall through
     ir_build_nop(builder, "l0");
-    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .type = &IR_I32, .i = 0 } });
+    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .type = &IR_I32, .value.i = 0 } });
 
     // never reached
     ir_build_nop(builder, "l1");
-    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .type = &IR_I32, .i = 1 } });
+    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .type = &IR_I32, .value.i = 1 } });
 
     ir_instruction_vector_t body = ir_builder_finalize(builder);
 
@@ -107,7 +107,7 @@ void test_cfg_prune() {
         .name = "main",
         .type = & (ir_type_t) {
             .kind = IR_TYPE_FUNCTION,
-            .function = {
+            .value.function = {
                 .return_type = & (ir_type_t) {
                     .kind = IR_TYPE_VOID,
                 },
@@ -142,16 +142,16 @@ void test_cfg_linearize() {
 
     ir_function_builder_t *builder = ir_builder_create();
     ir_build_br_cond(builder, (ir_value_t) { .kind = IR_VALUE_VAR, .var = cond }, "l0");
-    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .i = 1 } });
+    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .value.i = 1 } });
     ir_build_nop(builder, "l0");
-    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .i = 0 } });
+    ir_build_ret(builder, (ir_value_t) { .kind = IR_VALUE_CONST, .constant = { .kind = IR_CONST_INT, .value.i = 0 } });
     ir_instruction_vector_t body = ir_builder_finalize(builder);
 
     ir_function_definition_t function = {
         .name = "main",
         .type = & (ir_type_t) {
             .kind = IR_TYPE_FUNCTION,
-            .function = {
+            .value.function = {
                 .return_type = & (ir_type_t) {
                     .kind = IR_TYPE_VOID,
                 },

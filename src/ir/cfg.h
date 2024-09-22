@@ -10,7 +10,7 @@
 
 struct IrBasicBlock;
 
-VEC_DEFINE(IrBasicBlockPtrVector, ir_basic_block_ptr_vector_t, struct IrBasicBlock*);
+VEC_DEFINE(IrBasicBlockPtrVector, ir_basic_block_ptr_vector_t, struct IrBasicBlock*)
 
 typedef struct IrBasicBlock {
     // Unique identifier for the block

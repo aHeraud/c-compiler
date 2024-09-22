@@ -185,7 +185,7 @@ typedef struct IrStructField {
     const struct IrType *type;
 } ir_struct_field_t;
 
-VEC_DEFINE(IrStructFieldPtrVector, ir_struct_field_ptr_vector_t, ir_struct_field_t*);
+VEC_DEFINE(IrStructFieldPtrVector, ir_struct_field_ptr_vector_t, ir_struct_field_t*)
 
 typedef struct IrTypeStruct {
     const char* id;
@@ -201,7 +201,7 @@ typedef struct IrType {
         ir_type_array_t array;
         ir_type_function_t function;
         ir_type_struct_t struct_or_union;
-    };
+    } value;
 } ir_type_t;
 
 // Common IR types
@@ -217,7 +217,7 @@ static const ir_type_t IR_U32 = { .kind = IR_TYPE_U32 };
 static const ir_type_t IR_U64 = { .kind = IR_TYPE_U64 };
 static const ir_type_t IR_F32 = { .kind = IR_TYPE_F32 };
 static const ir_type_t IR_F64 = { .kind = IR_TYPE_F64 };
-static const ir_type_t IR_PTR_CHAR = { .kind = IR_TYPE_PTR, .ptr = { .pointee = &IR_I8 } };
+static const ir_type_t IR_PTR_CHAR = { .kind = IR_TYPE_PTR, .value.ptr = { .pointee = &IR_I8 } };
 
 // Some architectures do have byte sizes that aren't 8-bits, but we will only support 8-bit bytes to keep things
 // simple. Most code assumes that char/uint8_t are exactly 8-bits anyways (the posix standard requires CHAR_BIT == 8).
@@ -398,7 +398,7 @@ typedef struct IrConst {
         long long i;
         long double f;
         const char* s;
-    };
+    } value;
 } ir_const_t;
 
 typedef struct IrVar {
@@ -408,10 +408,10 @@ typedef struct IrVar {
 
 typedef struct IrValue {
     ir_value_kind_t kind;
-    union {
+    // union {
         ir_const_t constant;
         ir_var_t var;
-    };
+    // };
 } ir_value_t;
 
 typedef struct IrGlobal {
@@ -481,7 +481,7 @@ typedef struct IrInstruction {
             ir_value_t value;
             ir_value_t length;
         } memset;
-    };
+    } value;
 } ir_instruction_t;
 
 typedef struct IrInstructionVector {

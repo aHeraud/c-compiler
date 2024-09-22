@@ -1138,7 +1138,7 @@ void test_ir_gen_sizeof_type_primitive() {
     CU_ASSERT_EQUAL_FATAL(result.module->globals.size, 1);
     const ir_global_t *size = result.module->globals.buffer[0];
     CU_ASSERT_TRUE_FATAL(size->initialized && size->value.kind == IR_CONST_INT)
-    CU_ASSERT_EQUAL_FATAL(size->value.i, 4) // int = i32 on x86_64
+    CU_ASSERT_EQUAL_FATAL(size->value.value.i, 4) // int = i32 on x86_64
 }
 
 void test_ir_gen_sizeof_type_struct() {
@@ -1153,7 +1153,7 @@ void test_ir_gen_sizeof_type_struct() {
     const ir_global_t *size = result.module->globals.buffer[0];
     CU_ASSERT_TRUE_FATAL(size->initialized && size->value.kind == IR_CONST_INT)
     // expected size is 8: 1 for the char, 3 for padding to align the int, and 4 for the int
-    CU_ASSERT_EQUAL_FATAL(size->value.i, 8)
+    CU_ASSERT_EQUAL_FATAL(size->value.value.i, 8)
 }
 
 void test_ir_gen_sizeof_unary_expression() {
@@ -1167,7 +1167,7 @@ void test_ir_gen_sizeof_unary_expression() {
     const ir_global_t *size = result.module->globals.buffer[1];
     CU_ASSERT_TRUE_FATAL(size->initialized && size->value.kind == IR_CONST_INT)
     // float on x86_64 = f32 == 4 bytes
-    CU_ASSERT_EQUAL_FATAL(size->value.i, 4)
+    CU_ASSERT_EQUAL_FATAL(size->value.value.i, 4)
 }
 
 void test_ir_gen_unary_local_not_constexpr() {

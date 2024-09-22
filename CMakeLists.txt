@@ -29,6 +29,19 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/bin)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
+# Ultimately, the compiler needs to be able to compile itself.
+# As we're targeting the c99 standard, we don't want to use any language features from gnu extensions or later
+# versions of C.
+if (CMAKE_C_COMPILER_ID MATCHES "Clang")
+    # Clang
+    SET(CMAKE_C_FLAGS "-std=c99 -pedantic-errors -Wall -Wextra -Wno-incompatible-pointer-types-discards-qualifiers -Wno-strict-prototypes")
+elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    # GCC
+    SET(CMAKE_C_FLAGS "-std=c99 -pedantic-errors -Wpedantic -Werror -Wno-discarded-qualifiers")
+else()
+    SET(CMAKE_C_FLAGS "-std=c99")
+endif()
+
 include_directories(src)
 
 add_library(cclib STATIC

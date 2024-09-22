@@ -9,7 +9,7 @@ bool is_integer_type(const type_t *type) {
 }
 
 bool is_small_integer_type(const type_t *type) {
-    return is_integer_type(type) && INTEGER_TYPE_RANKS[type->integer.size] < INTEGER_TYPE_RANKS[INTEGER_TYPE_INT];
+    return is_integer_type(type) && INTEGER_TYPE_RANKS[type->value.integer.size] < INTEGER_TYPE_RANKS[INTEGER_TYPE_INT];
 }
 
 const type_t *type_after_integer_promotion(const type_t *type) {
@@ -25,11 +25,11 @@ bool is_floating_type(const type_t *type) {
 }
 
 bool is_long_double_type(const type_t *type) {
-    return is_floating_type(type) && type->floating == FLOAT_TYPE_LONG_DOUBLE;
+    return is_floating_type(type) && type->value.floating == FLOAT_TYPE_LONG_DOUBLE;
 }
 
 bool is_double_type(const type_t *type) {
-    return is_floating_type(type) && type->floating == FLOAT_TYPE_DOUBLE;
+    return is_floating_type(type) && type->value.floating == FLOAT_TYPE_DOUBLE;
 }
 
 bool is_arithmetic_type(const type_t *type) {
@@ -63,27 +63,27 @@ bool types_equal(const type_t *a, const type_t *b) {
         case TYPE_VOID:
             return true;
         case TYPE_INTEGER:
-            return a->integer.is_signed == b->integer.is_signed && a->integer.size == b->integer.size;
+            return a->value.integer.is_signed == b->value.integer.is_signed && a->value.integer.size == b->value.integer.size;
         case TYPE_FLOATING:
-            return a->floating == b->floating;
+            return a->value.floating == b->value.floating;
         case TYPE_POINTER:
-            return types_equal(a->pointer.base, b->pointer.base);
+            return types_equal(a->value.pointer.base, b->value.pointer.base);
         case TYPE_ARRAY:
-            return types_equal(a->array.element_type, b->array.element_type) &&
-                   expression_eq(a->array.size, b->array.size);
+            return types_equal(a->value.array.element_type, b->value.array.element_type) &&
+                   expression_eq(a->value.array.size, b->value.array.size);
         case TYPE_FUNCTION:
-            if (!types_equal(a->function.return_type, b->function.return_type)) {
+            if (!types_equal(a->value.function.return_type, b->value.function.return_type)) {
                 return false;
             }
-            if (a->function.parameter_list->length != b->function.parameter_list->length) {
+            if (a->value.function.parameter_list->length != b->value.function.parameter_list->length) {
                 return false;
             }
-            if (a->function.parameter_list->variadic != b->function.parameter_list->variadic) {
+            if (a->value.function.parameter_list->variadic != b->value.function.parameter_list->variadic) {
                 return false;
             }
-            for (size_t i = 0; i < a->function.parameter_list->length; i++) {
-                if (!parameter_declaration_eq(a->function.parameter_list->parameters[i],
-                                             b->function.parameter_list->parameters[i])) {
+            for (size_t i = 0; i < a->value.function.parameter_list->length; i++) {
+                if (!parameter_declaration_eq(a->value.function.parameter_list->parameters[i],
+                                             b->value.function.parameter_list->parameters[i])) {
                     return false;
                 }
             }
@@ -136,20 +136,20 @@ const type_t *get_common_type(const type_t *a, const type_t *b) {
 
         // Otherwise, if the types of both operands have the same signedness, then the operand with the lesser rank is
         // converted to the type of the operand with the greater rank.
-        if (promoted_a->integer.is_signed == promoted_b->integer.is_signed) {
-            if (INTEGER_TYPE_RANKS[promoted_a->integer.size] < INTEGER_TYPE_RANKS[promoted_b->integer.size]) {
+        if (promoted_a->value.integer.is_signed == promoted_b->value.integer.is_signed) {
+            if (INTEGER_TYPE_RANKS[promoted_a->value.integer.size] < INTEGER_TYPE_RANKS[promoted_b->value.integer.size]) {
                 return promoted_b;
             } else {
                 return promoted_a;
             }
         }
 
-        const type_t *signed_type = promoted_a->integer.is_signed ? promoted_a : promoted_b;
+        const type_t *signed_type = promoted_a->value.integer.is_signed ? promoted_a : promoted_b;
         const type_t *unsigned_type = signed_type == promoted_a ? promoted_b : promoted_a;
 
         // Otherwise, if the type of the unsigned operand has a rank greater than or equal to the rank of the signed
         // operand, then the signed operand is converted to the unsigned operand's type.
-        if (INTEGER_TYPE_RANKS[unsigned_type->integer.size] >= INTEGER_TYPE_RANKS[signed_type->integer.size]) {
+        if (INTEGER_TYPE_RANKS[unsigned_type->value.integer.size] >= INTEGER_TYPE_RANKS[signed_type->value.integer.size]) {
             return unsigned_type;
         }
 
@@ -159,13 +159,13 @@ const type_t *get_common_type(const type_t *a, const type_t *b) {
         // TODO: What exactly does "can represent all of the values of" mean? What if the signed type is the same size
         //       as the unsigned type? Is it ok if converting the unsigned type to the signed type results in a negative
         //       value? For now we assume that it's ok.
-        if (INTEGER_TYPE_RANKS[signed_type->integer.size] >= INTEGER_TYPE_RANKS[unsigned_type->integer.size]) {
+        if (INTEGER_TYPE_RANKS[signed_type->value.integer.size] >= INTEGER_TYPE_RANKS[unsigned_type->value.integer.size]) {
             return signed_type;
         }
 
         // Otherwise, both operands are converted to the unsigned integer type corresponding to the type of the operand
         // with signed integer type.
-        integer_type_t int_size = signed_type->integer.size;
+        integer_type_t int_size = signed_type->value.integer.size;
         switch (int_size) {
             case INTEGER_TYPE_BOOL:
                 return &BOOL;
@@ -190,7 +190,10 @@ const type_t *get_ptr_type(const type_t *inner) {
         .is_volatile = false,
         .is_const = false,
         .storage_class = STORAGE_CLASS_AUTO,
-        .pointer = {
+        .value.pointer = {
+            .is_const = false,
+            .is_restrict = false,
+            .is_volatile = false,
             .base = inner,
         },
     };

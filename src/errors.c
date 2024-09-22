@@ -18,14 +18,14 @@ void print_compilation_error(const compilation_error_t *error) {
         case ERR_USE_OF_UNDECLARED_IDENTIFIER: {
             fprintf(stderr, ERROR_PREFIX "Use of undeclared identifier '%s'\n",
                     error->location.path, error->location.line, error->location.column,
-                    error->use_of_undeclared_identifier.identifier);
+                    error->value.use_of_undeclared_identifier.identifier);
             break;
         }
         case ERR_INVALID_BINARY_EXPRESSION_OPERANDS: {
             // TODO: print types
             fprintf(stderr, ERROR_PREFIX "Invalid operands to binary expression: %s\n",
                     error->location.path, error->location.line, error->location.column,
-                    error->invalid_binary_expression_operands.operator);
+                    error->value.invalid_binary_expression_operands.operator);
             break;
         }
         case ERR_INVALID_ASSIGNMENT_TARGET: {
@@ -36,13 +36,13 @@ void print_compilation_error(const compilation_error_t *error) {
         case ERR_REDEFINITION_OF_SYMBOL: {
             fprintf(stderr, ERROR_PREFIX "Redefinition of symbol '%s'\n",
                     error->location.path, error->location.line, error->location.column,
-                    error->redefinition_of_symbol.redefinition->value);
+                    error->value.redefinition_of_symbol.redefinition->value);
             break;
         }
         case ERR_REDEFINITION_OF_TAG: {
             fprintf(stderr, ERROR_PREFIX "Redefinition oftag '%s'\n",
                     error->location.path, error->location.line, error->location.column,
-                    error->redefinition_of_tag.redefinition->value);
+                    error->value.redefinition_of_tag.redefinition->value);
             break;
         }
         case ERR_INVALID_INITIALIZER_TYPE: {
@@ -111,10 +111,10 @@ void print_compilation_error(const compilation_error_t *error) {
             break;
         }
         case ERR_INVALID_MEMBER_ACCESS_TARGET: {
-            const type_t *type = error->invalid_member_access_target.type;
-            token_t operator = error->invalid_member_access_target.operator;
+            const type_t *type = error->value.invalid_member_access_target.type;
+            token_t operator = error->value.invalid_member_access_target.operator;
             if (type->kind != TYPE_STRUCT_OR_UNION &&
-                (type->kind != TYPE_POINTER || type->pointer.base->kind != TYPE_STRUCT_OR_UNION)) {
+                (type->kind != TYPE_POINTER || type->value.pointer.base->kind != TYPE_STRUCT_OR_UNION)) {
                 // TODO: print type
                 fprintf(stderr, ERROR_PREFIX "Member reference base type is not a struct or struct pointer\n",
                     error->location.path, error->location.line, error->location.column);
@@ -128,13 +128,13 @@ void print_compilation_error(const compilation_error_t *error) {
             break;
         }
         case ERR_INVALID_STRUCT_FIELD_REFERENCE: {
-            const type_t *type = error->invalid_struct_field_reference.type;
-            const token_t field = error->invalid_struct_field_reference.field;
+            const type_t *type = error->value.invalid_struct_field_reference.type;
+            const token_t field = error->value.invalid_struct_field_reference.field;
             assert(type->kind == TYPE_STRUCT_OR_UNION);
-            const char *struct_or_union = type->struct_or_union.is_union ? "union" : "struct";
+            const char *struct_or_union = type->value.struct_or_union.is_union ? "union" : "struct";
             const char *identifier = "anonymous";
-            if (type->struct_or_union.identifier != NULL)
-                identifier = type->struct_or_union.identifier->value;
+            if (type->value.struct_or_union.identifier != NULL)
+                identifier = type->value.struct_or_union.identifier->value;
             fprintf(stderr, ERROR_PREFIX "%s %s has no field named %s\n",
                 error->location.path, error->location.line, error->location.column,
                 struct_or_union, identifier, field.value);
@@ -143,14 +143,14 @@ void print_compilation_error(const compilation_error_t *error) {
         case ERR_USE_OF_UNDECLARED_LABEL: {
             fprintf(stderr, ERROR_PREFIX "Use of undeclared label %s\n",
                 error->location.path, error->location.line, error->location.column,
-                error->use_of_undeclared_label.label.value);
+                error->value.use_of_undeclared_label.label.value);
              break;
         }
         case ERR_REDEFINITION_OF_LABEL: {
-            const source_position_t prev = error->redefinition_of_label.previous_definition.position;
+            const source_position_t prev = error->value.redefinition_of_label.previous_definition.position;
             fprintf(stderr, ERROR_PREFIX "Redefinition of label %s, previous definition: %s:%d:%d\n",
                 error->location.path, error->location.line, error->location.column,
-                error->redefinition_of_label.label.value,
+                error->value.redefinition_of_label.label.value,
                 prev.path, prev.line, prev.column);
             break;
         }
@@ -172,7 +172,7 @@ void print_compilation_error(const compilation_error_t *error) {
         }
         case ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE: {
             const char *suffix;
-            switch (error->invalid_unary_arithmetic_operator_type.operator.kind) {
+            switch (error->value.invalid_unary_arithmetic_operator_type.operator.kind) {
                 case TK_EXCLAMATION:
                     // unary logical not
                     suffix = ", operand must have scalar type";
@@ -189,7 +189,13 @@ void print_compilation_error(const compilation_error_t *error) {
             }
             fprintf(stderr, ERROR_PREFIX "Invalid operand type for unary operator '%s'%s\n",
                     error->location.path, error->location.line, error->location.column,
-                    error->invalid_unary_arithmetic_operator_type.operator.value, suffix);
+                    error->value.invalid_unary_arithmetic_operator_type.operator.value, suffix);
+            break;
+        }
+        case ERR_NON_VOID_FUNCTION_RETURNS_VOID: {
+            fprintf(stderr, ERROR_PREFIX "Returning void from non-void function %s",
+                error->location.path, error->location.line, error->location.column,
+                error->value.non_void_function_returns_void.fn->identifier->value);
             break;
         }
         default: {

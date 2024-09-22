@@ -24,7 +24,7 @@ typedef struct Target {
  * Get the native/host target (which the compiler was built for).
  * @return Native target triple, or NULL if not detectable or un-supported.
  */
-const char *get_native_target();
+const char *get_native_target(void);
 
 /**
  * Get the target corresponding to the supplied target tripple.

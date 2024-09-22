@@ -17,8 +17,8 @@ bool integer_value_fits_in_int_type(unsigned long long value, const type_t *type
     // TODO: this should use the integer sizes for the target platform
     // For details on the sizes of integer constants, see section 6.4.4.1 of the C language specification:
     // https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf
-    bool is_signed = type->integer.is_signed;
-    switch (type->integer.size) {
+    bool is_signed = type->value.integer.is_signed;
+    switch (type->value.integer.size) {
         case INTEGER_TYPE_CHAR:
             return is_signed ? value <= CHAR_MAX : value <= UCHAR_MAX;
         case INTEGER_TYPE_SHORT:

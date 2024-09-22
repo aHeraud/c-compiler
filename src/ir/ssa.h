@@ -1,14 +1,14 @@
 #include "ir/ir.h"
 #include "ir/cfg.h"
 
-typedef struct IrSsaBasicBlock ir_ssa_basic_block_t;
+struct IrSsaBasicBlock;
 
 typedef struct IrPhiNodeOperand {
     const char* name;
-    const ir_ssa_basic_block_t *block;
+    const struct IrSsaBasicBlock *block;
 } ir_phi_node_operand_t;
 
-VEC_DEFINE(IrPhiNodeOperandVector, ir_phi_node_operand_vector_t, ir_phi_node_operand_t);
+VEC_DEFINE(IrPhiNodeOperandVector, ir_phi_node_operand_vector_t, ir_phi_node_operand_t)
 
 typedef struct IrPhiNode {
     ir_var_t var;
@@ -21,10 +21,8 @@ typedef struct IrPhiNodeVector {
     size_t capacity;
 } ir_phi_node_vector_t;
 
-typedef struct IrSsaBasicBlock ir_ssa_basic_block_t;
-
 typedef struct IrSsaBasicBlockPtrVector {
-    ir_ssa_basic_block_t **buffer;
+    struct IrSsaBasicBlock **buffer;
     size_t size;
     size_t capacity;
 } ir_ssa_basic_block_ptr_vector_t;
@@ -45,7 +43,7 @@ typedef struct IrSsaBasicBlock {
     ir_phi_node_vector_t phi_nodes;
     // List of instructions for this block (e.g. body)
     ir_instruction_vector_t instructions;
-    ir_ssa_basic_block_t *fall_through;
+    struct IrSsaBasicBlock *fall_through;
     // Predecessors of this block
     ir_ssa_basic_block_ptr_vector_t predecessors;
     // Successors of this block

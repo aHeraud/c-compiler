@@ -37,6 +37,7 @@ typedef enum CompilationErrorKind {
     ERR_CONTINUE_OUTSIDE_OF_LOOP,
     ERR_CANNOT_INCREMENT_DECREMENT_TYPE,
     ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE,
+    ERR_NON_VOID_FUNCTION_RETURNS_VOID,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -123,7 +124,11 @@ typedef struct CompilationError {
             const type_t *type;
             token_t operator;
         } invalid_unary_arithmetic_operator_type;
-    };
+        struct {
+            const token_t *ret;
+            const function_definition_t *fn;
+        } non_void_function_returns_void;
+    } value;
 } compilation_error_t;
 
 typedef struct CompilationErrorVector {

@@ -115,8 +115,8 @@ void parser_insert_symbol(parser_t *parser, const parser_symbol_t *symbol) {
             .previous_token = NULL,
             .production_name = NULL,
             .token = symbol->token,
-            .type = PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE,
-            .redeclaration_of_symbol = {
+            .kind = PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE,
+            .value.redeclaration_of_symbol = {
                 .prev = prev->token,
                 .redec = symbol->token,
             }
@@ -221,14 +221,14 @@ const token_kind_t DECLARATION_SPECIFIER_TOKENS[] = {
 void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
     source_position_t position = error->token->position;
     fprintf(stream, "%s:%d:%d: error: ", position.path, position.line, position.column);
-    switch (error->type) {
+    switch (error->kind) {
         case PARSE_ERROR_EXPECTED_TOKEN:
-            fprintf(stream, error->expected_token.expected_count > 1 ? "expected one of " : "expected ");
-            for (size_t i = 0; i < error->expected_token.expected_count; i++) {
-                fprintf(stream, "%s", token_kind_display_names[error->expected_token.expected[i]]);
-                if (i < error->expected_token.expected_count - 1) {
+            fprintf(stream, error->value.expected_token.expected_count > 1 ? "expected one of " : "expected ");
+            for (size_t i = 0; i < error->value.expected_token.expected_count; i++) {
+                fprintf(stream, "%s", token_kind_display_names[error->value.expected_token.expected[i]]);
+                if (i < error->value.expected_token.expected_count - 1) {
                     fprintf(stream, ", ");
-                } else if (i == error->expected_token.expected_count - 2) {
+                } else if (i == error->value.expected_token.expected_count - 2) {
                     fprintf(stream, " or ");
                 }
             }
@@ -239,7 +239,7 @@ void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
             break;
         case PARSE_ERROR_UNEXPECTED_END_OF_INPUT:
             fprintf(stream, "Unexpected end of input\n");
-            fprintf(stream, "Expected token: %s\n", token_kind_display_names[error->unexpected_end_of_input.expected]);
+            fprintf(stream, "Expected token: %s\n", token_kind_display_names[error->value.unexpected_end_of_input.expected]);
             break;
         case PARSE_ERROR_ILLEGAL_USE_OF_RESTRICT:
             fprintf(stream, "Illegal use of restrict (requires pointer or reference)\n");
@@ -265,7 +265,7 @@ void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
             fprintf(stream, "Expected an expression\n");
             break;
         case PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE:
-            fprintf(stream, "redeclaration of symbol %s as different type", error->redeclaration_of_symbol.redec->value);
+            fprintf(stream, "redeclaration of symbol %s as different type", error->value.redeclaration_of_symbol.redec->value);
             break;
     }
 }
@@ -406,26 +406,26 @@ bool require(parser_t* parser, token_kind_t kind, token_t** token_out, const cha
         parse_error_t error;
         if (token->kind == TK_EOF) {
             error = (parse_error_t) {
-                    .token = token,
-                    .previous_token = previous_token,
-                    .production_name = production_name,
-                    .previous_production_name = previous_production_name,
-                    .type = PARSE_ERROR_UNEXPECTED_END_OF_INPUT,
-                    .unexpected_end_of_input = {
-                            .expected = kind,
-                    },
+                .token = token,
+                .previous_token = previous_token,
+                .production_name = production_name,
+                .previous_production_name = previous_production_name,
+                .kind = PARSE_ERROR_UNEXPECTED_END_OF_INPUT,
+                .value.unexpected_end_of_input = {
+                    .expected = kind,
+                },
             };
         } else {
             error = (parse_error_t) {
-                    .token = token,
-                    .previous_token = previous_token,
-                    .production_name = production_name,
-                    .previous_production_name = previous_production_name,
-                    .type = PARSE_ERROR_EXPECTED_TOKEN,
-                    .expected_token = {
-                            .expected_count = 1,
-                            .expected = {kind},
-                    },
+                .token = token,
+                .previous_token = previous_token,
+                .production_name = production_name,
+                .previous_production_name = previous_production_name,
+                .kind = PARSE_ERROR_EXPECTED_TOKEN,
+                .value.expected_token = {
+                    .expected_count = 1,
+                    .expected = {kind},
+                },
             };
         }
         append_parse_error(&parser->errors, error);
@@ -571,7 +571,7 @@ parse_error_t illegal_declaration_specifiers(token_t *token, token_t *prev) {
             .previous_token = prev,
             .production_name = "declaration-specifiers",
             .previous_production_name = NULL,
-            .type = PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS,
+            .kind = PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS,
     };
 }
 
@@ -674,7 +674,7 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
                             .previous_token = storage_class,
                             .production_name = "storage-class-specifier",
                             .previous_production_name = "storage-class-specifier",
-                            .type = PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS,
+                            .kind = PARSE_ERROR_ILLEGAL_DECLARATION_SPECIFIERS,
                     });
                 }
             } else {
@@ -691,7 +691,7 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
                     .previous_token = NULL,
                     .production_name = "declaration-specifiers",
                     .previous_production_name = NULL,
-                    .type = PARSE_ERROR_ILLEGAL_USE_OF_RESTRICT,
+                    .kind = PARSE_ERROR_ILLEGAL_USE_OF_RESTRICT,
             });
         } else if (accept(parser, TK_VOLATILE, &token)) {
             is_volatile = true;
@@ -856,39 +856,39 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
         type->storage_class = storage_class_value;
     } else if (struct_or_union != NULL) {
         type->kind = TYPE_STRUCT_OR_UNION;
-        type->struct_or_union = *struct_type;
+        type->value.struct_or_union = *struct_type;
     } else if (ANY_NON_NULL(bool_, char_, short_, int_, long_long, signed_, unsigned_)) {
         type->kind = TYPE_INTEGER;
-        type->integer.is_signed = unsigned_ == NULL;
+        type->value.integer.is_signed = unsigned_ == NULL;
         if (bool_ != NULL) {
-            type->integer.is_signed = false;
-            type->integer.size = INTEGER_TYPE_BOOL;
+            type->value.integer.is_signed = false;
+            type->value.integer.size = INTEGER_TYPE_BOOL;
         } else if (char_ != NULL) {
-            type->integer.size = INTEGER_TYPE_CHAR;
+            type->value.integer.size = INTEGER_TYPE_CHAR;
         } else if (short_ != NULL) {
-            type->integer.size = INTEGER_TYPE_SHORT;
+            type->value.integer.size = INTEGER_TYPE_SHORT;
         } else if (long_long != NULL) {
-            type->integer.size = INTEGER_TYPE_LONG_LONG;
+            type->value.integer.size = INTEGER_TYPE_LONG_LONG;
         } else if (long_ != NULL) {
-            type->integer.size = INTEGER_TYPE_LONG;
+            type->value.integer.size = INTEGER_TYPE_LONG;
         } else {
-            type->integer.size = INTEGER_TYPE_INT;
+            type->value.integer.size = INTEGER_TYPE_INT;
         }
     } else if (float_ != NULL || double_ != NULL) {
         type->kind = TYPE_FLOATING;
         if (double_ != NULL) {
             if (long_ != NULL) {
-                type->floating = FLOAT_TYPE_LONG_DOUBLE;
+                type->value.floating = FLOAT_TYPE_LONG_DOUBLE;
             } else {
-                type->floating = FLOAT_TYPE_DOUBLE;
+                type->value.floating = FLOAT_TYPE_DOUBLE;
             }
         } else {
-            type->floating = FLOAT_TYPE_FLOAT;
+            type->value.floating = FLOAT_TYPE_FLOAT;
         }
     } else if (long_ != NULL) {
         type->kind = TYPE_INTEGER;
-        type->integer.is_signed = true;
-        type->integer.size = INTEGER_TYPE_LONG;
+        type->value.integer.is_signed = true;
+        type->value.integer.size = INTEGER_TYPE_LONG;
     } else if (void_ != NULL) {
         type->kind = TYPE_VOID;
     } else {
@@ -898,11 +898,11 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
                 .previous_token = NULL,
                 .production_name = "declaration-specifiers",
                 .previous_production_name = NULL,
-                .type = PARSE_ERROR_TYPE_SPECIFIER_MISSING,
+                .kind = PARSE_ERROR_TYPE_SPECIFIER_MISSING,
         });
         type->kind = TYPE_INTEGER;
-        type->integer.size = INTEGER_TYPE_INT;
-        type->integer.is_signed = true;
+        type->value.integer.size = INTEGER_TYPE_INT;
+        type->value.integer.is_signed = true;
     }
 
     return true;
@@ -987,8 +987,8 @@ bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct
             .previous_token = *keyword,
             .production_name = "struct-or-union-specifier",
             .previous_production_name = NULL,
-            .type = PARSE_ERROR_EXPECTED_TOKEN,
-            .expected_token = {
+            .kind = PARSE_ERROR_EXPECTED_TOKEN,
+            .value.expected_token = {
                 .expected_count = 1,
                 .expected = TK_IDENTIFIER,
             },
@@ -1054,7 +1054,7 @@ bool parse_initializer(parser_t *parser, initializer_t *initializer) {
         }
         *initializer = (initializer_t) {
             .kind = INITIALIZER_LIST,
-            .list = list,
+            .value.list = list,
         };
         return require(parser, TK_RBRACE, NULL, "initializer", NULL);
     } else {
@@ -1065,7 +1065,7 @@ bool parse_initializer(parser_t *parser, initializer_t *initializer) {
         }
         *initializer = (initializer_t) {
             .kind = INITIALIZER_EXPRESSION,
-            .expression = expr,
+            .value.expression = expr,
         };
         return true;
     }
@@ -1113,7 +1113,7 @@ bool parse_designation(parser_t *parser, designator_list_t *list) {
             }
             designator_t designator = {
                 .kind = DESIGNATOR_INDEX,
-                .index = index,
+                .value.index = index,
             };
             if (!require(parser, TK_RBRACKET, NULL, "designation", NULL)) return false;
             VEC_APPEND(list, designator);
@@ -1122,7 +1122,7 @@ bool parse_designation(parser_t *parser, designator_list_t *list) {
             if (!require(parser, TK_IDENTIFIER, &identifier, "designator", NULL)) return false;
             designator_t designator = {
                 .kind = DESIGNATOR_FIELD,
-                .field = identifier,
+                .value.field = identifier,
             };
             VEC_APPEND(list, designator);
         } else {
@@ -1139,12 +1139,12 @@ bool parse_designation(parser_t *parser, designator_list_t *list) {
 const type_t* get_innermost_incomplete_type(const type_t *type) {
     const type_t *current = type;
     while (current->kind == TYPE_POINTER || current->kind == TYPE_ARRAY || current->kind == TYPE_FUNCTION) {
-        if (current->kind == TYPE_POINTER && current->pointer.base != NULL) {
-            current = current->pointer.base;
-        } else if (current->kind == TYPE_ARRAY && current->array.element_type != NULL) {
-            current = current->array.element_type;
-        } else if (current->kind == TYPE_FUNCTION && current->function.return_type != NULL) {
-            current = current->function.return_type;
+        if (current->kind == TYPE_POINTER && current->value.pointer.base != NULL) {
+            current = current->value.pointer.base;
+        } else if (current->kind == TYPE_ARRAY && current->value.array.element_type != NULL) {
+            current = current->value.array.element_type;
+        } else if (current->kind == TYPE_FUNCTION && current->value.function.return_type != NULL) {
+            current = current->value.function.return_type;
         } else {
             break;
         }
@@ -1179,11 +1179,11 @@ type_t *build_incomplete_type(ptr_vector_t *left, ptr_vector_t *right) {
         }
 
         if (current->kind == TYPE_POINTER) {
-            current->pointer.base = next;
+            current->value.pointer.base = next;
         } else if (current->kind == TYPE_ARRAY) {
-            current->array.element_type = next;
+            current->value.array.element_type = next;
         } else if (current->kind == TYPE_FUNCTION) {
-            current->function.return_type = next;
+            current->value.function.return_type = next;
         } else {
             assert(false); // Invalid type stack
         }
@@ -1253,11 +1253,11 @@ bool parse_declarator(parser_t *parser, type_t base_type, declaration_t *declara
     } else {
         type_t *inner = get_innermost_incomplete_type(type);
         if (inner->kind == TYPE_POINTER) {
-            inner->pointer.base = base;
+            inner->value.pointer.base = base;
         } else if (inner->kind == TYPE_ARRAY) {
-            inner->array.element_type = base;
+            inner->value.array.element_type = base;
         } else if (inner->kind == TYPE_FUNCTION) {
-            inner->function.return_type = base;
+            inner->value.function.return_type = base;
         } else {
             assert(false); // Invalid type stack
         }
@@ -1304,13 +1304,13 @@ bool parse_pointer(parser_t *parser, const type_t *base_type, type_t **pointer_t
 
     *pointer_type = malloc(sizeof(type_t));
     **pointer_type = (type_t) {
-            .kind = TYPE_POINTER,
-            .pointer = {
-                    .base = base_type,
-                    .is_const = is_const,
-                    .is_volatile = is_volatile,
-                    .is_restrict = is_restrict,
-            },
+        .kind = TYPE_POINTER,
+        .value.pointer = {
+            .base = base_type,
+            .is_const = is_const,
+            .is_volatile = is_volatile,
+            .is_restrict = is_restrict,
+        },
     };
 
     if (accept(parser, TK_STAR, NULL)) {
@@ -1390,15 +1390,15 @@ bool parse_direct_declarator(parser_t *parser, token_t **identifier_out, ptr_vec
         return true;
     } else {
         append_parse_error(&parser->errors, (parse_error_t) {
-                .token = next_token(parser),
-                .previous_token = NULL,
-                .production_name = "direct-declarator",
-                .previous_production_name = NULL,
-                .type = PARSE_ERROR_EXPECTED_TOKEN,
-                .expected_token = {
-                        .expected_count = 2,
-                        .expected = {TK_IDENTIFIER, TK_LPAREN},
-                },
+            .token = next_token(parser),
+            .previous_token = NULL,
+            .production_name = "direct-declarator",
+            .previous_production_name = NULL,
+            .kind = PARSE_ERROR_EXPECTED_TOKEN,
+            .value.expected_token = {
+                .expected_count = 2,
+                .expected = {TK_IDENTIFIER, TK_LPAREN},
+            },
         });
         return false;
     }
@@ -1457,11 +1457,11 @@ bool parse_direct_declarator_prime(parser_t *parser, type_t **type) {
 
         (*type) = malloc(sizeof(type_t));
         **type = (type_t) {
-                .kind = TYPE_ARRAY,
-                .array = {
-                        .element_type = NULL, // This will be filled in later
-                        .size = size,
-                },
+            .kind = TYPE_ARRAY,
+            .value.array = {
+                .element_type = NULL, // This will be filled in later
+                .size = size,
+            },
         };
 
         return true;
@@ -1474,11 +1474,11 @@ bool parse_direct_declarator_prime(parser_t *parser, type_t **type) {
 
         (*type) = malloc(sizeof(type_t));
         **type = (type_t) {
-                .kind = TYPE_FUNCTION,
-                .function = {
-                        .return_type = NULL, // This will be filled in later
-                        .parameter_list = parameters,
-                },
+            .kind = TYPE_FUNCTION,
+            .value.function = {
+                .return_type = NULL, // This will be filled in later
+                .parameter_list = parameters,
+            },
         };
 
         return true; // already consumed closing paren in parse_parameter_type_list
@@ -1563,7 +1563,7 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
                     append_ptr(&vec.buffer, &vec.size, &vec.capacity, param);
                 } else {
                     append_parse_error(&parser->errors, (parse_error_t) {
-                            .type = PARSE_ERROR_PARAMETER_TYPE_MALFORMED,
+                            .kind = PARSE_ERROR_PARAMETER_TYPE_MALFORMED,
                             .token = next_token(parser),
                             .production_name = "parameter-declaration",
                     });
@@ -1679,11 +1679,11 @@ bool parse_abstract_declarator(parser_t *parser, type_t base_type, type_t **type
     } else {
         type_t *inner = get_innermost_incomplete_type(type);
         if (inner->kind == TYPE_POINTER) {
-            inner->pointer.base = base;
+            inner->value.pointer.base = base;
         } else if (inner->kind == TYPE_ARRAY) {
-            inner->array.element_type = base;
+            inner->value.array.element_type = base;
         } else if (inner->kind == TYPE_FUNCTION) {
-            inner->function.return_type = base;
+            inner->value.function.return_type = base;
         } else {
             assert(false); // Invalid type stack
         }
@@ -1752,15 +1752,15 @@ bool parse_direct_abstract_declarator(parser_t *parser, ptr_vector_t *right) {
             return true;
         } else {
             append_parse_error(&parser->errors, (parse_error_t) {
-                    .token = next_token(parser),
-                    .previous_token = NULL,
-                    .production_name = "direct-abstract-declarator",
-                    .previous_production_name = NULL,
-                    .type = PARSE_ERROR_EXPECTED_TOKEN,
-                    .expected_token = {
-                            .expected_count = 2,
-                            .expected = {TK_LPAREN, TK_LBRACKET},
-                    },
+                .token = next_token(parser),
+                .previous_token = NULL,
+                .production_name = "direct-abstract-declarator",
+                .previous_production_name = NULL,
+                .kind = PARSE_ERROR_EXPECTED_TOKEN,
+                .value.expected_token = {
+                    .expected_count = 2,
+                    .expected = {TK_LPAREN, TK_LBRACKET},
+                },
             });
             return false;
         }
@@ -1773,7 +1773,7 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
     token_t *terminator;
     if (accept(parser, TK_SEMICOLON, &terminator)) {
         *stmt = (statement_t) {
-                .type = STATEMENT_EMPTY,
+                .kind = STATEMENT_EMPTY,
                 .terminator = terminator,
         };
         return true;
@@ -1829,8 +1829,8 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt, const token_t
             for (int i = 0; i < declarations.size; i += 1) {
                 block_item_t  *block_item = malloc(sizeof(block_item_t));
                 *block_item = (block_item_t) {
-                        .type = BLOCK_ITEM_DECLARATION,
-                        .declaration =  declarations.buffer[i],
+                        .kind = BLOCK_ITEM_DECLARATION,
+                        .value.declaration =  declarations.buffer[i],
                 };
                 append_ptr((void ***) &block_items.buffer, &block_items.size, &block_items.capacity, block_item);
             }
@@ -1846,8 +1846,8 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt, const token_t
             }
             block_item_t *block_item = malloc(sizeof(block_item_t));
             *block_item = (block_item_t) {
-                    .type = BLOCK_ITEM_STATEMENT,
-                    .statement = statement,
+                    .kind = BLOCK_ITEM_STATEMENT,
+                    .value.statement = statement,
             };
             append_ptr((void ***) &block_items.buffer, &block_items.size, &block_items.capacity, block_item);
         }
@@ -1856,8 +1856,8 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt, const token_t
 
     if (last_token->kind == TK_RBRACE) {
         *stmt = (statement_t) {
-            .type = STATEMENT_COMPOUND,
-            .compound = {
+            .kind = STATEMENT_COMPOUND,
+            .value.compound = {
                 .open_brace = open_brace,
                 .block_items = block_items,
             },
@@ -1867,14 +1867,14 @@ bool parse_compound_statement(parser_t *parser, statement_t *stmt, const token_t
     } else {
         // TODO: free allocated statements?
         append_parse_error(&parser->errors, (parse_error_t) {
-                .token = last_token,
-                .previous_token = parser->next_token_index > 0 ? parser->tokens.buffer[parser->next_token_index - 1] : NULL,
-                .production_name = "compound-statement",
-                .previous_production_name = NULL,
-                .type = PARSE_ERROR_UNEXPECTED_END_OF_INPUT,
-                .unexpected_end_of_input = {
-                        .expected = TK_RBRACE,
-                },
+            .token = last_token,
+            .previous_token = parser->next_token_index > 0 ? parser->tokens.buffer[parser->next_token_index - 1] : NULL,
+            .production_name = "compound-statement",
+            .previous_production_name = NULL,
+            .kind = PARSE_ERROR_UNEXPECTED_END_OF_INPUT,
+            .value.unexpected_end_of_input = {
+                .expected = TK_RBRACE,
+            },
         });
         return false;
     }
@@ -1905,8 +1905,8 @@ bool parse_if_statement(parser_t* parser, statement_t *statement, token_t *keywo
     }
 
     *statement = (statement_t) {
-        .type = STATEMENT_IF,
-        .if_ = {
+        .kind = STATEMENT_IF,
+        .value.if_ = {
             .keyword = keyword,
             .condition = condition,
             .true_branch = then_statement,
@@ -1936,12 +1936,12 @@ bool parse_return_statement(parser_t *parser, statement_t *stmt, token_t *keywor
     }
 
     *stmt = (statement_t) {
-            .type = STATEMENT_RETURN,
-            .return_ = {
-                    .keyword = keyword,
-                    .expression = expr,
-            },
-            .terminator = terminator,
+        .kind = STATEMENT_RETURN,
+        .value.return_ = {
+            .keyword = keyword,
+            .expression = expr,
+        },
+        .terminator = terminator,
     };
 
     return true;
@@ -1966,8 +1966,8 @@ bool parse_while_statement(parser_t* parser, statement_t *statement, token_t *ke
     }
 
     *statement = (statement_t) {
-        .type = STATEMENT_WHILE,
-        .while_ = {
+        .kind = STATEMENT_WHILE,
+        .value.while_ = {
             .keyword = keyword,
             .condition = condition,
             .body = body,
@@ -2009,9 +2009,9 @@ bool parse_do_while_statement(parser_t *parser, statement_t *statement) {
         return false;
 
     *statement = (statement_t) {
-        .type = STATEMENT_DO_WHILE,
+        .kind = STATEMENT_DO_WHILE,
         .terminator = terminator,
-        .do_while = {
+        .value.do_while = {
             .body = body,
             .condition = condition,
             .do_keyword = do_token,
@@ -2033,8 +2033,8 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
     const parser_scope_t *prev_scope = parser->symbol_table->current_scope;
     parser_enter_scope(parser);
 
-    statement->type = STATEMENT_FOR;
-    statement->for_.keyword = keyword;
+    statement->kind = STATEMENT_FOR;
+    statement->value.for_.keyword = keyword;
 
     // Parse the initializer
     // It can be:
@@ -2053,27 +2053,27 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
 
     if (is_declaration) {
         // This is a declaration
-        statement->for_.initializer.kind = FOR_INIT_DECLARATION;
-        statement->for_.initializer.declarations = malloc(sizeof(ptr_vector_t));
-        *statement->for_.initializer.declarations = (ptr_vector_t ) VEC_INIT;
-        if (!parse_declaration(parser, statement->for_.initializer.declarations)) {
-            free(statement->for_.initializer.declarations);
-            statement->for_.initializer.declarations = NULL;
+        statement->value.for_.initializer.kind = FOR_INIT_DECLARATION;
+        statement->value.for_.initializer.declarations = malloc(sizeof(ptr_vector_t));
+        *statement->value.for_.initializer.declarations = (ptr_vector_t ) VEC_INIT;
+        if (!parse_declaration(parser, statement->value.for_.initializer.declarations)) {
+            free(statement->value.for_.initializer.declarations);
+            statement->value.for_.initializer.declarations = NULL;
             goto error;
         }
     } else {
         // This should be an expression statement, or an empty statement
         const token_t *start = next_token(parser);
-        statement->for_.initializer.kind = FOR_INIT_EXPRESSION;
+        statement->value.for_.initializer.kind = FOR_INIT_EXPRESSION;
         statement_t *initializer = malloc(sizeof(statement_t));
         if (!parse_statement(parser, initializer)) {
             free(initializer);
             goto error;
         } else {
-            if (initializer->type == STATEMENT_EMPTY) {
-                statement->for_.initializer.kind = FOR_INIT_EMPTY;
-            } else if (initializer->type == STATEMENT_EXPRESSION) {
-                statement->for_.initializer.expression = initializer->expression;
+            if (initializer->kind == STATEMENT_EMPTY) {
+                statement->value.for_.initializer.kind = FOR_INIT_EMPTY;
+            } else if (initializer->kind == STATEMENT_EXPRESSION) {
+                statement->value.for_.initializer.expression = initializer->value.expression;
             } else {
                 // Parsed some other statement, which is an error
                 append_parse_error(&parser->errors, (parse_error_t) {
@@ -2081,7 +2081,7 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
                     .previous_token = NULL,
                     .production_name = "for-statement",
                     .previous_production_name = NULL,
-                    .type = PARSE_ERROR_EXPECTED_EXPRESSION,
+                    .kind = PARSE_ERROR_EXPECTED_EXPRESSION,
                 });
                 goto error;
             }
@@ -2090,26 +2090,26 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
 
     // Parse the expression for the condition
     if (!accept(parser, TK_SEMICOLON, NULL)) {
-        statement->for_.condition = malloc(sizeof(expression_t));
-        if (!parse_expression(parser, statement->for_.condition)) {
-            free(statement->for_.condition);
+        statement->value.for_.condition = malloc(sizeof(expression_t));
+        if (!parse_expression(parser, statement->value.for_.condition)) {
+            free(statement->value.for_.condition);
             goto error;
         }
         if (!require(parser, TK_SEMICOLON, NULL, "for-statement", "expression")) return false;
     } else {
-        statement->for_.condition = NULL;
+        statement->value.for_.condition = NULL;
     }
 
     // Parse the post-expression
     if (!accept(parser, TK_RPAREN, NULL)) {
-        statement->for_.post = malloc(sizeof(expression_t));
-        if (!parse_expression(parser, statement->for_.post)) {
-            free(statement->for_.post);
+        statement->value.for_.post = malloc(sizeof(expression_t));
+        if (!parse_expression(parser, statement->value.for_.post)) {
+            free(statement->value.for_.post);
             goto error;
         }
         if (!require(parser, TK_RPAREN, NULL, "for-statement", "expression")) return false;
     } else {
-        statement->for_.post = NULL;
+        statement->value.for_.post = NULL;
     }
 
     statement_t *body = malloc(sizeof(statement_t));
@@ -2118,7 +2118,7 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
         goto error;
     }
 
-    statement->for_.body = body;
+    statement->value.for_.body = body;
     return true;
 
 error:
@@ -2136,8 +2136,8 @@ bool parse_break_statement(parser_t *parser, statement_t *statement) {
 
     *statement = (statement_t) {
         .terminator = semicolon,
-        .type = STATEMENT_BREAK,
-        .break_ = {
+        .kind = STATEMENT_BREAK,
+        .value.break_ = {
             .keyword = keyword,
         },
     };
@@ -2154,8 +2154,8 @@ bool parse_continue_statement(parser_t *parser, statement_t *statement) {
 
     *statement = (statement_t) {
         .terminator = semicolon,
-        .type = STATEMENT_CONTINUE,
-        .continue_ = {
+        .kind = STATEMENT_CONTINUE,
+        .value.continue_ = {
             .keyword = keyword,
         },
     };
@@ -2176,8 +2176,8 @@ bool parse_goto_statement(parser_t *parser, statement_t *statement) {
 
     *statement = (statement_t) {
         .terminator = semicolon,
-        .type = STATEMENT_GOTO,
-        .goto_ = {
+        .kind = STATEMENT_GOTO,
+        .value.goto_ = {
             .identifier = identifier,
         },
     };
@@ -2195,8 +2195,8 @@ bool parse_labeled_statement(parser_t *parser, statement_t *statement) {
     if (!parse_statement(parser, statement_inner))
         return false;
     *statement = (statement_t) {
-        .type = STATEMENT_LABEL,
-        .label_ = {
+        .kind = STATEMENT_LABEL,
+        .value.label_ = {
             .identifier = identifier,
             .statement = statement_inner,
         },
@@ -2218,8 +2218,8 @@ bool parse_expression_statement(parser_t *parser, statement_t *stmt) {
     }
 
     *stmt = (statement_t) {
-        .type = STATEMENT_EXPRESSION,
-        .expression = expr,
+        .kind = STATEMENT_EXPRESSION,
+        .value.expression = expr,
         .terminator = terminator,
     };
 
@@ -2245,14 +2245,14 @@ bool parse_expression(parser_t *parser, expression_t *node) {
         expression_t *left = malloc(sizeof(expression_t));
         *left = *node;
         *node = (expression_t) {
-                .span = spanning(left->span.start, right->span.end),
-                .type = EXPRESSION_BINARY,
-                .binary = {
-                        .type = BINARY_COMMA,
-                        .left = left,
-                        .right = right,
-                        .operator = token,
-                }
+            .span = spanning(left->span.start, right->span.end),
+            .kind = EXPRESSION_BINARY,
+            .value.binary = {
+                .kind = BINARY_COMMA,
+                .left = left,
+                .right = right,
+                .operator_token = token,
+            }
         };
     }
 
@@ -2327,15 +2327,15 @@ bool parse_assignment_expression(parser_t *parser, expression_t *expr) {
         expression_t *left = malloc(sizeof(expression_t));
         *left = *expr;
         *expr = (expression_t) {
-                .span = spanning(left->span.start, right->span.end),
-                .type = EXPRESSION_BINARY,
-                .binary = {
-                        .type = BINARY_ASSIGNMENT,
-                        .left = left,
-                        .right = right,
-                        .operator = token,
-                        .assignment_operator = assignment_operator,
-                }
+            .span = spanning(left->span.start, right->span.end),
+            .kind = EXPRESSION_BINARY,
+            .value.binary = {
+                .kind = BINARY_ASSIGNMENT,
+                .left = left,
+                .right = right,
+                .operator_token = token,
+                .operator.assignment = assignment_operator,
+            }
         };
     }
 
@@ -2384,13 +2384,13 @@ bool parse_conditional_expression(parser_t *parser, expression_t *expr) {
         }
 
         *expr = (expression_t) {
-                .span = spanning(expr->span.start, false_expression->span.end),
-                .type = EXPRESSION_TERNARY,
-                .ternary = {
-                        .condition = condition,
-                        .true_expression = true_expression,
-                        .false_expression = false_expression,
-                }
+            .span = spanning(expr->span.start, false_expression->span.end),
+            .kind = EXPRESSION_TERNARY,
+            .value.ternary = {
+                .condition = condition,
+                .true_expression = true_expression,
+                .false_expression = false_expression,
+            }
         };
     }
 
@@ -2427,15 +2427,15 @@ bool parse_logical_or_expression(parser_t *parser, expression_t *expr) {
         expression_t *left = malloc(sizeof(expression_t));
         *left = *expr;
         *expr = (expression_t) {
-                .span = spanning(left->span.start, right->span.end),
-                .type = EXPRESSION_BINARY,
-                .binary = {
-                        .type = BINARY_LOGICAL,
-                        .left = left,
-                        .right = right,
-                        .operator = token,
-                        .logical_operator = BINARY_LOGICAL_OR,
-                }
+            .span = spanning(left->span.start, right->span.end),
+            .kind = EXPRESSION_BINARY,
+            .value.binary = {
+                .kind = BINARY_LOGICAL,
+                .left = left,
+                .right = right,
+                .operator_token = token,
+                .operator.logical = BINARY_LOGICAL_OR,
+            }
         };
     }
 
@@ -2473,15 +2473,15 @@ bool parse_logical_and_expression(parser_t *parser, expression_t *expr) {
         expression_t *left = malloc(sizeof(expression_t));
         *left = *expr;
         *expr = (expression_t) {
-                .span = spanning(left->span.start, right->span.end),
-                .type = EXPRESSION_BINARY,
-                .binary = {
-                        .type = BINARY_LOGICAL,
-                        .left = left,
-                        .right = right,
-                        .operator = token,
-                        .logical_operator = BINARY_LOGICAL_AND,
-                }
+            .span = spanning(left->span.start, right->span.end),
+            .kind = EXPRESSION_BINARY,
+            .value.binary = {
+                .kind = BINARY_LOGICAL,
+                .left = left,
+                .right = right,
+                .operator_token = token,
+                .operator.logical = BINARY_LOGICAL_AND,
+            }
         };
     }
 
@@ -2519,15 +2519,15 @@ bool parse_inclusive_or_expression(parser_t *parser, expression_t *expr) {
         expression_t *left = malloc(sizeof(expression_t));
         *left = *expr;
         *expr = (expression_t) {
-                .span = spanning(left->span.start, right->span.end),
-                .type = EXPRESSION_BINARY,
-                .binary = {
-                        .type = BINARY_BITWISE,
-                        .left = left,
-                        .right = right,
-                        .operator = token,
-                        .bitwise_operator = BINARY_BITWISE_OR,
-                }
+            .span = spanning(left->span.start, right->span.end),
+            .kind = EXPRESSION_BINARY,
+            .value.binary = {
+                .kind = BINARY_BITWISE,
+                .left = left,
+                .right = right,
+                .operator_token = token,
+                .operator.bitwise = BINARY_BITWISE_OR,
+            }
         };
     }
 
@@ -2565,15 +2565,15 @@ bool parse_exclusive_or_expression(parser_t *parser, expression_t *expr) {
         expression_t *left = malloc(sizeof(expression_t));
         *left = *expr;
         *expr = (expression_t) {
-                .span = spanning(left->span.start, right->span.end),
-                .type = EXPRESSION_BINARY,
-                .binary = {
-                        .type = BINARY_BITWISE,
-                        .left = left,
-                        .right = right,
-                        .operator = token,
-                        .bitwise_operator = BINARY_BITWISE_XOR,
-                }
+            .span = spanning(left->span.start, right->span.end),
+            .kind = EXPRESSION_BINARY,
+            .value.binary = {
+                .kind = BINARY_BITWISE,
+                .left = left,
+                .right = right,
+                .operator_token = token,
+                .operator.bitwise = BINARY_BITWISE_XOR,
+            }
         };
     }
 
@@ -2611,15 +2611,15 @@ bool parse_and_expression(parser_t* parser, expression_t* expr) {
         expression_t *left = malloc(sizeof(expression_t));
         *left = *expr;
         *expr = (expression_t) {
-                .span = spanning(left->span.start, right->span.end),
-                .type = EXPRESSION_BINARY,
-                .binary = {
-                        .type = BINARY_BITWISE,
-                        .left = left,
-                        .right = right,
-                        .operator = token,
-                        .bitwise_operator = BINARY_BITWISE_AND,
-                }
+            .span = spanning(left->span.start, right->span.end),
+            .kind = EXPRESSION_BINARY,
+            .value.binary = {
+                .kind = BINARY_BITWISE,
+                .left = left,
+                .right = right,
+                .operator_token = token,
+                .operator.bitwise = BINARY_BITWISE_AND,
+            }
         };
     }
 
@@ -2670,15 +2670,15 @@ bool equality_expression_prime(parser_t *parser, expression_t *expr, const token
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
     *expr = (expression_t) {
-            .span = spanning(left->span.start, right->span.end),
-            .type = EXPRESSION_BINARY,
-            .binary = {
-                    .type = BINARY_COMPARISON,
-                    .left = left,
-                    .right = right,
-                    .operator = operator,
-                    .comparison_operator = comparison_operator
-            }
+        .span = spanning(left->span.start, right->span.end),
+        .kind = EXPRESSION_BINARY,
+        .value.binary = {
+            .kind = BINARY_COMPARISON,
+            .left = left,
+            .right = right,
+            .operator_token = operator,
+            .operator.comparison = comparison_operator
+        }
     };
 
     token_t *token;
@@ -2743,15 +2743,15 @@ bool relational_expression_prime(parser_t *parser, expression_t *expr, const tok
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
     *expr = (expression_t) {
-            .span = spanning(left->span.start, right->span.end),
-            .type = EXPRESSION_BINARY,
-            .binary = {
-                    .type = BINARY_COMPARISON,
-                    .left = left,
-                    .right = right,
-                    .operator = operator,
-                    .comparison_operator = binary_operator,
-            }
+        .span = spanning(left->span.start, right->span.end),
+        .kind = EXPRESSION_BINARY,
+        .value.binary = {
+            .kind = BINARY_COMPARISON,
+            .left = left,
+            .right = right,
+            .operator_token = operator,
+            .operator.comparison = binary_operator,
+        }
     };
 
     token_t *token;
@@ -2810,15 +2810,15 @@ bool shift_expression_prime(parser_t *parser, expression_t *expr, const token_t 
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
     *expr = (expression_t) {
-            .span = spanning(left->span.start, right->span.end),
-            .type = EXPRESSION_BINARY,
-            .binary = {
-                    .type = BINARY_BITWISE,
-                    .left = left,
-                    .right = right,
-                    .operator = operator,
-                    .bitwise_operator = binary_operator,
-            }
+        .span = spanning(left->span.start, right->span.end),
+        .kind = EXPRESSION_BINARY,
+        .value.binary = {
+            .kind = BINARY_BITWISE,
+            .left = left,
+            .right = right,
+            .operator_token = operator,
+            .operator.bitwise = binary_operator,
+        }
     };
 
     token_t *token;
@@ -2875,15 +2875,15 @@ bool additive_expression_prime(parser_t* parser, expression_t* expr, const token
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
     *expr = (expression_t) {
-            .span = spanning(left->span.start, right->span.end),
-            .type = EXPRESSION_BINARY,
-            .binary = {
-                    .type = BINARY_ARITHMETIC,
-                    .left = left,
-                    .right = right,
-                    .operator = operator,
-                    .arithmetic_operator = binary_operator,
-            }
+        .span = spanning(left->span.start, right->span.end),
+        .kind = EXPRESSION_BINARY,
+        .value.binary = {
+            .kind = BINARY_ARITHMETIC,
+            .left = left,
+            .right = right,
+            .operator_token = operator,
+            .operator.arithmetic = binary_operator,
+        }
     };
 
     token_t *token;
@@ -2946,14 +2946,14 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const
     expression_t *left = malloc(sizeof(expression_t));
     *left = *expr;
     *expr = (expression_t) {
-            .span = spanning(left->span.start, right->span.end),
-            .type = EXPRESSION_BINARY,
-            .binary = {
-                .left = left,
-                .right = right,
-                .operator = operator,
-                .arithmetic_operator = binary_operator,
-            }
+        .span = spanning(left->span.start, right->span.end),
+        .kind = EXPRESSION_BINARY,
+        .value.binary = {
+            .left = left,
+            .right = right,
+            .operator_token = operator,
+            .operator.arithmetic = binary_operator,
+        }
     };
 
     token_t *token;
@@ -2991,8 +2991,8 @@ bool parse_cast_expression(parser_t *parser, expression_t *expr) {
 
         *expr = (expression_t) {
             .span = SPANNING_NEXT(token),
-            .type = EXPRESSION_CAST,
-            .cast = {
+            .kind = EXPRESSION_CAST,
+            .value.cast = {
                 .type = type,
                 .expression = operand,
             },
@@ -3037,13 +3037,13 @@ bool unary_op(parser_t *parser, expression_t* expr, token_t *token) {
     }
 
     *expr = (expression_t) {
-            .span = SPANNING_NEXT(token),
-            .type = EXPRESSION_UNARY,
-            .unary = {
-                    .operator = operator,
-                    .operand = operand,
-                    .token = token,
-            },
+        .span = SPANNING_NEXT(token),
+        .kind = EXPRESSION_UNARY,
+        .value.unary = {
+            .operator = operator,
+            .operand = operand,
+            .token = token,
+        },
     };
     return true;
 }
@@ -3060,8 +3060,8 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
 
         *expr = (expression_t) {
             .span = SPANNING_NEXT(token),
-            .type = EXPRESSION_UNARY,
-            .unary = {
+            .kind = EXPRESSION_UNARY,
+            .value.unary = {
                 .operator = UNARY_PRE_INCREMENT,
                 .operand = operand,
                 .token = token,
@@ -3077,8 +3077,8 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
 
         *expr = (expression_t) {
             .span = SPANNING_NEXT(token),
-            .type = EXPRESSION_UNARY,
-            .unary = {
+            .kind = EXPRESSION_UNARY,
+            .value.unary = {
                 .operator = UNARY_PRE_DECREMENT,
                 .operand = operand,
                 .token = token,
@@ -3102,8 +3102,8 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
             if (parse_unary_expression(parser, inner)) {
                 *expr = (expression_t) {
                     .span = SPANNING_NEXT(token),
-                    .type = EXPRESSION_UNARY,
-                    .unary = {
+                    .kind = EXPRESSION_UNARY,
+                    .value.unary = {
                         .operator = UNARY_SIZEOF,
                         .operand = inner,
                         .token = token,
@@ -3124,7 +3124,7 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
             if (!parse_type_name(parser, &type)) {
                 free(type);
                 append_parse_error(&parser->errors, (parse_error_t) {
-                    .type = PARSE_ERROR_EXPECTED_EXPRESSION_OR_TYPE_NAME_AFTER_SIZEOF,
+                    .kind = PARSE_ERROR_EXPECTED_EXPRESSION_OR_TYPE_NAME_AFTER_SIZEOF,
                     .production_name = "unary-expression",
                     .previous_production_name = NULL,
                     .token = token,
@@ -3139,8 +3139,8 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
 
             *expr = (expression_t) {
                 .span = SPANNING_NEXT(token),
-                .type = EXPRESSION_SIZEOF,
-                .sizeof_type = type,
+                .kind = EXPRESSION_SIZEOF,
+                .value.sizeof_type = type,
             };
             return true;
         } else {
@@ -3153,8 +3153,8 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
 
             *expr = (expression_t) {
                 .span = SPANNING_NEXT(token),
-                .type = EXPRESSION_UNARY,
-                .unary = {
+                .kind = EXPRESSION_UNARY,
+                .value.unary = {
                     .operator = UNARY_SIZEOF,
                     .operand = inner,
                     .token = token,
@@ -3193,12 +3193,12 @@ bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
             expression_t *array = current;
             current = malloc(sizeof(expression_t));
             *current = (expression_t) {
-                    .span = spanning(array->span.start, *current_position(parser)),
-                    .type = EXPRESSION_ARRAY_SUBSCRIPT,
-                    .array_subscript = {
-                            .array = array,
-                            .index = index,
-                    },
+                .span = spanning(array->span.start, *current_position(parser)),
+                .kind = EXPRESSION_ARRAY_SUBSCRIPT,
+                .value.array_subscript = {
+                    .array = array,
+                    .index = index,
+                },
             };
         } else if (accept(parser, TK_LPAREN, NULL)) {
             // function call
@@ -3228,12 +3228,12 @@ bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
             current = malloc(sizeof(expression_t));
 
             *current = (expression_t) {
-                    .span = spanning(callee->span.start, *current_position(parser)),
-                    .type = EXPRESSION_CALL,
-                    .call = {
-                            .callee = callee,
-                            .arguments = arguments,
-                    },
+                .span = spanning(callee->span.start, *current_position(parser)),
+                .kind = EXPRESSION_CALL,
+                .value.call = {
+                    .callee = callee,
+                    .arguments = arguments,
+                },
             };
         } else if (accept(parser, TK_DOT, &token) || accept(parser, TK_ARROW, &token)) {
             // struct member access
@@ -3246,38 +3246,38 @@ bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
             current = malloc(sizeof(expression_t));
 
             *current = (expression_t) {
-                    .span = spanning(struct_or_union->span.start, *current_position(parser)),
-                    .type = EXPRESSION_MEMBER_ACCESS,
-                    .member_access = {
-                            .struct_or_union = struct_or_union,
-                            .operator = *token,
-                            .member = *identifier,
-                    },
+                .span = spanning(struct_or_union->span.start, *current_position(parser)),
+                .kind = EXPRESSION_MEMBER_ACCESS,
+                .value.member_access = {
+                    .struct_or_union = struct_or_union,
+                    .operator = *token,
+                    .member = *identifier,
+                },
             };
         } else if (accept(parser, TK_INCREMENT, NULL)) {
             // post-increment
             expression_t *operand = current;
             current = malloc(sizeof(expression_t));
             *current = (expression_t) {
-                    .span = SPAN_STARTING(operand->span.start),
-                    .type = EXPRESSION_UNARY,
-                    .unary = {
-                            .operator = UNARY_POST_INCREMENT,
-                            .operand = operand,
-                            .token = token,
-                    },
+                .span = SPAN_STARTING(operand->span.start),
+                .kind = EXPRESSION_UNARY,
+                .value.unary = {
+                    .operator = UNARY_POST_INCREMENT,
+                    .operand = operand,
+                    .token = token,
+                },
             };
         } else if (accept(parser, TK_DECREMENT, NULL)) {
             expression_t *operand = current;
             current = malloc(sizeof(expression_t));
             *current = (expression_t) {
-                    .span = SPAN_STARTING(operand->span.start),
-                    .type = EXPRESSION_UNARY,
-                    .unary = {
-                            .operator = UNARY_POST_DECREMENT,
-                            .operand = operand,
-                            .token = token,
-                    },
+                .span = SPAN_STARTING(operand->span.start),
+                .kind = EXPRESSION_UNARY,
+                .value.unary = {
+                    .operator = UNARY_POST_DECREMENT,
+                    .operand = operand,
+                    .token = token,
+                },
             };
         }
     }
@@ -3295,10 +3295,10 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
     if (accept(parser, TK_IDENTIFIER, &token)) {
         *expr = (expression_t) {
             .span = SPAN_STARTING(start),
-            .type = EXPRESSION_PRIMARY,
-            .primary = {
-                .type = PE_IDENTIFIER,
-                .token = *token,
+            .kind = EXPRESSION_PRIMARY,
+            .value.primary = {
+                .kind = PE_IDENTIFIER,
+                .value.token = *token,
             }
         };
         return true;
@@ -3307,20 +3307,20 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
                accept(parser, TK_CHAR_LITERAL, &token)) {
         *expr = (expression_t) {
             .span = SPAN_STARTING(start),
-            .type = EXPRESSION_PRIMARY,
-            .primary = {
-                .type = PE_CONSTANT,
-                .token = *token,
+            .kind = EXPRESSION_PRIMARY,
+            .value.primary = {
+                .kind = PE_CONSTANT,
+                .value.token = *token,
             },
         };
         return true;
     } else if (accept(parser, TK_STRING_LITERAL, &token)) {
         *expr = (expression_t) {
             .span = SPAN_STARTING(start),
-            .type = EXPRESSION_PRIMARY,
-            .primary = {
-                .type = PE_STRING_LITERAL,
-                .token = *token,
+            .kind = EXPRESSION_PRIMARY,
+            .value.primary = {
+                .kind = PE_STRING_LITERAL,
+                .value.token = *token,
             },
         };
         return true;
@@ -3338,10 +3338,10 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
 
         *expr = (expression_t) {
             .span = spanning(start, *current_position(parser)),
-            .type = EXPRESSION_PRIMARY,
-            .primary = {
-                .type = PE_EXPRESSION,
-                .expression = expr2,
+            .kind = EXPRESSION_PRIMARY,
+            .value.primary = {
+                .kind = PE_EXPRESSION,
+                .value.expression = expr2,
             },
         };
 
@@ -3353,8 +3353,8 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
             .previous_token = prev_token,
             .production_name = "primary-expression",
             .previous_production_name = NULL,
-            .type = PARSE_ERROR_EXPECTED_TOKEN,
-            .expected_token = {
+            .kind = PARSE_ERROR_EXPECTED_TOKEN,
+            .value.expected_token = {
                 .expected_count = 6,
                 .expected = {TK_IDENTIFIER, TK_INTEGER_CONSTANT, TK_FLOATING_CONSTANT, TK_CHAR_LITERAL, TK_STRING_LITERAL, TK_LPAREN },
             },
@@ -3394,8 +3394,8 @@ bool parse_external_declaration(parser_t *parser, external_declaration_t *extern
         declaration_t **list = malloc(sizeof (declaration_t**));
         list[0] = declaration;
         *external_declaration = (external_declaration_t) {
-            .type = EXTERNAL_DECLARATION_DECLARATION,
-            .declaration = {
+            .kind = EXTERNAL_DECLARATION_DECLARATION,
+            .value.declaration = {
                 .declarations = list,
                 .length = 1,
             }
@@ -3428,8 +3428,8 @@ bool parse_external_declaration(parser_t *parser, external_declaration_t *extern
             return false;
         }
         *external_declaration = (external_declaration_t) {
-            .type = EXTERNAL_DECLARATION_FUNCTION_DEFINITION,
-            .function_definition = fn,
+            .kind = EXTERNAL_DECLARATION_FUNCTION_DEFINITION,
+            .value.function_definition = fn,
         };
     } else {
         // This is a declaration
@@ -3439,8 +3439,8 @@ bool parse_external_declaration(parser_t *parser, external_declaration_t *extern
         }
 
         *external_declaration = (external_declaration_t) {
-            .type = EXTERNAL_DECLARATION_DECLARATION,
-            .declaration = {
+            .kind = EXTERNAL_DECLARATION_DECLARATION,
+            .value.declaration = {
                 .declarations = (declaration_t**) declarations.buffer,
                 .length = declarations.size,
             },
@@ -3453,8 +3453,8 @@ bool parse_external_declaration(parser_t *parser, external_declaration_t *extern
 bool parse_function_definition(parser_t *parser, const declaration_t *declarator, const token_t *body_start, function_definition_t *fn) {
     // Enter the function scope and add the parameters to the symbol table
     parser_enter_scope(parser);
-    for (int i = 0; i < declarator->type->function.parameter_list->length; i += 1) {
-        parameter_declaration_t *param = declarator->type->function.parameter_list->parameters[i];
+    for (int i = 0; i < declarator->type->value.function.parameter_list->length; i += 1) {
+        parameter_declaration_t *param = declarator->type->value.function.parameter_list->parameters[i];
         parser_symbol_t *symbol = malloc(sizeof(parser_symbol_t));
         *symbol = (parser_symbol_t) {
             .kind = SYMBOL_IDENTIFIER,
@@ -3474,8 +3474,8 @@ bool parse_function_definition(parser_t *parser, const declaration_t *declarator
 
     *fn = (function_definition_t) {
         .identifier = declarator->identifier,
-        .return_type = declarator->type->function.return_type,
-        .parameter_list = declarator->type->function.parameter_list,
+        .return_type = declarator->type->value.function.return_type,
+        .parameter_list = declarator->type->value.function.parameter_list,
         .body = body,
     };
     parser_leave_scope(parser);

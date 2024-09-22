@@ -42,29 +42,29 @@ const char* ir_fmt_type(char *buffer, size_t size, const ir_type_t *type) {
             snprintf(buffer, size, "f64");
             break;
         case IR_TYPE_PTR:
-            snprintf(buffer, size, "*%s", ir_fmt_type(alloca(256), 256, type->ptr.pointee));
+            snprintf(buffer, size, "*%s", ir_fmt_type(alloca(256), 256, type->value.ptr.pointee));
             break;
         case IR_TYPE_ARRAY: {
             char element[256];
-            ir_fmt_type(element, sizeof(element), type->array.element);
-            snprintf(buffer, size, "[%s;%lu]", element, (unsigned long) type->array.length);
+            ir_fmt_type(element, sizeof(element), type->value.array.element);
+            snprintf(buffer, size, "[%s;%lu]", element, (unsigned long) type->value.array.length);
             break;
         }
         case IR_TYPE_STRUCT_OR_UNION:
             // This just prints the name of the struct, not the full definition
-            snprintf(buffer, size, "%s.%s", type->struct_or_union.is_union ? "union" : "struct", type->struct_or_union.id);
+            snprintf(buffer, size, "%s.%s", type->value.struct_or_union.is_union ? "union" : "struct", type->value.struct_or_union.id);
             break;
         case IR_TYPE_FUNCTION: {
             char param_list[512] = { 0 };
             char *curr = param_list;
-            for (size_t i = 0; i < type->function.num_params; i++) {
-                const ir_type_t *param = type->function.params[i];
+            for (size_t i = 0; i < type->value.function.num_params; i++) {
+                const ir_type_t *param = type->value.function.params[i];
                 curr += snprintf(curr, param_list + sizeof(param_list) - curr, "%s", ir_fmt_type(alloca(256), 256, param));
-                if (i < type->function.num_params - 1) {
+                if (i < type->value.function.num_params - 1) {
                     curr += snprintf(curr, param_list + sizeof(param_list) - curr, ", ");
                 }
             }
-            snprintf(buffer, size, "(%s) -> %s", param_list, ir_fmt_type(alloca(256), 256, type->function.return_type));
+            snprintf(buffer, size, "(%s) -> %s", param_list, ir_fmt_type(alloca(256), 256, type->value.function.return_type));
             break;
         }
     }
@@ -113,13 +113,13 @@ char* ir_fmt_const_string(const char *str) {
 const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
     switch (constant.kind) {
         case IR_CONST_INT:
-            snprintf(buffer, size, "%s %lli", ir_fmt_type(alloca(256), 256, constant.type), constant.i);
+            snprintf(buffer, size, "%s %lli", ir_fmt_type(alloca(256), 256, constant.type), constant.value.i);
             break;
         case IR_CONST_FLOAT:
-            snprintf(buffer, size, "%s %Lf", ir_fmt_type(alloca(256), 256, constant.type), constant.f);
+            snprintf(buffer, size, "%s %Lf", ir_fmt_type(alloca(256), 256, constant.type), constant.value.f);
             break;
         case IR_CONST_STRING: {
-            char *str = ir_fmt_const_string(constant.s);
+            char *str = ir_fmt_const_string(constant.value.s);
             snprintf(buffer, size, "%s \"%s\"", ir_fmt_type(alloca(256), 256, constant.type), str);
             free(str);
             break;
@@ -128,8 +128,8 @@ const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
             int l = snprintf(buffer, size, "%s {", ir_fmt_type(alloca(256), 256, constant.type));
             buffer += l;
             size -= l;
-            for (int i = 0; i < constant.array.length; i += 1) {
-                ir_const_t val = constant.array.values[i];
+            for (int i = 0; i < constant.value.array.length; i += 1) {
+                ir_const_t val = constant.value.array.values[i];
                 const char *str = NULL;
                 switch (val.kind) {
                     case IR_CONST_ARRAY:
@@ -137,18 +137,18 @@ const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
                         break;
                     case IR_CONST_INT: {
                         char *s = alloca(256);
-                        snprintf(s, 256, "%ld", (long) val.i);
+                        snprintf(s, 256, "%ld", (long) val.value.i);
                         str = s;
                         break;
                     }
                     case IR_CONST_FLOAT: {
                         char *s = alloca(256);
-                        snprintf(s, 256, "%f", (double) val.f);
+                        snprintf(s, 256, "%f", (double) val.value.f);
                         str = s;
                         break;
                     }
                     case IR_CONST_STRING:
-                        str = val.s;
+                        str = val.value.s;
                         break;
                 }
                 if (i > 0) l = snprintf(buffer, size, ",%s", str);
@@ -192,79 +192,79 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
             snprintf(buffer, size, "nop");
             break;
         case IR_ADD:
-            snprintf(buffer, size, "%s = add %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = add %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_SUB:
-            snprintf(buffer, size, "%s = sub %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = sub %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_MUL:
-            snprintf(buffer, size, "%s = mul %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = mul %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_DIV:
-            snprintf(buffer, size, "%s = div %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = div %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_MOD:
-            snprintf(buffer, size, "%s = mod %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = mod %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_ASSIGN:
-            snprintf(buffer, size, "%s = %s", FMT_VAR(instr->assign.result), FMT_VAL(instr->assign.value));
+            snprintf(buffer, size, "%s = %s", FMT_VAR(instr->value.assign.result), FMT_VAL(instr->value.assign.value));
             break;
         case IR_AND:
-            snprintf(buffer, size, "%s = and %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = and %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_OR:
-            snprintf(buffer, size, "%s = or %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = or %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_SHL:
-            snprintf(buffer, size, "%s = shl %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = shl %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_SHR:
-            snprintf(buffer, size, "%s = shr %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = shr %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_XOR:
-            snprintf(buffer, size, "%s = xor %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = xor %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_NOT:
-            snprintf(buffer, size, "%s = not %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = not %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_EQ:
-            snprintf(buffer, size, "%s = eq %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = eq %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_NE:
-            snprintf(buffer, size, "%s = ne %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = ne %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_LT:
-            snprintf(buffer, size, "%s = lt %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = lt %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_LE:
-            snprintf(buffer, size, "%s = le %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = le %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_GT:
-            snprintf(buffer, size, "%s = gt %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = gt %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_GE:
-            snprintf(buffer, size, "%s = ge %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = ge %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_BR:
-            snprintf(buffer, size, "br %s", instr->branch.label);
+            snprintf(buffer, size, "br %s", instr->value.branch.label);
             break;
         case IR_BR_COND:
-            snprintf(buffer, size, "br %s, %s", FMT_VAL(instr->branch.cond), instr->branch.label);
+            snprintf(buffer, size, "br %s, %s", FMT_VAL(instr->value.branch.cond), instr->value.branch.label);
             break;
         case IR_CALL: {
-            if (instr->call.result != NULL) {
-                size_t offset = snprintf(buffer, size, "%s = ", FMT_VAR(*instr->call.result));
+            if (instr->value.call.result != NULL) {
+                size_t offset = snprintf(buffer, size, "%s = ", FMT_VAR(*instr->value.call.result));
                 buffer += offset;
                 size -= offset;
             }
-            size_t offset = snprintf(buffer, size, "call %s(", instr->call.function.name);
+            size_t offset = snprintf(buffer, size, "call %s(", instr->value.call.function.name);
             buffer += offset;
             size -= offset;
-            for (size_t i = 0; i < instr->call.num_args; i += 1) {
-                offset = snprintf(buffer, size, "%s", FMT_VAL(instr->call.args[i]));
+            for (size_t i = 0; i < instr->value.call.num_args; i += 1) {
+                offset = snprintf(buffer, size, "%s", FMT_VAL(instr->value.call.args[i]));
                 buffer += offset;
                 size -= offset;
-                if (i < instr->call.num_args - 1) {
+                if (i < instr->value.call.num_args - 1) {
                     offset = snprintf(buffer, size, ", ");
                     buffer += offset;
                     size -= offset;
@@ -274,54 +274,54 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
             break;
         }
         case IR_RET: {
-            if (instr->ret.has_value) {
-                snprintf(buffer, size, "ret %s", FMT_VAL(instr->ret.value));
+            if (instr->value.ret.has_value) {
+                snprintf(buffer, size, "ret %s", FMT_VAL(instr->value.ret.value));
             } else {
                 snprintf(buffer, size, "ret void");
             }
             break;
         }
         case IR_ALLOCA:
-            snprintf(buffer, size, "%s = alloca %s", FMT_VAR(instr->alloca.result), FMT_TYPE(instr->alloca.type));
+            snprintf(buffer, size, "%s = alloca %s", FMT_VAR(instr->value.alloca.result), FMT_TYPE(instr->value.alloca.type));
             break;
         case IR_LOAD:
-            snprintf(buffer, size, "%s = load %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = load %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_STORE:
-            snprintf(buffer, size, "store %s, %s", FMT_VAL(instr->store.value), FMT_VAL(instr->store.ptr));
+            snprintf(buffer, size, "store %s, %s", FMT_VAL(instr->value.store.value), FMT_VAL(instr->value.store.ptr));
             break;
         case IR_MEMCPY:
-            snprintf(buffer, size, "memcpy %s, %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "memcpy %s, %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_MEMSET:
-            snprintf(buffer, size, "memset %s, %s, %s", FMT_VAL(instr->memset.ptr), FMT_VAL(instr->memset.value), FMT_VAL(instr->memset.length));
+            snprintf(buffer, size, "memset %s, %s, %s", FMT_VAL(instr->value.memset.ptr), FMT_VAL(instr->value.memset.value), FMT_VAL(instr->value.memset.length));
             break;
         case IR_GET_ARRAY_ELEMENT_PTR:
-            snprintf(buffer, size, "%s = get_array_element_ptr %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = get_array_element_ptr %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_GET_STRUCT_MEMBER_PTR:
-            snprintf(buffer, size, "%s = get_struct_member_ptr %s, %s", FMT_VAR(instr->binary_op.result), FMT_VAL(instr->binary_op.left), FMT_VAL(instr->binary_op.right));
+            snprintf(buffer, size, "%s = get_struct_member_ptr %s, %s", FMT_VAR(instr->value.binary_op.result), FMT_VAL(instr->value.binary_op.left), FMT_VAL(instr->value.binary_op.right));
             break;
         case IR_TRUNC:
-            snprintf(buffer, size, "%s = trunc %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = trunc %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_EXT:
-            snprintf(buffer, size, "%s = ext %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = ext %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_FTOI:
-            snprintf(buffer, size, "%s = ftoi %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = ftoi %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_ITOF:
-            snprintf(buffer, size, "%s = itof %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = itof %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_ITOP:
-            snprintf(buffer, size, "%s = itop %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = itop %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_PTOI:
-            snprintf(buffer, size, "%s = ptoi %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = ptoi %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
         case IR_BITCAST:
-            snprintf(buffer, size, "%s = bitcast %s", FMT_VAR(instr->unary_op.result), FMT_VAL(instr->unary_op.operand));
+            snprintf(buffer, size, "%s = bitcast %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
     }
 

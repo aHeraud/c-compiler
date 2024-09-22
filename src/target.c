@@ -19,7 +19,7 @@ const target_t* SUPPORTED_TARGETS[] = {
     &TARGET_X86_64_UNKNOWN_LINUX_GNU,
 };
 
-const char *get_native_target() {
+const char *get_native_target(void) {
 #if (defined(__x86_64__) || defined(_M_AMD64) ) && defined(__gnu_linux__)
     return TARGET_X86_64_UNKNOWN_LINUX_GNU.name;
 #elif (defined(__x86_64__) || defined(_M_AMD64) ) && (defined(_WIN32) || defined(_WIN64))
