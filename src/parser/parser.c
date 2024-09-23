@@ -1803,6 +1803,12 @@ bool parse_statement(parser_t *parser, statement_t *stmt) {
         return parse_goto_statement(parser, stmt);
     } else if (peek(parser, TK_IDENTIFIER) && peek2(parser, TK_COLON)) {
         return parse_labeled_statement(parser, stmt);
+    } else if (peek(parser, TK_SWITCH)) {
+        return parse_switch_statement(parser, stmt);
+    } else if (peek(parser, TK_CASE)) {
+        return parse_case_statement(parser, stmt);
+    } else if (peek(parser, TK_DEFAULT)) {
+        return parse_default_case_statement(parser, stmt);
     } else {
         return parse_expression_statement(parser, stmt);
     }
@@ -2201,6 +2207,95 @@ bool parse_labeled_statement(parser_t *parser, statement_t *statement) {
             .statement = statement_inner,
         },
     };
+    return true;
+}
+
+bool parse_switch_statement(parser_t *parser, statement_t *statement) {
+    token_t *keyword = NULL;
+    if (!require(parser, TK_SWITCH, &keyword, "switch-statement", NULL))
+        return false;
+
+    if (!require(parser, TK_LPAREN, NULL, "switch-statement", NULL))
+        return false;
+
+    expression_t *expression = malloc(sizeof(expression_t));
+    if (!parse_expression(parser, expression)) {
+        free(expression);
+        return false;
+    }
+
+    if (!require(parser, TK_RPAREN, NULL, "switch-statement", NULL)) {
+        free(expression);
+        return false;
+    }
+
+    statement_t *inner_statement = malloc(sizeof(statement_t));
+    if (!parse_statement(parser, inner_statement)) {
+        free(expression);
+        free(inner_statement);
+        return false;
+    }
+
+    *statement = (statement_t) {
+        .kind = STATEMENT_SWITCH,
+        .terminator = inner_statement->terminator,
+        .value = {
+            .switch_ = {
+                .expression = expression,
+                .statement = inner_statement,
+            }
+        }
+    };
+    return true;
+}
+
+bool parse_case_statement(parser_t *parser, statement_t *stmt) {
+    token_t *keyword = NULL;
+    if (!require(parser, TK_CASE, &keyword, "case-statement", NULL))
+        return false;
+
+    expression_t expr;
+    if (!parse_expression(parser, &expr)) return false;
+
+    if (!require(parser, TK_COLON, &keyword, "case-statement", "expression"))
+        return false;
+
+    statement_t inner;
+    if (!parse_statement(parser, &inner)) return false;
+
+    *stmt = (statement_t) {
+        .kind = STATEMENT_CASE,
+        .terminator = inner.terminator,
+        .value.case_ = {
+            .expression = malloc(sizeof(expression_t)),
+            .statement = malloc(sizeof(statement_t)),
+        },
+    };
+    *stmt->value.case_.expression = expr;
+    *stmt->value.case_.statement = inner;
+    return true;
+}
+
+bool parse_default_case_statement(parser_t *parser, statement_t *stmt) {
+    token_t *keyword;
+    if (!require(parser, TK_DEFAULT, &keyword, "default-case-statement", NULL))
+        return false;
+
+    if (!require(parser, TK_COLON, &keyword, "default-case-statement", NULL))
+        return false;
+
+    statement_t inner;
+    if (!parse_statement(parser, &inner)) return false;
+
+    *stmt = (statement_t) {
+        .kind = STATEMENT_CASE,
+        .terminator = inner.terminator,
+        .value.case_ = {
+            .expression = NULL,
+            .statement = malloc(sizeof(statement_t)),
+        },
+    };
+    *stmt->value.case_.statement = inner;
     return true;
 }
 

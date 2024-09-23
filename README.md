@@ -190,6 +190,7 @@ Specifiers/Qualifiers:
 - [ ] Register
 
 Control Flow:
+- [x] If/else
 - [x] While loop
 - [x] Do-while loop
 - [x] For loop
@@ -237,12 +238,4 @@ Expressions/Operators:
 - [x] Logical not (`!`)
 - [x] Function calls
 - [x] Variadic functions
-- [ ] Function pointers 
-
-Control Flow:
-- [x] For loop
-- [x] While loop
-- [x] Do while loop
-- [x] Break
-- [x] Continue
-- [x] If/else
+- [ ] Function pointers

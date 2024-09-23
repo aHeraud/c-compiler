@@ -210,6 +210,8 @@ typedef struct Statement {
         STATEMENT_CONTINUE,
         STATEMENT_GOTO,
         STATEMENT_LABEL,
+        STATEMENT_SWITCH,
+        STATEMENT_CASE,
     } kind;
     union {
         struct {
@@ -268,6 +270,14 @@ typedef struct Statement {
         struct {
             token_t *keyword;
         } continue_;
+        struct {
+            expression_t *expression;
+            struct Statement *statement;
+        } switch_;
+        struct {
+            expression_t *expression;
+            struct Statement *statement;
+        } case_;
     } value;
     token_t *terminator;
 } statement_t;

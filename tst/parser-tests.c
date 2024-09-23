@@ -1839,6 +1839,22 @@ void test_parse_if_else_if_else_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
+void test_parse_switch_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "switch(foo);"; // switch + empty statement
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    statement_t node;
+
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &node))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_EQUAL_FATAL(node.kind, STATEMENT_SWITCH)
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.value.switch_.expression)
+    CU_ASSERT_EQUAL_FATAL(node.value.switch_.expression->kind, EXPRESSION_PRIMARY)
+    CU_ASSERT_PTR_NOT_NULL_FATAL(node.value.switch_.statement)
+    CU_ASSERT_EQUAL_FATAL(node.value.switch_.statement->kind, STATEMENT_EMPTY)
+}
+
 void test_parse_return_statement() {
     lexer_global_context_t context = create_lexer_context();
     char *input = "return 1;";
@@ -2217,6 +2233,32 @@ void test_parse_labeled_statement() {
     CU_ASSERT_TRUE_FATAL(statement.value.label_.statement->kind == STATEMENT_EMPTY)
 }
 
+void test_parse_default_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "default: ;"; // default + empty statement
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    statement_t statement;
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
+    CU_ASSERT_TRUE_FATAL(statement.kind == STATEMENT_CASE)
+    CU_ASSERT_TRUE_FATAL(statement.value.case_.expression == NULL)
+    CU_ASSERT_TRUE_FATAL(statement.value.case_.statement->kind == STATEMENT_EMPTY)
+}
+
+void test_parse_case_statement() {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "case 4: ;"; // case + empty statement
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+
+    statement_t statement;
+    CU_ASSERT_TRUE_FATAL(parse_statement(&parser, &statement))
+    CU_ASSERT_TRUE_FATAL(statement.kind == STATEMENT_CASE)
+    CU_ASSERT_TRUE_FATAL(statement.value.case_.expression != NULL)
+    CU_ASSERT_TRUE_FATAL(statement.value.case_.statement->kind == STATEMENT_EMPTY)
+}
+
 void test_parse_program() {
     lexer_global_context_t context = create_lexer_context();
     const char* input = "float square(float);\nfloat square(float val) {\n\treturn val * val;\n}\nint main() {\n\treturn square(2.0);\n}";
@@ -2353,6 +2395,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "if statement", test_parse_if_statement) ||
         NULL == CU_add_test(pSuite, "if else statement", test_parse_if_else_statement) ||
         NULL == CU_add_test(pSuite, "if else if else statement", test_parse_if_else_if_else_statement) ||
+        NULL == CU_add_test(pSuite, "switch statement", test_parse_switch_statement) ||
         NULL == CU_add_test(pSuite, "return statement", test_parse_return_statement) ||
         NULL == CU_add_test(pSuite, "while statement", test_parse_while_statement) ||
         NULL == CU_add_test(pSuite, "while statement with empty body", test_parse_while_statement_with_empty_body) ||
@@ -2364,6 +2407,8 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "continue statement", test_parse_continue_statement) ||
         NULL == CU_add_test(pSuite, "goto statement", test_parse_goto_statement) ||
         NULL == CU_add_test(pSuite, "labeled statement", test_parse_labeled_statement) ||
+        NULL == CU_add_test(pSuite, "default case statement", test_parse_default_statement) ||
+        NULL == CU_add_test(pSuite, "case statement", test_parse_case_statement) ||
         NULL == CU_add_test(pSuite, "external declaration - declaration", parse_external_declaration_declaration) ||
         NULL == CU_add_test(pSuite, "external declaration - prototype (var args)", parse_external_definition_prototype_var_args) ||
         NULL == CU_add_test(pSuite, "external declaration - function definition", parse_external_declaration_function_definition) ||
