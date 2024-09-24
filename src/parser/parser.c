@@ -2241,6 +2241,7 @@ bool parse_switch_statement(parser_t *parser, statement_t *statement) {
         .terminator = inner_statement->terminator,
         .value = {
             .switch_ = {
+                .keyword = keyword,
                 .expression = expression,
                 .statement = inner_statement,
             }
@@ -2291,6 +2292,7 @@ bool parse_default_case_statement(parser_t *parser, statement_t *stmt) {
         .kind = STATEMENT_CASE,
         .terminator = inner.terminator,
         .value.case_ = {
+            .keyword = keyword,
             .expression = NULL,
             .statement = malloc(sizeof(statement_t)),
         },

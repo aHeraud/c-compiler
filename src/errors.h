@@ -33,11 +33,15 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_STRUCT_FIELD_REFERENCE,
     ERR_USE_OF_UNDECLARED_LABEL,
     ERR_REDEFINITION_OF_LABEL,
-    ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE,
+    ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH,
     ERR_CONTINUE_OUTSIDE_OF_LOOP,
     ERR_CANNOT_INCREMENT_DECREMENT_TYPE,
     ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE,
     ERR_NON_VOID_FUNCTION_RETURNS_VOID,
+    ERR_INVALID_SWITCH_EXPRESSION_TYPE,
+    ERR_INVALID_CASE_EXPRESSION,
+    ERR_CASE_STATEMENT_OUTSIDE_OF_SWITCH,
+    ERR_DUPLICATE_SWITCH_CASE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {
@@ -128,6 +132,21 @@ typedef struct CompilationError {
             const token_t *ret;
             const function_definition_t *fn;
         } non_void_function_returns_void;
+        struct {
+            const token_t *keyword;
+            const type_t *type;
+        } invalid_switch_expression_type;
+        struct {
+            const token_t *keyword;
+            const type_t *type;
+        } invalid_case_expression;
+        struct {
+            const token_t *keyword;
+        } case_statement_outside_of_switch;
+        struct {
+            const token_t *keyword;
+            long long value; // only if keyword is not 'default'
+        } duplicate_switch_case;
     } value;
 } compilation_error_t;
 

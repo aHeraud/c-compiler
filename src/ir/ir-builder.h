@@ -52,6 +52,12 @@ ir_instruction_node_t *ir_builder_get_position(const ir_function_builder_t *buil
  */
 void ir_builder_clear_after(ir_function_builder_t *builder, ir_instruction_node_t *position);
 
+/**
+ * Get a pointer to the instruction contained by an instruction node.
+ * @param instruction_node
+ */
+ir_instruction_t *ir_builder_get_instruction(ir_instruction_node_t *instruction_node);
+
 /* No-op */
 ir_instruction_node_t *ir_build_nop(ir_function_builder_t *builder, const char* label);
 
@@ -87,6 +93,7 @@ ir_instruction_node_t *ir_build_br_cond(ir_function_builder_t *builder, ir_value
 ir_instruction_node_t *ir_build_call(ir_function_builder_t *builder, ir_var_t function, ir_value_t *args, size_t num_args, ir_var_t *result);
 ir_instruction_node_t *ir_build_ret(ir_function_builder_t *builder, ir_value_t a);
 ir_instruction_node_t *ir_build_ret_void(ir_function_builder_t *builder);
+ir_instruction_node_t *ir_build_switch(ir_function_builder_t *builder, ir_value_t value, char *default_label);
 
 /* Memory */
 ir_instruction_node_t *ir_build_alloca(ir_function_builder_t *builder, const ir_type_t *type, ir_var_t result);

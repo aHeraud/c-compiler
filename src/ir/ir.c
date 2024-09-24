@@ -551,24 +551,24 @@ void ir_validate_visit_instruction(
             const ir_type_t *value_type = ir_get_type_of_value(instruction->value.unary_op.operand);
             if (ir_is_integer_type(result_type) && !ir_is_integer_type(value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "Truncation result and value must both be integers, or both must be floating point numbers"
+                    .instruction = instruction,
+                    .message = "Truncation result and value must both be integers, or both must be floating point numbers"
                 });
             } else if (ir_is_float_type(result_type) && !ir_is_float_type(value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "Truncation result and value must both be integers, or both must be floating point numbers"
+                    .instruction = instruction,
+                    .message = "Truncation result and value must both be integers, or both must be floating point numbers"
                 });
             } else if (!ir_is_integer_type(result_type) && !ir_is_float_type(result_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "Truncation result and operand types must be integer or floating point numbers"
+                    .instruction = instruction,
+                    .message = "Truncation result and operand types must be integer or floating point numbers"
                 });
             }
             if (ir_size_of_type_bits(module->arch, result_type) >= ir_size_of_type_bits(module->arch, value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "Truncation result type must be smaller than the value being truncated"
+                    .instruction = instruction,
+                    .message = "Truncation result type must be smaller than the value being truncated"
                 });
             }
             break;
@@ -582,24 +582,24 @@ void ir_validate_visit_instruction(
             const ir_type_t *value_type = ir_get_type_of_value(instruction->value.unary_op.operand);
             if (ir_is_integer_type(result_type) && !ir_is_integer_type(value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "Extension result and value must both be integers, or both must be floating point numbers"
+                    .instruction = instruction,
+                    .message = "Extension result and value must both be integers, or both must be floating point numbers"
                 });
             } else if (ir_is_float_type(result_type) && !ir_is_float_type(value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "Extension result and value must both be integers, or both must be floating point numbers"
+                    .instruction = instruction,
+                    .message = "Extension result and value must both be integers, or both must be floating point numbers"
                 });
             } else if (!ir_is_integer_type(result_type) && !ir_is_float_type(result_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "Extension result and operand types must be integer or floating point numbers"
+                    .instruction = instruction,
+                    .message = "Extension result and operand types must be integer or floating point numbers"
                 });
             }
             if (ir_size_of_type_bits(module->arch, result_type) <= ir_size_of_type_bits(module->arch, value_type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "Extension result type must be larger than the value being extended"
+                    .instruction = instruction,
+                    .message = "Extension result type must be larger than the value being extended"
                 });
             }
             break;
@@ -609,14 +609,14 @@ void ir_validate_visit_instruction(
             ir_validate_visit_value(variables, errors, instruction, instruction->value.unary_op.operand);
             if (!ir_is_integer_type(instruction->value.unary_op.result.type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "ftoi result must be an integer"
+                    .instruction = instruction,
+                    .message = "ftoi result must be an integer"
                 });
             }
             if (!ir_is_float_type(ir_get_type_of_value(instruction->value.unary_op.operand))) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "ftoi operand must be a floating point number"
+                    .instruction = instruction,
+                    .message = "ftoi operand must be a floating point number"
                 });
             }
             break;
@@ -626,14 +626,14 @@ void ir_validate_visit_instruction(
             ir_validate_visit_value(variables, errors, instruction, instruction->value.unary_op.operand);
             if (!ir_is_float_type(instruction->value.unary_op.result.type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "itof result must be a floating point number"
+                    .instruction = instruction,
+                    .message = "itof result must be a floating point number"
                 });
             }
             if (!ir_is_integer_type(ir_get_type_of_value(instruction->value.unary_op.operand))) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "itof operand must be an integer"
+                    .instruction = instruction,
+                    .message = "itof operand must be an integer"
                 });
             }
             break;
@@ -643,14 +643,14 @@ void ir_validate_visit_instruction(
             ir_validate_visit_value(variables, errors, instruction, instruction->value.unary_op.operand);
             if (!ir_is_integer_type(instruction->value.unary_op.result.type)) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "ptoi result must be an integer"
+                    .instruction = instruction,
+                    .message = "ptoi result must be an integer"
                 });
             }
             if (ir_get_type_of_value(instruction->value.unary_op.operand)->kind != IR_TYPE_PTR) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "ptoi operand must be a pointer"
+                    .instruction = instruction,
+                    .message = "ptoi operand must be a pointer"
                 });
             }
             break;
@@ -660,19 +660,43 @@ void ir_validate_visit_instruction(
             ir_validate_visit_value(variables, errors, instruction, instruction->value.unary_op.operand);
             if (instruction->value.unary_op.result.type->kind != IR_TYPE_PTR) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "itop result must be a pointer"
+                    .instruction = instruction,
+                    .message = "itop result must be a pointer"
                 });
             }
             if (!ir_is_integer_type(ir_get_type_of_value(instruction->value.unary_op.operand))) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
-                        .instruction = instruction,
-                        .message = "itop operand must be an integer"
+                    .instruction = instruction,
+                    .message = "itop operand must be an integer"
                 });
             }
             break;
         case IR_BITCAST:
             // TODO: validate bitcast instruction
+            break;
+        case IR_SWITCH:
+            // we will validate that the labels are valid later
+            // for now just make sure that there is a default label
+            if (instruction->value.switch_.default_label == NULL)
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                    .instruction = instruction,
+                    .message = "switch instruction must have a default label"
+                });
+            if (!ir_is_integer_type(ir_get_type_of_value(instruction->value.switch_.value)))
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                    .instruction = instruction,
+                    .message = "switch expression must have integer value",
+                });
+            for (int i = 0; i < instruction->value.switch_.cases.size; i += 1) {
+                ir_switch_case_t switch_case = instruction->value.switch_.cases.buffer[i];
+                if (!ir_is_integer_type(switch_case.const_val.type)) {
+                    append_ir_validation_error(errors, (ir_validation_error_t) {
+                        .instruction = instruction,
+                        .message = "switch case expression must have integer type",
+                    });
+                }
+                // TODO: verify that there are no duplicate cases
+            }
             break;
         default:
             append_ir_validation_error(errors, (ir_validation_error_t) {
@@ -715,6 +739,23 @@ ir_validation_error_vector_t ir_validate_function(const ir_module_t *module, con
             case IR_BR_COND:
                 label = instr->value.branch.label;
                 break;
+            case IR_SWITCH: {
+                label = instr->value.switch_.default_label;
+                for (int j = 0; j < instr->value.switch_.cases.size; j += 1) {
+                    const char *case_label = instr->value.switch_.cases.buffer[j].label;
+                    if (label == NULL) {
+                        append_ir_validation_error(&errors, (ir_validation_error_t) {
+                            .instruction = instr,
+                            .message = "Missing label in switch case",
+                        });
+                    } else if (!hash_table_lookup(&labels, case_label, NULL)) {
+                        append_ir_validation_error(&errors, (ir_validation_error_t) {
+                            .instruction = instr,
+                            .message = "Invalid switch case target label",
+                        });
+                    }
+                }
+            }
             default:
                 break;
         }

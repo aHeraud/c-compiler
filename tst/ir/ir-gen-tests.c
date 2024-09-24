@@ -26,7 +26,7 @@ do { \
     if (size_equals) {                                                          \
         for (int i = 0; i < function->body.size; i += 1) {                      \
             const char *instruction =                                           \
-                ir_fmt_instr(alloca(512), 512, &function->body.buffer[i]);      \
+                ir_fmt_instr(alloca(1024), 1024, &function->body.buffer[i]);    \
             if (strcmp(_body[i], instruction) != 0) {                           \
                 body_equals = false;                                            \
                 fprintf(stderr, "Expected (at index %u): %s, Actual: %s\n",     \
@@ -43,9 +43,9 @@ do { \
         }                                                                       \
         fprintf(stderr, "\nActual:\n");                                         \
         for (int i = 0; i < function->body.size; i += 1) {                      \
-            char instr[512];                                                    \
+            char instr[1024];                                                   \
             fprintf(stderr, "%s\n",                                             \
-                ir_fmt_instr(instr, 512, &function->body.buffer[i]));           \
+                ir_fmt_instr(instr, 1024, &function->body.buffer[i]));          \
         }                                                                       \
         CU_FAIL()                                                               \
     }                                                                           \
@@ -1233,7 +1233,7 @@ void test_ir_gen_label_and_goto() {
     }));
 }
 
-void test_ir_forward_goto() {
+void test_ir_gen_forward_goto() {
     const char *input =
         "int main() {\n"
         "    goto end;\n"
@@ -1253,7 +1253,7 @@ void test_ir_forward_goto() {
     }));
 }
 
-void test_ir_while_break() {
+void test_ir_gen_while_break() {
     const char *input =
         "int main() {\n"
         "    while (1) {\n"
@@ -1277,7 +1277,7 @@ void test_ir_while_break() {
     }));
 }
 
-void test_ir_do_while_break() {
+void test_ir_gen_do_while_break() {
     const char *input =
         "int main() {\n"
         "    do {\n"
@@ -1298,7 +1298,7 @@ void test_ir_do_while_break() {
     }));
 }
 
-void ir_test_for_break() {
+void test_ir_gen_for_break() {
     const char *input =
         "int main() {\n"
         "    for (;1;) {\n"
@@ -1320,7 +1320,7 @@ void ir_test_for_break() {
     }));
 }
 
-void ir_test_while_continue() {
+void test_ir_gen_while_continue() {
     const char *input =
         "int main() {\n"
         "    while (1) {\n"
@@ -1344,7 +1344,7 @@ void ir_test_while_continue() {
     }));
 }
 
-void ir_test_do_while_continue() {
+void test_ir_gen_do_while_continue() {
     const char *input =
         "int main() {\n"
         "    do {\n"
@@ -1368,7 +1368,7 @@ void ir_test_do_while_continue() {
     }));
 }
 
-void ir_test_for_continue() {
+void test_ir_gen_for_continue() {
     const char *input =
         "int main() {\n"
         "    for (;1;) {\n"
@@ -1660,6 +1660,132 @@ void ir_test_cast_expression() {
     }));
 }
 
+void test_ir_gen_empty_switch() {
+    const char *input =
+        "int main() {\n"
+        "    switch (1);\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "switch i32 1, l0, {  }",
+            "l0: nop",
+            "ret i32 0"
+    }));
+}
+
+void test_ir_gen_switch() {
+    const char *input =
+        "int foo(int bar) {\n"
+        "    switch(bar) {\n"
+        "        case 1: /* fall-through */;\n"
+        "        case 2:\n"
+        "            break;\n"
+        "        default:\n"
+        "            return 1;\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 bar, *i32 %0",
+        "i32 %1 = load *i32 %0",
+        "switch i32 %1, l3, { 1: l1, 2: l2 }",
+        "l1: nop",
+        "l2: nop",
+        "br l0",
+        /* I would have expected these labels/return statements to be in the opposite order, but this is equivalent */
+        "l0: nop",
+        "ret i32 0",
+        "l3: nop",
+        "ret i32 1"
+    }));
+}
+
+void test_ir_gen_switch_default_fallthrough() {
+    const char *input =
+            "int foo(int bar) {\n"
+            "    switch(bar) {\n"
+            "        case 0: break;\n"
+            "        default:\n"
+            "            bar = 0;\n"
+            "    }\n"
+            "    return 0;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 bar, *i32 %0",
+        "i32 %1 = load *i32 %0",
+        "switch i32 %1, l2, { 0: l1 }",
+        "l1: nop",
+        "br l0",
+        "l2: nop",
+        "store i32 0, *i32 %0",
+        "l0: nop",
+        "ret i32 0"
+    }));
+}
+
+void test_ir_gen_loop_inside_switch() {
+    const char *input =
+            "int foo(int bar) {\n"
+            "    switch(bar) {\n"
+            "        case 0:\n"
+            "            while (bar) { continue; }\n"
+            "            break;\n"
+            "        case 1:\n"
+            "            while (bar) { break; }\n"
+            "            break;\n"
+            "    }\n"
+            "    return 0;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 bar, *i32 %0",
+        "i32 %1 = load *i32 %0",
+        "switch i32 %1, l0, { 0: l1, 1: l5 }",
+        // case 1:
+        "l5: nop",
+        // while
+        "l6: nop",
+        // bar != 0
+        "i32 %4 = load *i32 %0",
+        "bool %5 = eq i32 %4, i32 0",
+        "br bool %5, l8",
+        "br l8",
+        "l8: nop",
+        "br l0",
+        "l0: nop",
+        "ret i32 0",
+        "l1: nop",
+        "l2: nop",
+        // while
+        "i32 %2 = load *i32 %0",
+        "bool %3 = eq i32 %2, i32 0",
+        "br bool %3, l4",
+        "br l3",
+        "l3: nop",
+        "br l2",
+        "l4: nop",
+        "br l0"
+    }));
+}
+
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -1726,13 +1852,13 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "unary logical not (constant)", test_ir_gen_unary_local_not_constexpr);
     CU_add_test(suite, "unary logical not", test_ir_gen_unary_local_not);
     CU_add_test(suite, "goto", test_ir_gen_label_and_goto);
-    CU_add_test(suite, "goto (forward)", test_ir_forward_goto);
-    CU_add_test(suite, "break (while)", test_ir_while_break);
-    CU_add_test(suite, "break (do-while)", test_ir_do_while_break);
-    CU_add_test(suite, "break (for)", ir_test_for_break);
-    CU_add_test(suite, "continue (while)", ir_test_while_continue);
-    CU_add_test(suite, "continue (do-while)", ir_test_do_while_continue);
-    CU_add_test(suite, "continue (for)", ir_test_for_continue);
+    CU_add_test(suite, "goto (forward)", test_ir_gen_forward_goto);
+    CU_add_test(suite, "break (while)", test_ir_gen_while_break);
+    CU_add_test(suite, "break (do-while)", test_ir_gen_do_while_break);
+    CU_add_test(suite, "break (for)", test_ir_gen_for_break);
+    CU_add_test(suite, "continue (while)", test_ir_gen_while_continue);
+    CU_add_test(suite, "continue (do-while)", test_ir_gen_do_while_continue);
+    CU_add_test(suite, "continue (for)", test_ir_gen_for_continue);
     CU_add_test(suite, "compound assignment (add)", ir_test_compound_assign_add);
     CU_add_test(suite, "compound assignment (sub)", ir_test_compound_assign_sub);
     CU_add_test(suite, "compound assignment (mul)", ir_test_compound_assign_mul);
@@ -1744,5 +1870,9 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "compound assignment (or)", ir_test_compound_assign_or);
     CU_add_test(suite, "compound assignment (xor)", ir_test_compound_assign_xor);
     CU_add_test(suite, "cast expression", ir_test_cast_expression);
+    CU_add_test(suite, "switch statement (empty)", test_ir_gen_empty_switch);
+    CU_add_test(suite, "switch statement", test_ir_gen_switch);
+    CU_add_test(suite, "switch statement (default fallthrough)", test_ir_gen_switch_default_fallthrough);
+    CU_add_test(suite, "loop inside switch statement", test_ir_gen_loop_inside_switch);
     return CUE_SUCCESS;
 }

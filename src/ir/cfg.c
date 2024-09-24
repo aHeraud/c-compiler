@@ -56,19 +56,34 @@ bool fall_through(const ir_instruction_t *instr) {
     switch (instr->opcode) {
         case IR_BR:
         case IR_RET:
+        case IR_SWITCH:
             return false;
         default:
             return true;
     }
 }
 
-const char* jump_target(const ir_instruction_t *instr) {
+/**
+ * Get the list of jump targets for an instruction (that is, labels that the instruction may
+ * conditionally/unconditionally transfer control to when executed).
+ * @param instr Instruction
+ * @param out Pointer to a vector to store the labels in
+ * @return True if the instruction jumps to at least 1 label, false otherwise
+ */
+bool jump_targets(const ir_instruction_t *instr, ptr_vector_t *out) {
     switch (instr->opcode) {
         case IR_BR:
         case IR_BR_COND:
-            return instr->value.branch.label;
+            VEC_APPEND(out, instr->value.branch.label);
+            return true;
+        case IR_SWITCH:
+            VEC_APPEND(out, instr->value.switch_.default_label);
+            for (int i = 0; i < instr->value.switch_.cases.size; i += 1) {
+                VEC_APPEND(out, instr->value.switch_.cases.buffer[i].label);
+            }
+            return true;
         default:
-            return NULL;
+            return false;
     }
 }
 
@@ -166,19 +181,22 @@ ir_control_flow_graph_t ir_create_control_flow_graph(const ir_function_definitio
         }
 
         ir_instruction_t *last_instr = bb->instructions.buffer[bb->instructions.size - 1];
-        const char *target = jump_target(last_instr);
-        if (target != NULL) {
-            // The last instruction is a branch, we need to find the basic block that contains the target label.
-            ir_basic_block_t *target_block = NULL;
-            if (hash_table_lookup(&label_to_block, target, (void**) &target_block)) {
-                bb_append_successor(bb, target_block);
-                bb_append_predecessor(target_block, bb);
+        ptr_vector_t targets = VEC_INIT;
+        if (jump_targets(last_instr, &targets)) {
+            // The last instruction is a branch, we need to find the basic block(s) that contains the target label(s).
+            for (int i = 0; i < targets.size; i += 1) {
+                const char *target = targets.buffer[i];
+                ir_basic_block_t *target_block = NULL;
+                if (hash_table_lookup(&label_to_block, target, (void**) &target_block)) {
+                    bb_append_successor(bb, target_block);
+                    bb_append_predecessor(target_block, bb);
+                }
             }
+            VEC_DESTROY(&targets);
         }
     }
 
     cfg.label_to_block_map = label_to_block;
-
     return cfg;
 }
 

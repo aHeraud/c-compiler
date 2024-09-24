@@ -357,6 +357,7 @@ typedef enum IrOpcode {
     IR_BR_COND,
     IR_CALL,
     IR_RET,
+    IR_SWITCH,
 
     /* Memory */
     IR_ALLOCA,
@@ -421,6 +422,12 @@ typedef struct IrGlobal {
     ir_const_t value;
 } ir_global_t;
 
+typedef struct IrSwitchCase {
+    ir_const_t const_val;
+    char *label;
+} ir_switch_case_t;
+VEC_DEFINE(IrSwitchCaseVector, ir_switch_case_vector_t, ir_switch_case_t)
+
 typedef struct IrInstruction {
     ir_opcode_t opcode;
     const char* label;
@@ -481,6 +488,11 @@ typedef struct IrInstruction {
             ir_value_t value;
             ir_value_t length;
         } memset;
+        struct {
+            ir_value_t value;
+            ir_switch_case_vector_t cases;
+            char *default_label;
+        } switch_;
     } value;
 } ir_instruction_t;
 

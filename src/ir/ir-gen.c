@@ -35,6 +35,8 @@ typedef struct IrGenContext {
     hash_table_t label_exists; // set of c label that actually exist, for validating the goto statements
     statement_ptr_vector_t goto_statements; // goto statements that need to be validated at the end of the fn
 
+    // Switch instruction node (in in a switch statement)
+    ir_instruction_node_t *switch_node;
     // Break label (if in a loop/switch case statement)
     char* break_label;
     // Continue label (if in a loop)
@@ -319,6 +321,8 @@ void ir_visit_loop_statement(ir_gen_context_t *context, const statement_t *state
 void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_continue_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_goto_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_switch_statement(ir_gen_context_t *context, const statement_t *statement);
+void ir_visit_case_statement(ir_gen_context_t *context, const statement_t *statement);
 void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 expression_result_t ir_visit_expression(ir_gen_context_t *context, const expression_t *expression);
@@ -677,6 +681,12 @@ void ir_visit_statement(ir_gen_context_t *context, const statement_t *statement)
         case STATEMENT_GOTO:
             ir_visit_goto_statement(context, statement);
             break;
+        case STATEMENT_SWITCH:
+            ir_visit_switch_statement(context, statement);
+            break;
+        case STATEMENT_CASE:
+            ir_visit_case_statement(context, statement);\
+            break;
         default:
             fprintf(stderr, "%s:%d: Invalid statement type\n", __FILE__, __LINE__);
             exit(1);
@@ -928,7 +938,7 @@ void ir_visit_break_statement(ir_gen_context_t *context, const statement_t *stat
     assert(statement != NULL && statement->kind == STATEMENT_BREAK);
     if (context->break_label == NULL) {
         append_compilation_error(&context->errors, (compilation_error_t) {
-            .kind = ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE,
+            .kind = ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH,
             .location = statement->value.break_.keyword->position,
             .value.break_outside_of_loop_or_switch_case = {
                 .keyword = *statement->value.break_.keyword,
@@ -1013,6 +1023,152 @@ void ir_visit_goto_statement(ir_gen_context_t *context, const statement_t *state
 
     // jump to the label
     ir_build_br(context->builder, ir_label);
+}
+
+void ir_visit_switch_statement(ir_gen_context_t *context, const statement_t *statement) {
+    // get the value for the controlling expression
+    expression_result_t expr = ir_visit_expression(context, statement->value.switch_.expression);
+    if (expr.kind == EXPR_RESULT_ERR) return;
+    if (expr.is_lvalue) expr = get_rvalue(context, expr);
+    if (expr.c_type->kind != TYPE_INTEGER) {
+        // must be an integer
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_SWITCH_EXPRESSION_TYPE,
+            .location = statement->value.switch_.keyword->position,
+            .value.invalid_switch_expression_type = {
+                .keyword = statement->value.switch_.keyword,
+                .type = expr.c_type,
+            }
+        });
+        return;
+    }
+
+    // generate the label that will be used to jump to the end of the switch statement
+    // this will also initially be the label for the default case, unless one is specified
+    char *exit_label = gen_label(context);
+
+    // create the switch instruction, it will be updated to add the case statements as we visit them
+    ir_instruction_node_t *switch_node = ir_build_switch(context->builder, expr.value, NULL);
+
+    // insert the switch instruction into the context, so we can add the cases as we find them
+    ir_instruction_node_t *prev_switch_node = context->switch_node;
+    context->switch_node = switch_node;
+
+    // insert the exit label into the context, so we can jump to it if we encounter a break statement
+    const char *prev_break_label = context->break_label;
+    context->break_label = exit_label;
+
+    // visit the switch statement body
+    ir_visit_statement(context, statement->value.case_.statement);
+
+    // restore the previous switch node (if this is a nested switch statement)
+    context->switch_node = prev_switch_node;
+
+    // restore the previous break label (if this is a nested switch statement, or inside of a loop)
+    context->break_label = prev_break_label;
+
+    // if the switch instruction doesn't contain a default case, add the exit label as the default
+    ir_instruction_t *instruction = ir_builder_get_instruction(switch_node);
+    if (instruction->value.switch_.default_label == NULL) instruction->value.switch_.default_label = exit_label;
+
+    ir_build_nop(context->builder, exit_label);
+}
+
+bool ir_switch_contains_case(ir_instruction_t *instruction, ir_const_t const_value) {
+    ir_switch_case_vector_t *cases = &instruction->value.switch_.cases;
+    // TODO: this could be painfully slow for switch statements with lots (tens of thousands of cases?)
+    //       consider a hashmap or bst instead of a vector to store the cases?
+    for (int i = 0; i < cases->size; i += 1) {
+        if (cases->buffer[i].const_val.value.i == const_value.value.i) return true;
+    }
+    return false;
+}
+
+void ir_visit_case_statement(ir_gen_context_t *context, const statement_t *statement) {
+    assert(statement->kind == STATEMENT_CASE);
+
+    ir_instruction_t *switch_instruction = NULL;
+
+    // a case statement can only appear in the body of a switch statement
+    if (context->switch_node == NULL) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CASE_STATEMENT_OUTSIDE_OF_SWITCH,
+            .location = statement->value.case_.keyword->position,
+            .value.case_statement_outside_of_switch = {
+                .keyword = statement->value.case_.keyword,
+            },
+        });
+        // recoverable, continue
+    } else {
+        switch_instruction = ir_builder_get_instruction(context->switch_node);
+    }
+
+    // label for the case statement
+    const char *case_label = gen_label(context);
+
+    // add the case to the switch instruction (if its valid)
+    if (statement->value.case_.expression != NULL) {
+        // get the value of the case statement
+        // must be a constant integer value
+        expression_result_t expr = ir_visit_expression(context, statement->value.case_.expression);
+        // the errors here are recoverable (in that we can continue semantic analysis), continue analysis but don't add
+        // the case to the switch instruction
+        if (expr.kind != EXPR_RESULT_ERR) {
+            if (expr.c_type->kind != TYPE_INTEGER || expr.value.kind != IR_VALUE_CONST) {
+                append_compilation_error(&context->errors, (compilation_error_t) {
+                    .kind = ERR_INVALID_CASE_EXPRESSION,
+                    .location = statement->value.case_.keyword->position,
+                    .value.invalid_case_expression = {
+                        .keyword = statement->value.case_.keyword,
+                        .type = expr.c_type,
+                    },
+                });
+            } else if (switch_instruction != NULL && ir_switch_contains_case(switch_instruction, expr.value.constant)) {
+                // duplicate cases are not allowed
+                append_compilation_error(&context->errors, (compilation_error_t) {
+                    .kind = ERR_DUPLICATE_SWITCH_CASE,
+                    .location = statement->value.case_.keyword->position,
+                    .value.duplicate_switch_case = {
+                        .keyword = statement->value.case_.keyword,
+                        .value = expr.value.constant.value.i,
+                    },
+                });
+            } else if (switch_instruction != NULL) {
+                // add the case to the switch statement
+                ir_switch_case_t switch_case = {
+                    .const_val = expr.value.constant,
+                    .label = case_label,
+                };
+                VEC_APPEND(&switch_instruction->value.switch_.cases, switch_case);
+            }
+        }
+    } else {
+        // default case
+        if (switch_instruction != NULL) {
+            // a switch statement can only contain one default case
+            if (switch_instruction->value.switch_.default_label != NULL) {
+                // error, duplicate default case
+                append_compilation_error(&context->errors, (compilation_error_t) {
+                    .kind = ERR_DUPLICATE_SWITCH_CASE,
+                    .location = statement->value.case_.keyword->position,
+                    .value.duplicate_switch_case = {
+                        .keyword = statement->value.case_.keyword,
+                    },
+                });
+            } else {
+                switch_instruction->value.switch_.default_label = case_label;
+            }
+        }
+    }
+
+    // Add the label
+    ir_build_nop(context->builder, case_label);
+
+    // visit the case body
+    ir_visit_statement(context, statement->value.case_.statement);
+
+    // We don't jump out of the switch statement here, that only happens if and when we visit a break statement
+    // inside the case statement.
 }
 
 void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer);

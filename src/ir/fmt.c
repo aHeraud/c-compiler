@@ -323,6 +323,27 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
         case IR_BITCAST:
             snprintf(buffer, size, "%s = bitcast %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
             break;
+        case IR_SWITCH: {
+            int len = snprintf(buffer, size, "switch %s, %s, { ", FMT_VAL(instr->value.switch_.value), instr->value.switch_.default_label);
+            buffer += len;
+            size -= len;
+            for (int i = 0; i < instr->value.switch_.cases.size; i += 1) {
+                ir_switch_case_t switch_case = instr->value.switch_.cases.buffer[i];
+                len = snprintf(buffer, size, "%s%lli: %s", i == 0 ? "" : ", ",
+                    switch_case.const_val.value.i, switch_case.label);
+                buffer += len;
+                size -= len;
+            }
+            len -= snprintf(buffer, size, " }");
+            // TODO: how to handle the buffer being too small to fit the entire case list?
+            //       for now just explode
+            if (len < 0) {
+                fprintf(stderr, "%s:%s:%d Internal Error, buffer too small to format instruction\n",
+                    __FILE__,  __func__, __LINE__);
+                exit(1);
+            }
+            break;
+        }
     }
 
     return start;

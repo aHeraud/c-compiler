@@ -271,10 +271,12 @@ typedef struct Statement {
             token_t *keyword;
         } continue_;
         struct {
+            token_t *keyword;
             expression_t *expression;
             struct Statement *statement;
         } switch_;
         struct {
+            token_t *keyword;
             expression_t *expression;
             struct Statement *statement;
         } case_;

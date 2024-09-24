@@ -94,6 +94,10 @@ void ir_builder_clear_after(ir_function_builder_t *builder, ir_instruction_node_
     position->next = NULL;
 }
 
+ir_instruction_t *ir_builder_get_instruction(ir_instruction_node_t *instruction_node) {
+    return &instruction_node->instruction;
+}
+
 ir_instruction_node_t *ir_builder_insert_instruction(
     ir_function_builder_t *builder, ir_instruction_t instruction
 ) {
@@ -403,6 +407,18 @@ ir_instruction_node_t *ir_build_ret_void(ir_function_builder_t *builder) {
         .opcode = IR_RET,
         .value.ret = {
             .has_value = false,
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
+ir_instruction_node_t *ir_build_switch(ir_function_builder_t *builder, ir_value_t value, char *default_label) {
+    ir_instruction_t instruction = {
+        .opcode = IR_SWITCH,
+        .value.switch_ = {
+            .value = value,
+            .cases = VEC_INIT,
+            .default_label = default_label
         }
     };
     return ir_builder_insert_instruction(builder, instruction);

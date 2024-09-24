@@ -154,7 +154,7 @@ void print_compilation_error(const compilation_error_t *error) {
                 prev.path, prev.line, prev.column);
             break;
         }
-        case ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH_CASE: {
+        case ERR_BREAK_OUTSIDE_OF_LOOP_OR_SWITCH: {
             fprintf(stderr, ERROR_PREFIX "break statement is only allowed inside of the body of a loop or switch case\n",
                 error->location.path, error->location.line, error->location.column);
             break;
@@ -196,6 +196,34 @@ void print_compilation_error(const compilation_error_t *error) {
             fprintf(stderr, ERROR_PREFIX "Returning void from non-void function %s",
                 error->location.path, error->location.line, error->location.column,
                 error->value.non_void_function_returns_void.fn->identifier->value);
+            break;
+        }
+        case ERR_INVALID_SWITCH_EXPRESSION_TYPE: {
+            // TODO: print type
+            fprintf(stderr, ERROR_PREFIX "Switch statement expression must have integer type\n",
+                error->location.path, error->location.line, error->location.column);
+            break;
+        }
+        case ERR_INVALID_CASE_EXPRESSION: {
+            fprintf(stderr, ERROR_PREFIX "Case statement expression must be constant and have integer type\n",
+                error->location.path, error->location.line, error->location.column);
+            break;
+        }
+        case ERR_CASE_STATEMENT_OUTSIDE_OF_SWITCH: {
+            fprintf(stderr, ERROR_PREFIX "Case/default statement outside of switch statement\n",
+                error->location.path, error->location.line, error->location.column);
+            break;
+        }
+        case ERR_DUPLICATE_SWITCH_CASE: {
+            // TODO: show location of the first case as extra info?
+            if (error->value.duplicate_switch_case.keyword->kind == TK_DEFAULT) {
+                fprintf(stderr, ERROR_PREFIX "Duplicate default case in switch statement\n",
+                    error->location.path, error->location.line, error->location.column);
+            } else {
+                fprintf(stderr, ERROR_PREFIX "Duplicate case in switch statement with value %lli\n",
+                    error->location.path, error->location.line, error->location.column,
+                    error->value.duplicate_switch_case.value);
+            }
             break;
         }
         default: {
