@@ -19,7 +19,7 @@ void send(int *to, int *from, int count) {
 }
 
 int main(int argc, char **argv) {
-    int from[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
+    int from[20] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
     int to[20];
     send(to, from, 20);
 

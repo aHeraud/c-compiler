@@ -595,6 +595,52 @@ void test_ir_gen_indirect_store() {
     }));
 }
 
+void test_ir_gen_ptr_increment_deref_and_write() {
+    const char *input =
+        "void test(int *ptr) {\n"
+        "    *ptr++ = 4;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "**i32 %0 = alloca *i32",
+        "store *i32 ptr, **i32 %0",
+        "*i32 %1 = load **i32 %0",
+        "*i32 %2 = get_array_element_ptr *i32 %1, i32 1",
+        "store *i32 %2, **i32 %0",
+        "store i32 4, *i32 %1",
+        "ret void"
+    }));
+}
+
+void test_ir_gen_ptr_to_ptr_copy_and_increment() {
+    const char *input =
+            "void copy(int *from, int *to) {\n"
+            "    *to++ = *from++;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "**i32 %0 = alloca *i32",
+        "**i32 %1 = alloca *i32",
+        "store *i32 from, **i32 %0",
+        "store *i32 to, **i32 %1",
+        "*i32 %2 = load **i32 %1",
+        "*i32 %3 = get_array_element_ptr *i32 %2, i32 1",
+        "store *i32 %3, **i32 %1",
+        "*i32 %4 = load **i32 %0",
+        "*i32 %5 = get_array_element_ptr *i32 %4, i32 1",
+        "store *i32 %5, **i32 %0",
+        "i32 %6 = load *i32 %4",
+        "store i32 %6, *i32 %2",
+        "ret void"
+    }));
+}
+
 void test_ir_gen_array_load_constant_index() {
     // we use 1 as the index, because a[0] would be optimized away during ir generation
     const char* input = "int foo() {\n"
@@ -1786,22 +1832,6 @@ void test_ir_gen_loop_inside_switch() {
     }));
 }
 
-void test_ir_gen_ptr_to_ptr_copy_and_increment() {
-    const char *input =
-            "void copy(int *from, int *to) {\n"
-            "    *to++ = *from++;\n"
-            "}\n";
-    PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
-    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
-    const ir_function_definition_t *function = result.module->functions.buffer[0];
-    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "*i32 %0 = alloca i32",
-        "store i32 bar, *i32 %0",
-        "ret i32 0"
-    }));
-}
-
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -1839,6 +1869,8 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "address of variable", test_ir_gen_addr_of_variable);
     CU_add_test(suite, "indirect load", test_ir_gen_indirect_load);
     CU_add_test(suite, "indirect store", test_ir_gen_indirect_store);
+    CU_add_test(suite, "ptr increment deref and write", test_ir_gen_ptr_increment_deref_and_write);
+    CU_add_test(suite, "ptr to ptr copy and increment", test_ir_gen_ptr_to_ptr_copy_and_increment);
     CU_add_test(suite, "array load constant index", test_ir_gen_array_load_constant_index);
     CU_add_test(suite, "array store constant index", test_ir_gen_array_store_constant_index);
     CU_add_test(suite, "array load variable index", test_ir_gen_array_load_variable_index);
@@ -1890,6 +1922,5 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "switch statement", test_ir_gen_switch);
     CU_add_test(suite, "switch statement (default fallthrough)", test_ir_gen_switch_default_fallthrough);
     CU_add_test(suite, "loop inside switch statement", test_ir_gen_loop_inside_switch);
-    CU_add_test(suite, "ptr to ptr copy and increment", test_ir_gen_ptr_to_ptr_copy_and_increment);
     return CUE_SUCCESS;
 }

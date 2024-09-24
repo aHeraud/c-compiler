@@ -2151,7 +2151,6 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
         if (right.c_type == NULL) return EXPR_ERR;
     }
 
-
     ir_value_t ptr;
     if (left.kind == EXPR_RESULT_VALUE) {
         ptr = left.value;
@@ -2832,6 +2831,7 @@ expression_result_t ir_visit_increment_decrement(ir_gen_context_t *context, cons
         });
         return EXPR_ERR;
     }
+
     expression_result_t rvalue = get_rvalue(context, lvalue);
     if (rvalue.kind == EXPR_RESULT_ERR) return EXPR_ERR;
 
@@ -3711,8 +3711,8 @@ ir_value_t ir_value_for_var(ir_var_t var) {
 ir_value_t get_indirect_ptr(ir_gen_context_t *context, expression_result_t res) {
     assert(res.kind == EXPR_RESULT_INDIRECTION && "Expected indirection expression");
 
-    // We need to load the value from a pointer.
-    // However, there may be multiple levels of indirection, each requiring a load.
+    // We may need to load the value from a pointer.
+    // However, there may be multiple levels of indirection, eachrequiring a load.
     expression_result_t *e = &res;
     int indirection_level = 0;
     do {
@@ -3720,6 +3720,11 @@ ir_value_t get_indirect_ptr(ir_gen_context_t *context, expression_result_t res) 
         e = e->indirection_inner;
         indirection_level += 1;
     } while (e->kind == EXPR_RESULT_INDIRECTION);
+
+    if (!e->is_lvalue) {
+        // value has already been loaded
+        indirection_level -= 1;
+    }
 
     // Starting at the base pointer, repeatedly load the new pointer
     ir_value_t ptr = e->value;

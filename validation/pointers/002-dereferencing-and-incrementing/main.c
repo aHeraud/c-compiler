@@ -1,7 +1,7 @@
 int printf(const char *fmt, ...);
 
 void copy(int *to, int *from, int count) {
-    while (count > 0) {
+    while (count-- > 0) {
         *to++ = *from++;
     }
 }
