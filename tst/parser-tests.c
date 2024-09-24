@@ -188,6 +188,20 @@ void test_parse_primary_expression_parenthesized() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
 }
 
+void test_parse_primary_expression_parenthesized_identifier() {
+    lexer_global_context_t context = create_lexer_context();
+    char* input = "(count)";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
+    expression_t *expected = primary((primary_expression_t) {
+        .kind = PE_EXPRESSION,
+        .value.expression = make_identifier("count"),
+    });
+    CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
+}
+
 void test_parse_postfix_expression_function_call() {
     lexer_global_context_t context = create_lexer_context();
     char* input = "pow(4,2)";
@@ -2326,6 +2340,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "primary expression - float", test_parse_primary_expression_float) ||
         NULL == CU_add_test(pSuite, "primary expression - char", test_parse_primary_expression_char) ||
         NULL == CU_add_test(pSuite, "primary expression - parenthesized", test_parse_primary_expression_parenthesized) ||
+        NULL == CU_add_test(pSuite, "primary expression - parenthesized identifier", test_parse_primary_expression_parenthesized_identifier) ||
         NULL == CU_add_test(pSuite, "postfix expression - function call", test_parse_postfix_expression_function_call) ||
         NULL == CU_add_test(pSuite, "postfix expression - array subscript", test_parse_postfix_expression_array_subscript) ||
         NULL == CU_add_test(pSuite, "postfix expression - multiple postfix expressions", test_parse_postfix_expression_2d_array_subscript) ||

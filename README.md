@@ -197,7 +197,7 @@ Control Flow:
 - [x] Break
 - [x] Continue
 - [x] Labeled statements, Goto
-- [ ] Switch statements
+- [x] Switch statements
 
 Types:
 - [x] Char

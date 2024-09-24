@@ -1786,6 +1786,22 @@ void test_ir_gen_loop_inside_switch() {
     }));
 }
 
+void test_ir_gen_ptr_to_ptr_copy_and_increment() {
+    const char *input =
+            "void copy(int *from, int *to) {\n"
+            "    *to++ = *from++;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 bar, *i32 %0",
+        "ret i32 0"
+    }));
+}
+
 int ir_gen_tests_init_suite() {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -1874,5 +1890,6 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "switch statement", test_ir_gen_switch);
     CU_add_test(suite, "switch statement (default fallthrough)", test_ir_gen_switch_default_fallthrough);
     CU_add_test(suite, "loop inside switch statement", test_ir_gen_loop_inside_switch);
+    CU_add_test(suite, "ptr to ptr copy and increment", test_ir_gen_ptr_to_ptr_copy_and_increment);
     return CUE_SUCCESS;
 }

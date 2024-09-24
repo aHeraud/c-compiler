@@ -2144,7 +2144,6 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
 
     if (right.is_lvalue) right = get_rvalue(context, right);
 
-
     // Generate an assignment instruction.
     if (!types_equal(left.c_type, right.c_type)) {
         // Convert the right operand to the type of the left operand.

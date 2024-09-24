@@ -239,7 +239,8 @@ void llvm_gen_visit_instruction(
     // block boundaries are just stored on the stack.
 
     bool is_last_instr_in_block = &ir_block->instructions.buffer[ir_block->instructions.size - 1] == instr;
-    bool is_terminator = instr->opcode == IR_RET || instr->opcode == IR_BR || instr->opcode == IR_BR_COND;
+    bool is_terminator = instr->opcode == IR_RET || instr->opcode == IR_BR || instr->opcode == IR_BR_COND ||
+                         instr->opcode == IR_SWITCH;
 
     switch (instr->opcode) {
         case IR_NOP:
@@ -634,6 +635,46 @@ void llvm_gen_visit_instruction(
                 ir_to_llvm_type(context, instr->value.unary_op.result.type),
                 "");
             hash_table_insert(&context->local_var_map, instr->value.unary_op.result.name, result);
+            break;
+        }
+        case IR_SWITCH: {
+            const char *default_label = instr->value.switch_.default_label;
+            ir_ssa_basic_block_t *default_block = NULL;
+            for (int i = 0; i < ir_block->successors.size; i += 1) {
+                if (strcmp(ir_block->successors.buffer[i]->label, default_label) == 0) {
+                    default_block = ir_block->successors.buffer[i];
+                    break;
+                }
+            }
+            assert(default_block != NULL && "Expected to find a block for the default/fall-through switch case");
+
+            LLVMValueRef llvm_switch = LLVMBuildSwitch(
+                context->llvm_builder,
+                ir_to_llvm_value(context, &instr->value.switch_.value),
+                llvm_get_or_create_basic_block(context, default_block),
+                instr->value.switch_.cases.size
+            );
+
+            // hashtable of label -> basic block
+            hash_table_t successors = hash_table_create_string_keys(128);
+            for (int i = 0; i < ir_block->successors.size; i += 1) {
+                ir_ssa_basic_block_t *succ = ir_block->successors.buffer[i];
+                hash_table_insert(&successors, succ->label, succ);
+            }
+
+            for (int i = 0; i < instr->value.switch_.cases.size; i += 1) {
+                ir_switch_case_t switch_case = instr->value.switch_.cases.buffer[i];
+                ir_ssa_basic_block_t *succ = NULL;
+                hash_table_lookup(&successors, switch_case.label, (void**) &succ);
+                assert(succ != NULL);
+                assert(switch_case.const_val.kind == IR_CONST_INT);
+
+                LLVMValueRef llvm_case_value =
+                    LLVMConstInt(ir_to_llvm_type(context, switch_case.const_val.type), switch_case.const_val.value.i, false);
+                LLVMAddCase(llvm_switch, llvm_case_value, llvm_get_or_create_basic_block(context, succ));
+            }
+
+            hash_table_destroy(&successors); // clean up
             break;
         }
         default:

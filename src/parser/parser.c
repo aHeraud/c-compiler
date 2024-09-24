@@ -3065,7 +3065,30 @@ bool multiplicative_expression_prime(parser_t* parser, expression_t* expr, const
 
 bool parse_cast_expression(parser_t *parser, expression_t *expr) {
     token_t *token = NULL;
-    if (accept(parser, TK_LPAREN, &token)) {
+
+    // Look ahead to see if this could possibly be a cast expression
+    // We expect to see '(' followed by a type name
+    // A special case is '(' followed by an identifier, which could either be a primary expression, or could be a
+    // cast expression if that identifier is a typedef-name (which we have to look up in the symbol table).
+    bool is_cast = false;
+    parse_checkpoint_t checkpoint = create_checkpoint(parser);
+    if (accept(parser, TK_LPAREN, NULL)) {
+        if (peek(parser, TK_IDENTIFIER) && typedef_name(parser, true, NULL, NULL)) {
+            is_cast = true;
+        } else {
+            // if the next token could be the start of a type name, then this is a cast expression,
+            for (int i = 0; i < sizeof (DECLARATION_SPECIFIER_TOKENS) / sizeof (token_kind_t); i += 1) {
+                if (peek(parser, DECLARATION_SPECIFIER_TOKENS[i])) {
+                    is_cast = true;
+                    break;
+                }
+            }
+        }
+    }
+    backtrack(parser, checkpoint);
+
+    if (is_cast) {
+        accept(parser, TK_LPAREN, &token);
         type_t *type = NULL;
         if (!parse_type_name(parser, &type)) {
             if (type != NULL) {
