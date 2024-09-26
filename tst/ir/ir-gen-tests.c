@@ -711,7 +711,7 @@ void test_ir_gen_array_index_on_ptr() {
                         "}";
     PARSE(input)
     ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
-    assert(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -721,6 +721,56 @@ void test_ir_gen_array_index_on_ptr() {
         "*i32 %2 = get_array_element_ptr *i32 %1, i32 0",
         "i32 %3 = load *i32 %2",
         "ret i32 %3"
+    }));
+}
+
+void test_ir_gen_array_unspecified_size_with_initializer() {
+    const char *input =
+        "int main() {\n"
+        "    int a[] = {1, 2, 3};\n"
+        "    return a[2];\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*[i32;3] %0 = alloca [i32;3]",
+        "*i32 %1 = bitcast *[i32;0] %0",
+        "*i32 %2 = get_array_element_ptr *i32 %1, i64 0",
+        "store i32 1, *i32 %2",
+        "*i32 %3 = get_array_element_ptr *i32 %1, i64 1",
+        "store i32 2, *i32 %3",
+        "*i32 %4 = get_array_element_ptr *i32 %1, i64 2",
+        "store i32 3, *i32 %4",
+        "*i32 %5 = get_array_element_ptr *[i32;3] %0, i32 2",
+        "i32 %6 = load *i32 %5",
+        "ret i32 %6"
+    }));
+}
+
+void test_ir_gen_array_initializer_with_designators() {
+    const char *input =
+        "int main() {\n"
+        "    int a[] = { 1, [4] = 4, [2] = 2, 3 };\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*[i32;5] %0 = alloca [i32;5]",
+        "*i32 %1 = bitcast *[i32;0] %0",
+        "*i32 %2 = get_array_element_ptr *i32 %1, i64 0",
+        "store i32 1, *i32 %2",
+        "*i32 %3 = get_array_element_ptr *i32 %1, i64 4",
+        "store i32 4, *i32 %3",
+        "*i32 %4 = get_array_element_ptr *i32 %1, i64 2",
+        "store i32 2, *i32 %4",
+        "*i32 %5 = get_array_element_ptr *i32 %1, i64 3",
+        "store i32 3, *i32 %5",
+        "ret i32 0"
     }));
 }
 
@@ -1875,6 +1925,8 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "array store constant index", test_ir_gen_array_store_constant_index);
     CU_add_test(suite, "array load variable index", test_ir_gen_array_load_variable_index);
     CU_add_test(suite, "array load ptr", test_ir_gen_array_index_on_ptr);
+    CU_add_test(suite, "array (unspecified size) with initializer", test_ir_gen_array_unspecified_size_with_initializer);
+    CU_add_test(suite, "array initializer with designators", test_ir_gen_array_initializer_with_designators);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);

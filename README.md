@@ -212,7 +212,7 @@ Types:
 - [x] Arrays
 - [ ] Variable-length arrays
 - [ ] Constant array initializers
-- [ ] Designated array initializers
+- [x] Designated array initializers
 - [x] Structs
 - [ ] Bitfields
 - [ ] Struct initializers

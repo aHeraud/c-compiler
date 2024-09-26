@@ -194,7 +194,7 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type);
 /**
  * Helper to insert alloca instructions for local variables at the top of the function.
  */
-void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t result);
+ir_instruction_node_t *insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t result);
 
 /**
  * Get the C integer type that is the same width as a pointer.
@@ -1171,43 +1171,131 @@ void ir_visit_case_statement(ir_gen_context_t *context, const statement_t *state
     // inside the case statement.
 }
 
-void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer);
+const ir_type_t *ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer);
 
-void ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer) {
+const ir_type_t *ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer) {
     const ir_type_t *type = ir_get_type_of_value(ptr);
     assert(type->kind == IR_TYPE_PTR);
     assert(type->value.ptr.pointee->kind == IR_TYPE_ARRAY);
     const ir_type_t *element_type = type->value.ptr.pointee->value.array.element;
     const ir_type_t *element_ptr_type = get_ir_ptr_type(element_type);
+    assert(c_type->kind == TYPE_ARRAY);
+    const type_t *c_element_type = c_type->value.array.element_type;
+
+    bool known_size = c_type->value.array.size != NULL;
+    if (!known_size) {
+        //if size is not known, treat the ir type as a raw pointer
+        ir_var_t tmp = temp_var(context, element_ptr_type);
+        ir_build_bitcast(context->builder, ptr, tmp);
+        ptr = ir_value_for_var(tmp);
+    }
 
     // TODO: if the initializer is constant and contiguous, we can declare it as a global constant and memcpy it
     // For now this just lazily generates code to initialize the array
+    int index = 0; // a designator could change the current index, so we track the array index separately than the index
+                   // into the list of initializer list elements
+    int inferred_array_length = 0;
     for (size_t i = 0; i < initializer->size; i += 1) {
         initializer_list_element_t element = initializer->buffer[i];
-        if (element.designation != NULL) {
-            // TODO: handle designators
-            fprintf(stderr, "%s:%d: Designators in array initializers are not implemented\n", __FILE__, __LINE__);
-        } else {
-            if (i >= type->value.ptr.pointee->value.array.length) {
-                // TODO: warn that initializer is longer than array
-                break;
+        if (element.designation != NULL && element.designation->size > 0) {
+            // Handle the designator top level designator, then recursively visit the initializer
+            designator_t designator = element.designation->buffer[0];
+            if (designator.kind != DESIGNATOR_INDEX) {
+                // TODO: error for invalid designator
+                // TODO: source position for designators
+                fprintf(stderr, "field designator can only be used to initialize a struct or union type\n");
+                exit(1);
             }
-            ir_value_t index = ir_make_const_int(ir_ptr_int_type(context), i);
+            expression_result_t index_expr = ir_visit_expression(context, designator.value.index);
+            if (index_expr.kind == EXPR_RESULT_ERR) continue;
+            if (index_expr.is_lvalue) index_expr = get_rvalue(context, index_expr);
+            if (index_expr.value.kind != IR_VALUE_CONST) {
+                // TODO: error for non constant array index designator expression
+                // TODO: source position for designators
+                fprintf(stderr, "array index designator must be a constant expression\n");
+                exit(1);
+            }
+            if (index_expr.value.constant.kind != IR_CONST_INT) {
+                // TODO: array index designator constant must have integer type
+                // TODO: source position for designators
+                fprintf(stderr, "array index designator must have integer type\n");
+                exit(1);
+            }
+
+            // the designators modifies the current array index, the next element in the array will start after the new
+            // index of the current element
+            index = index_expr.value.constant.value.i;
             ir_var_t element_ptr = temp_var(context, element_ptr_type);
-            ir_build_get_array_element_ptr(context->builder, ptr, index, element_ptr);
+            ir_build_get_array_element_ptr(context->builder, ptr, ir_make_const_int(ir_ptr_int_type(context), index), element_ptr);
+
+            if (element.designation->size > 1) {
+                // create a new initializer list that just includes this element, with the first designator removed
+                designator_list_t nested_designators = VEC_INIT;
+                for (int j = 1; j < element.designation->size; j += 1) {
+                    VEC_APPEND(&nested_designators, element.designation->buffer[i]);
+                }
+                initializer_list_t nested_initializer_list = VEC_INIT;
+                initializer_list_element_t nested_element = {
+                    .designation = &nested_designators,
+                    .initializer = element.initializer,
+                };
+                VEC_APPEND(&nested_initializer_list, nested_element);
+                initializer_t nested_initializer = {
+                    .kind = INITIALIZER_LIST,
+                    .span = element.initializer->span, // TODO: this should include the designator
+                    .value.list = &nested_initializer_list,
+                };
+                // recursively visit it
+                ir_visit_initializer(context, ir_value_for_var(element_ptr), c_element_type, &nested_initializer);
+            } else {
+                // visit the initializer
+                ir_visit_initializer(context, ir_value_for_var(element_ptr), c_element_type, element.initializer);
+            }
+        } else {
+            // For fixed size arrays, we will ignore elements in the initializer list that exceed the length of the
+            // array. Arrays without a specified size (e.g. `int a[] = {1, 2, 3};`) are a special case, where we ignore
+            // the ir array type length.
+            if (known_size && i >= type->value.ptr.pointee->value.array.length) {
+                // TODO: warn that initializer is longer than array
+                continue;
+            }
+            ir_value_t index_val = ir_make_const_int(ir_ptr_int_type(context), index);
+            ir_var_t element_ptr = temp_var(context, element_ptr_type);
+            ir_build_get_array_element_ptr(context->builder, ptr, index_val, element_ptr);
             ir_visit_initializer(context, ir_value_for_var(element_ptr), c_type->value.array.element_type, element.initializer);
         }
+
+        // book keeping for the array index
+        index += 1;
+        if (index > inferred_array_length) inferred_array_length = index;
+    }
+
+    // Return the type of the array
+    // We need to do this to handle arrays without a specified size (e.g. `int a[] = {1, 2, 3};`), as the size is
+    // inferred from the initializer, which we hadn't visited yet when we created the symbol.
+    if (known_size) {
+        // known size, can just return the type
+        return ir_get_type_of_value(ptr)->value.ptr.pointee;
+    } else {
+        // create a new type with the inferred length
+        ir_type_t *new_type = malloc(sizeof(ir_type_t));
+        *new_type = (ir_type_t) {
+            .kind = IR_TYPE_ARRAY,
+            .value.array = {
+                .element = element_type,
+                .length = inferred_array_length,
+            },
+        };
+        return new_type;
     }
 }
 
-void ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
+const ir_type_t *ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
     const ir_type_t *ir_type = ir_get_type_of_value(ptr);
     assert(ir_type->kind == IR_TYPE_PTR);
     switch (ir_type->value.ptr.pointee->kind) {
-        case IR_TYPE_ARRAY: {
-            ir_visit_array_initializer(context, ptr, c_type, initializer_list);
-            break;
-        }
+        case IR_TYPE_ARRAY:
+            return ir_visit_array_initializer(context, ptr, c_type, initializer_list);
         case IR_TYPE_STRUCT_OR_UNION: {
             // TODO
             fprintf(stderr, "%s:%d: Codegen for struct initializer lists unimplemented\n", __FILE__, __LINE__);
@@ -1220,13 +1308,13 @@ void ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const 
     }
 }
 
-void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer) {
+const ir_type_t *ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer) {
     switch (initializer->kind) {
         case INITIALIZER_EXPRESSION: {
             expression_result_t result =  ir_visit_expression(context, initializer->value.expression);
 
             // Error occurred while evaluating the initializer
-            if (result.kind == EXPR_RESULT_ERR) return;
+            if (result.kind == EXPR_RESULT_ERR) return NULL;
 
             // If the initializer is an lvalue, load the value
             // TODO: not sure that this is correct
@@ -1234,17 +1322,17 @@ void ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_
 
             // Verify that the types are compatible, convert if necessary
             result = convert_to_type(context, result.value, result.c_type, var_ctype);
-            if (result.kind == EXPR_RESULT_ERR) return;
+            if (result.kind == EXPR_RESULT_ERR) return NULL;
 
             // Store the result in the allocated storage
             ir_build_store(context->builder, ptr, result.value);
             break;
         }
         case INITIALIZER_LIST: {
-            ir_visit_initializer_list(context, ptr, var_ctype, initializer->value.list);
-            break;
+            return ir_visit_initializer_list(context, ptr, var_ctype, initializer->value.list);
         }
     }
+    return NULL;
 }
 
 bool is_tag_incomplete_type(const tag_t *tag) {
@@ -1575,11 +1663,24 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
     declare_symbol(context, symbol);
 
     // Allocate storage space for the variable
-    insert_alloca(context, ir_type, symbol->ir_ptr);
+    ir_instruction_node_t *alloca_node = insert_alloca(context, ir_type, symbol->ir_ptr);
 
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
-        ir_visit_initializer(context, ir_value_for_var(symbol->ir_ptr), symbol->c_type, declaration->initializer);
+        const ir_type_t * value_type = ir_visit_initializer(context, ir_value_for_var(symbol->ir_ptr), symbol->c_type, declaration->initializer);
+
+        // If the variable was an array with a length inferred from the initializer list (e.g. `int a[] = {1, 2, 3};`),
+        // we need to go back and update the symbol type and alloca parameter now that we know the size.
+        // TODO: this seems like a hack, maybe there's a better way to do this?
+        if (value_type != NULL && c_type->kind == TYPE_ARRAY && c_type->value.array.size == NULL) {
+            // update the symbol
+            symbol->ir_type = value_type;
+            symbol->ir_ptr.type = get_ir_ptr_type(value_type);
+            // update the alloca instruction
+            ir_instruction_t *alloca_instr = ir_builder_get_instruction(alloca_node);
+            alloca_instr->value.alloca.type = value_type;
+            alloca_instr->value.alloca.result = symbol->ir_ptr;
+        }
     }
 }
 
@@ -3772,18 +3873,21 @@ expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t re
     }
 }
 
-void insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t result) {
+ir_instruction_node_t *insert_alloca(ir_gen_context_t *context, const ir_type_t *ir_type, ir_var_t result) {
     // save the current position of the builder
     ir_instruction_node_t *position = ir_builder_get_position(context->builder);
     bool should_restore = position != NULL && position != context->alloca_tail;
 
     ir_builder_position_after(context->builder, context->alloca_tail);
-    context->alloca_tail = ir_build_alloca(context->builder, ir_type, result);
+    ir_instruction_node_t *alloca_node = ir_build_alloca(context->builder, ir_type, result);
+    context->alloca_tail = alloca_node;
 
     // restore the builder position
     if (should_restore) {
         ir_builder_position_after(context->builder, position);
     }
+
+    return alloca_node;
 }
 
 const ir_type_t *ir_ptr_int_type(const ir_gen_context_t *context) {
