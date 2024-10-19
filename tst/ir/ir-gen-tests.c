@@ -8,7 +8,7 @@
 #include "ir/arch.h"
 
 /// IR generation tests
-/// These are extremely fragile, since they rely on the output of the IR generation matching excatly.
+/// These are a bit fragile, since they rely on the output of the IR generation matching exactly.
 /// This should probably be refactored in the future.
 
 #define PARSE(input)                                                             \
@@ -51,8 +51,8 @@ do { \
     }                                                                           \
 } while (0)
 
-void test_ir_gen_basic() {
-    const char* input = "int main() {\n"
+void test_ir_gen_basic(void) {
+    const char* input = "int main(void) {\n"
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
@@ -65,8 +65,8 @@ void test_ir_gen_basic() {
     });
 }
 
-void test_ir_gen_add_simple() {
-    const char* input = "float main() {\n"
+void test_ir_gen_add_simple(void) {
+    const char* input = "float main(void) {\n"
                         "    float a = 1.0f;\n"
                         "    float b = 2.0f;\n"
                         "    return a + b;\n"
@@ -88,8 +88,8 @@ void test_ir_gen_add_simple() {
     }));
 }
 
-void test_ir_gen_add_i32_f32() {
-    const char* input = "int main() {\n"
+void test_ir_gen_add_i32_f32(void) {
+    const char* input = "int main(void) {\n"
                         "    int a = 1;\n"
                         "    float b = 2.0f;\n"
                         "    return a + b;\n"
@@ -113,8 +113,8 @@ void test_ir_gen_add_i32_f32() {
     }));
 }
 
-void test_ir_gen_add_constants() {
-    const char* input = "float main() {\n"
+void test_ir_gen_add_constants(void) {
+    const char* input = "float main(void) {\n"
                         "    return 1.0f + 2.0f;\n"
                         "}\n";
     PARSE(input)
@@ -127,8 +127,8 @@ void test_ir_gen_add_constants() {
     }));
 }
 
-void test_ir_gen_sub_constants() {
-    const char* input = "int main() {\n"
+void test_ir_gen_sub_constants(void) {
+    const char* input = "int main(void) {\n"
                         "    return 3 - 5;\n"
                         "}\n";
     PARSE(input)
@@ -141,8 +141,8 @@ void test_ir_gen_sub_constants() {
     }));
 }
 
-void test_ir_gen_multiply_constants() {
-    const char* input = "int main() {\n"
+void test_ir_gen_multiply_constants(void) {
+    const char* input = "int main(void) {\n"
                         "    return 3 * 5;\n"
                         "}\n";
     PARSE(input)
@@ -155,8 +155,8 @@ void test_ir_gen_multiply_constants() {
     }));
 }
 
-void test_ir_gen_divide_constants() {
-    const char* input = "int main() {\n"
+void test_ir_gen_divide_constants(void) {
+    const char* input = "int main(void) {\n"
                         "    return 64 / 8;\n"
                         "}\n";
     PARSE(input)
@@ -169,8 +169,8 @@ void test_ir_gen_divide_constants() {
     }));
 }
 
-void test_ir_gen_divide_by_zero_float_constants() {
-    const char* input = "float main() {\n"
+void test_ir_gen_divide_by_zero_float_constants(void) {
+    const char* input = "float main(void) {\n"
                         "    return 1.0f / 0.0f;\n"
                         "}\n";
     PARSE(input)
@@ -183,8 +183,8 @@ void test_ir_gen_divide_by_zero_float_constants() {
     });
 }
 
-void test_ir_gen_divide_by_zero_integer_constants() {
-    const char* input = "int main() {\n"
+void test_ir_gen_divide_by_zero_integer_constants(void) {
+    const char* input = "int main(void) {\n"
                         "    return 1 / 0;\n"
                         "}\n";
     PARSE(input)
@@ -194,8 +194,8 @@ void test_ir_gen_divide_by_zero_integer_constants() {
     // For now we just make sure this doesn't crash
 }
 
-void test_ir_gen_mod_constants() {
-    const char* input = "int main() {\n"
+void test_ir_gen_mod_constants(void) {
+    const char* input = "int main(void) {\n"
                         "    return 5 % 3;\n"
                         "}\n";
     PARSE(input)
@@ -208,8 +208,8 @@ void test_ir_gen_mod_constants() {
     }));
 }
 
-void test_ir_gen_left_shift_constants() {
-    const char* input = "int main() {\n"
+void test_ir_gen_left_shift_constants(void) {
+    const char* input = "int main(void) {\n"
                         "    return 4 << 2;\n"
                         "}\n";
     PARSE(input)
@@ -222,8 +222,8 @@ void test_ir_gen_left_shift_constants() {
     }));
 }
 
-void test_ir_gen_right_shift_constants() {
-    const char* input = "int main() {\n"
+void test_ir_gen_right_shift_constants(void) {
+    const char* input = "int main(void) {\n"
                         "    return 3 >> 1;\n"
                         "}\n";
     PARSE(input)
@@ -236,8 +236,8 @@ void test_ir_gen_right_shift_constants() {
     }));
 }
 
-void test_ir_gen_logic_and_constants_1() {
-    const char* input = "int main() {\n"
+void test_ir_gen_logic_and_constants_1(void) {
+    const char* input = "int main(void) {\n"
                         "    return 1 && 0;\n"
                         "}\n";
     PARSE(input)
@@ -250,8 +250,8 @@ void test_ir_gen_logic_and_constants_1() {
     }));
 }
 
-void test_ir_gen_logic_and_constants_2() {
-    const char* input = "int main() {\n"
+void test_ir_gen_logic_and_constants_2(void) {
+    const char* input = "int main(void) {\n"
                         "    return 0 && 1;\n"
                         "}\n";
     PARSE(input)
@@ -264,8 +264,8 @@ void test_ir_gen_logic_and_constants_2() {
     }));
 }
 
-void test_ir_gen_logic_and_constants_3() {
-    const char* input = "int main() {\n"
+void test_ir_gen_logic_and_constants_3(void) {
+    const char* input = "int main(void) {\n"
                         "    return 1 && 1;\n"
                         "}\n";
     PARSE(input)
@@ -278,8 +278,8 @@ void test_ir_gen_logic_and_constants_3() {
     }));
 }
 
-void test_ir_gen_logic_or_constants_1() {
-    const char* input = "int main() {\n"
+void test_ir_gen_logic_or_constants_1(void) {
+    const char* input = "int main(void) {\n"
                         "    return 1 || 0;\n"
                         "}\n";
     PARSE(input)
@@ -292,8 +292,8 @@ void test_ir_gen_logic_or_constants_1() {
     }));
 }
 
-void test_ir_gen_logic_or_constants_2() {
-    const char* input = "int main() {\n"
+void test_ir_gen_logic_or_constants_2(void) {
+    const char* input = "int main(void) {\n"
                         "    return 0 || 1;\n"
                         "}\n";
     PARSE(input)
@@ -306,8 +306,8 @@ void test_ir_gen_logic_or_constants_2() {
     }));
 }
 
-void test_ir_gen_logic_or_constants_3() {
-    const char* input = "int main() {\n"
+void test_ir_gen_logic_or_constants_3(void) {
+    const char* input = "int main(void) {\n"
                         "    return 0 || 0;\n"
                         "}\n";
     PARSE(input)
@@ -320,8 +320,8 @@ void test_ir_gen_logic_or_constants_3() {
     }));
 }
 
-void test_ir_gen_ternary_expression_constants_1() {
-    const char* input = "int main() {\n"
+void test_ir_gen_ternary_expression_constants_1(void) {
+    const char* input = "int main(void) {\n"
                         "    return 1 ? 2 : 3;\n"
                         "}\n";
     PARSE(input)
@@ -334,8 +334,8 @@ void test_ir_gen_ternary_expression_constants_1() {
     }));
 }
 
-void test_ir_gen_ternary_expression_constants_2() {
-    const char* input = "int main() {\n"
+void test_ir_gen_ternary_expression_constants_2(void) {
+    const char* input = "int main(void) {\n"
                         "    return 0 ? 2 : 3;\n"
                         "}\n";
     PARSE(input)
@@ -348,8 +348,8 @@ void test_ir_gen_ternary_expression_constants_2() {
     }));
 }
 
-void test_ir_gen_prefix_increment_integer() {
-    const char *input = "int main() {\n"
+void test_ir_gen_prefix_increment_integer(void) {
+    const char *input = "int main(void) {\n"
                         "    int a = 1;\n"
                         "    int b = ++a;\n"
                         "    return 0;\n"
@@ -371,8 +371,8 @@ void test_ir_gen_prefix_increment_integer() {
     }));
 }
 
-void test_ir_gen_postfix_increment_integer() {
-    const char *input = "int main() {\n"
+void test_ir_gen_postfix_increment_integer(void) {
+    const char *input = "int main(void) {\n"
                         "    int a = 1;\n"
                         "    int b = a++;\n"
                         "    return 0;\n"
@@ -394,8 +394,8 @@ void test_ir_gen_postfix_increment_integer() {
     }));
 }
 
-void test_ir_gen_prefix_decrement_integer() {
-    const char *input = "int main() {\n"
+void test_ir_gen_prefix_decrement_integer(void) {
+    const char *input = "int main(void) {\n"
                         "    int a = 1;\n"
                         "    int b = --a;\n"
                         "    return 0;\n"
@@ -417,8 +417,8 @@ void test_ir_gen_prefix_decrement_integer() {
     }));
 }
 
-void test_ir_gen_postfix_decrement_integer() {
-    const char *input = "int main() {\n"
+void test_ir_gen_postfix_decrement_integer(void) {
+    const char *input = "int main(void) {\n"
                         "    int a = 1;\n"
                         "    int b = a--;\n"
                         "    return 0;\n"
@@ -440,8 +440,8 @@ void test_ir_gen_postfix_decrement_integer() {
     }));
 }
 
-void test_ir_gen_postfix_increment_float() {
-    const char *input = "int main() {\n"
+void test_ir_gen_postfix_increment_float(void) {
+    const char *input = "int main(void) {\n"
                         "    float a = 1.0f;\n"
                         "    float b = a++;\n"
                         "    return 0;\n"
@@ -463,8 +463,8 @@ void test_ir_gen_postfix_increment_float() {
     }));
 }
 
-void test_ir_gen_postfix_decrement_float() {
-    const char *input = "int main() {\n"
+void test_ir_gen_postfix_decrement_float(void) {
+    const char *input = "int main(void) {\n"
                         "    float a = 1.0f;\n"
                         "    float b = a--;\n"
                         "    return 0;\n"
@@ -486,8 +486,8 @@ void test_ir_gen_postfix_decrement_float() {
     }));
 }
 
-void test_ir_gen_postfix_increment_pointer() {
-    const char *input = "int main() {\n"
+void test_ir_gen_postfix_increment_pointer(void) {
+    const char *input = "int main(void) {\n"
                         "    int x = 0;\n"
                         "    int *a = &x;\n"
                         "    int *b = a++;\n"
@@ -512,8 +512,8 @@ void test_ir_gen_postfix_increment_pointer() {
     }));
 }
 
-void test_ir_gen_postfix_decrement_pointer() {
-    const char *input = "int main() {\n"
+void test_ir_gen_postfix_decrement_pointer(void) {
+    const char *input = "int main(void) {\n"
                         "    int x = 0;\n"
                         "    int *a = &x;\n"
                         "    int *b = a--;\n"
@@ -538,8 +538,8 @@ void test_ir_gen_postfix_decrement_pointer() {
     }));
 }
 
-void test_ir_gen_addr_of_variable() {
-    const char* input = "int main() {\n"
+void test_ir_gen_addr_of_variable(void) {
+    const char* input = "int main(void) {\n"
                         "    int a = 1;\n"
                         "    int *b = &a;\n"
                         "    return 0;\n"
@@ -558,7 +558,7 @@ void test_ir_gen_addr_of_variable() {
     }));
 }
 
-void test_ir_gen_indirect_load() {
+void test_ir_gen_indirect_load(void) {
     const char* input = "int foo(int *a) {\n"
                         "    return *a;\n"
                         "}\n";
@@ -576,7 +576,7 @@ void test_ir_gen_indirect_load() {
     }));
 }
 
-void test_ir_gen_indirect_store() {
+void test_ir_gen_indirect_store(void) {
     const char* input = "int foo(int *a) {\n"
                         "    *a = 1;\n"
                         "    return 0;\n"
@@ -595,7 +595,7 @@ void test_ir_gen_indirect_store() {
     }));
 }
 
-void test_ir_gen_ptr_increment_deref_and_write() {
+void test_ir_gen_ptr_increment_deref_and_write(void) {
     const char *input =
         "void test(int *ptr) {\n"
         "    *ptr++ = 4;\n"
@@ -615,7 +615,7 @@ void test_ir_gen_ptr_increment_deref_and_write() {
     }));
 }
 
-void test_ir_gen_ptr_to_ptr_copy_and_increment() {
+void test_ir_gen_ptr_to_ptr_copy_and_increment(void) {
     const char *input =
             "void copy(int *from, int *to) {\n"
             "    *to++ = *from++;\n"
@@ -641,9 +641,9 @@ void test_ir_gen_ptr_to_ptr_copy_and_increment() {
     }));
 }
 
-void test_ir_gen_array_load_constant_index() {
+void test_ir_gen_array_load_constant_index(void) {
     // we use 1 as the index, because a[0] would be optimized away during ir generation
-    const char* input = "int foo() {\n"
+    const char* input = "int foo(void) {\n"
                         "    int a[2];\n"
                         "    int b = a[1];\n"
                         "}";
@@ -662,9 +662,9 @@ void test_ir_gen_array_load_constant_index() {
     }));
 }
 
-void test_ir_gen_array_store_constant_index() {
+void test_ir_gen_array_store_constant_index(void) {
     // we use 1 as the index, because a[0] would be optimized away during ir generation
-    const char* input = "int foo() {\n"
+    const char* input = "int foo(void) {\n"
                         "    int a[2];\n"
                         "    a[1] = 10;\n"
                         "}";
@@ -681,8 +681,8 @@ void test_ir_gen_array_store_constant_index() {
     }));
 }
 
-void test_ir_gen_array_load_variable_index() {
-    const char* input = "int foo() {\n"
+void test_ir_gen_array_load_variable_index(void) {
+    const char* input = "int foo(void) {\n"
                         "    int a[2];\n"
                         "    int i = 0;\n"
                         "    int b = a[i];\n"
@@ -705,7 +705,7 @@ void test_ir_gen_array_load_variable_index() {
     }));
 }
 
-void test_ir_gen_array_index_on_ptr() {
+void test_ir_gen_array_index_on_ptr(void) {
     const char* input = "int foo(int *a) {\n"
                         "    return a[0];\n"
                         "}";
@@ -724,9 +724,9 @@ void test_ir_gen_array_index_on_ptr() {
     }));
 }
 
-void test_ir_gen_array_unspecified_size_with_initializer() {
+void test_ir_gen_array_unspecified_size_with_initializer(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    int a[] = {1, 2, 3};\n"
         "    return a[2];\n"
         "}\n";
@@ -749,9 +749,9 @@ void test_ir_gen_array_unspecified_size_with_initializer() {
     }));
 }
 
-void test_ir_gen_array_initializer_with_designators() {
+void test_ir_gen_array_initializer_with_designators(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    int a[] = { 1, [4] = 4, [2] = 2, 3 };\n"
         "    return 0;\n"
         "}\n";
@@ -774,7 +774,7 @@ void test_ir_gen_array_initializer_with_designators() {
     }));
 }
 
-void test_ir_gen_if_else_statement() {
+void test_ir_gen_if_else_statement(void) {
     const char* input =
         "int main(int a) {\n"
         "    int x;\n"
@@ -807,10 +807,10 @@ void test_ir_gen_if_else_statement() {
     }));
 }
 
-void test_ir_gen_call_expr_returns_void() {
+void test_ir_gen_call_expr_returns_void(void) {
     const char* input =
         "void foo(int a);\n"
-        "int main() {\n"
+        "int main(void) {\n"
         "    foo(1);\n"
         "    return 0;\n"
         "}\n";
@@ -826,10 +826,10 @@ void test_ir_gen_call_expr_returns_void() {
     }));
 }
 
-void test_ir_gen_function_arg_promotion() {
+void test_ir_gen_function_arg_promotion(void) {
     const char* input =
         "void foo(double a);\n"
-        "int main() {\n"
+        "int main(void) {\n"
         "    float a = 1.0f;\n"
         "    foo(a);\n"
         "    return 0;\n"
@@ -850,10 +850,10 @@ void test_ir_gen_function_arg_promotion() {
     }));
 }
 
-void test_ir_gen_function_vararg_promotion() {
+void test_ir_gen_function_vararg_promotion(void) {
     const char* input =
         "int printf(const char *fmt, ...);\n"
-        "int main() {\n"
+        "int main(void) {\n"
         "    float a = 1.0f;\n"
         "    char b = 75;\n"
         "    short c = 1024;\n"
@@ -884,13 +884,13 @@ void test_ir_gen_function_vararg_promotion() {
     }));
 }
 
-void test_ir_gen_varargs_call() {
+void test_ir_gen_varargs_call(void) {
     // Test calling a function with a variable number of arguments
     // Important! The varargs arguments are _NOT_ converted to the type of the last named argument, they are just
     // passed as is after integer/float promotion.
     const char* input =
         "void foo(int a, ...);\n"
-        "int main() {\n"
+        "int main(void) {\n"
         "    int a = 1;\n"
         "    double b = 1.0;\n"
         "    char* c = \"hello\";\n"
@@ -919,9 +919,9 @@ void test_ir_gen_varargs_call() {
     }));
 }
 
-void test_ir_gen_implicit_return_void() {
+void test_ir_gen_implicit_return_void(void) {
     // No return statement, a return instruction should automatically be inserted
-    const char* input = "void foo() {}\n";
+    const char* input = "void foo(void) {}\n";
 
     PARSE(input)
     ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
@@ -933,7 +933,7 @@ void test_ir_gen_implicit_return_void() {
     }));
 }
 
-void test_ir_gen_conditional_expr_void() {
+void test_ir_gen_conditional_expr_void(void) {
     const char *input =
         "void foo();\n"
         "void bar();\n"
@@ -960,7 +960,7 @@ void test_ir_gen_conditional_expr_void() {
     }));
 }
 
-void test_ir_gen_conditional_expr_returning_int() {
+void test_ir_gen_conditional_expr_returning_int(void) {
     const char *input =
         "int main(int argc) {\n"
         "    int a = 1;"
@@ -995,9 +995,9 @@ void test_ir_gen_conditional_expr_returning_int() {
     }));
 }
 
-void test_ir_while_loop() {
+void test_ir_while_loop(void) {
     const char* input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    int x = 0;\n"
         "    while (x < 10) {\n"
         "        x = x + 1;\n"
@@ -1028,9 +1028,9 @@ void test_ir_while_loop() {
     }));
 }
 
-void test_ir_do_while_loop() {
+void test_ir_do_while_loop(void) {
     const char* input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    int x = 0;\n"
         "    do {\n"
         "        x = x + 1;\n"
@@ -1061,9 +1061,9 @@ void test_ir_do_while_loop() {
     }));
 }
 
-void test_ir_gen_for_loop_empty() {
+void test_ir_gen_for_loop_empty(void) {
     const char* input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    for (;;);\n"
         "    return 0;\n"
         "}\n";
@@ -1082,15 +1082,15 @@ void test_ir_gen_for_loop_empty() {
     }));
 }
 
-void test_ir_gen_declare_struct_type_global_scope() {
+void test_ir_gen_declare_struct_type_global_scope(void) {
     const char* input = "struct Foo { int a; };\n";
     PARSE(input)
     ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
     assert(result.errors.size == 0);
 }
 
-void test_ir_gen_declare_struct_default_initializer() {
-    const char* input = "int main() {"
+void test_ir_gen_declare_struct_default_initializer(void) {
+    const char* input = "int main(void) {"
                         "    struct Foo { int a; } foo;"
                         "}";
     PARSE(input)
@@ -1102,9 +1102,9 @@ void test_ir_gen_declare_struct_default_initializer() {
     }));
 }
 
-void test_ir_gen_struct_set_field() {
+void test_ir_gen_struct_set_field(void) {
     const char* input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    struct Foo { int a; } foo;\n"
         "    foo.a = 4;\n"
         "    return 0;\n"
@@ -1121,7 +1121,7 @@ void test_ir_gen_struct_set_field() {
     }));
 }
 
-void test_ir_gen_struct_ptr_set_field() {
+void test_ir_gen_struct_ptr_set_field(void) {
     const char* input =
         "struct Foo { int a; };"
         "int main(struct Foo *foo) {\n"
@@ -1142,9 +1142,9 @@ void test_ir_gen_struct_ptr_set_field() {
     }));
 }
 
-void test_ir_gen_struct_read_field() {
+void test_ir_gen_struct_read_field(void) {
     const char* input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    struct Foo { int a; } foo;\n"
         "    int a = foo.a;"
         "    return 0;"
@@ -1163,7 +1163,7 @@ void test_ir_gen_struct_read_field() {
     }));
 }
 
-void test_ir_gen_struct_ptr_read_field() {
+void test_ir_gen_struct_ptr_read_field(void) {
     const char* input =
         "struct Foo { int a; };"
         "int main(struct Foo *foo) {\n"
@@ -1186,11 +1186,11 @@ void test_ir_gen_struct_ptr_read_field() {
     }));
 }
 
-void test_ir_gen_struct_definition_scoping() {
+void test_ir_gen_struct_definition_scoping(void) {
     const char *input =
         "struct Foo { int a; };\n"
         "struct Foo foo;\n"
-        "int main() {\n"
+        "int main(void) {\n"
         "    struct Foo { double b; };\n" // hides the Foo tag declared in the global scope
         "    foo.a = 1;\n"                // the type of foo is Foo { int a; } so this still works
         "    return 0;\n"
@@ -1206,9 +1206,9 @@ void test_ir_gen_struct_definition_scoping() {
     }));
 }
 
-void test_ir_gen_anonymous_struct() {
+void test_ir_gen_anonymous_struct(void) {
     const char* input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    struct { int a; } foo;\n"
         "    foo.a = 0;\n"
         "    return 0;\n"
@@ -1225,7 +1225,7 @@ void test_ir_gen_anonymous_struct() {
     }));
 }
 
-void test_ir_gen_sizeof_type_primitive() {
+void test_ir_gen_sizeof_type_primitive(void) {
     // sizeof(type) is a compile time constant, so it can be a global initializer
     const char *input = "int size = sizeof(int);\n";
     PARSE(input)
@@ -1237,7 +1237,7 @@ void test_ir_gen_sizeof_type_primitive() {
     CU_ASSERT_EQUAL_FATAL(size->value.value.i, 4) // int = i32 on x86_64
 }
 
-void test_ir_gen_sizeof_type_struct() {
+void test_ir_gen_sizeof_type_struct(void) {
     // sizeof(type) is a compile time constant, so it can be a global initializer
     const char *input =
         "struct Foo { char a; int b; };\n"
@@ -1252,7 +1252,7 @@ void test_ir_gen_sizeof_type_struct() {
     CU_ASSERT_EQUAL_FATAL(size->value.value.i, 8)
 }
 
-void test_ir_gen_sizeof_unary_expression() {
+void test_ir_gen_sizeof_unary_expression(void) {
     const char *input =
         "float val = 0;\n"
         "int size = sizeof(val)\n;";
@@ -1266,9 +1266,9 @@ void test_ir_gen_sizeof_unary_expression() {
     CU_ASSERT_EQUAL_FATAL(size->value.value.i, 4)
 }
 
-void test_ir_gen_unary_local_not_constexpr() {
+void test_ir_gen_unary_local_not_constexpr(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    int a = !4;\n"
         "    int b = !0;\n"
         "    return 0;\n"
@@ -1286,7 +1286,7 @@ void test_ir_gen_unary_local_not_constexpr() {
     }));
 }
 
-void test_ir_gen_unary_local_not() {
+void test_ir_gen_unary_local_not(void) {
     const char *input =
         "int main(int a) {\n"
         "    int b = !a;\n"
@@ -1308,9 +1308,9 @@ void test_ir_gen_unary_local_not() {
     }));
 }
 
-void test_ir_gen_label_and_goto() {
+void test_ir_gen_label_and_goto(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    int a = 0;\n"
         "    lbl: a = 1;\n"
         "    goto lbl;\n"
@@ -1329,9 +1329,9 @@ void test_ir_gen_label_and_goto() {
     }));
 }
 
-void test_ir_gen_forward_goto() {
+void test_ir_gen_forward_goto(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    goto end;\n"
         "    int a = 1;\n"
         "    return a;\n"
@@ -1349,9 +1349,9 @@ void test_ir_gen_forward_goto() {
     }));
 }
 
-void test_ir_gen_while_break() {
+void test_ir_gen_while_break(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    while (1) {\n"
         "        break;\n"
         "    }\n"
@@ -1373,9 +1373,9 @@ void test_ir_gen_while_break() {
     }));
 }
 
-void test_ir_gen_do_while_break() {
+void test_ir_gen_do_while_break(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    do {\n"
         "        break;\n"
         "    } while (1);\n"
@@ -1394,9 +1394,9 @@ void test_ir_gen_do_while_break() {
     }));
 }
 
-void test_ir_gen_for_break() {
+void test_ir_gen_for_break(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    for (;1;) {\n"
         "        break;\n"
         "    }\n"
@@ -1416,9 +1416,9 @@ void test_ir_gen_for_break() {
     }));
 }
 
-void test_ir_gen_while_continue() {
+void test_ir_gen_while_continue(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    while (1) {\n"
         "        continue;\n"
         "    }\n"
@@ -1440,9 +1440,9 @@ void test_ir_gen_while_continue() {
     }));
 }
 
-void test_ir_gen_do_while_continue() {
+void test_ir_gen_do_while_continue(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    do {\n"
         "        continue;\n"
         "    } while (1);\n"
@@ -1464,9 +1464,9 @@ void test_ir_gen_do_while_continue() {
     }));
 }
 
-void test_ir_gen_for_continue() {
+void test_ir_gen_for_continue(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    for (;1;) {\n"
         "        continue;\n"
         "    }\n"
@@ -1488,9 +1488,9 @@ void test_ir_gen_for_continue() {
     }));
 }
 
-void ir_test_compound_assign_add() {
+void ir_test_compound_assign_add(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 0;\n"
             "a += 1;\n"
             "return 0;\n"
@@ -1512,9 +1512,9 @@ void ir_test_compound_assign_add() {
     }));
 }
 
-void ir_test_compound_assign_sub() {
+void ir_test_compound_assign_sub(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 0;\n"
             "a -= 1;\n"
             "return 0;\n"
@@ -1536,9 +1536,9 @@ void ir_test_compound_assign_sub() {
     }));
 }
 
-void ir_test_compound_assign_mul() {
+void ir_test_compound_assign_mul(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 1;\n"
             "a *= 2;\n"
             "return 0;\n"
@@ -1560,9 +1560,9 @@ void ir_test_compound_assign_mul() {
     }));
 }
 
-void ir_test_compound_assign_div() {
+void ir_test_compound_assign_div(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 1;\n"
             "a /= 2;\n"
             "return 0;\n"
@@ -1584,9 +1584,9 @@ void ir_test_compound_assign_div() {
     }));
 }
 
-void ir_test_compound_assign_mod() {
+void ir_test_compound_assign_mod(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 1;\n"
             "a %= 2;\n"
             "return 0;\n"
@@ -1608,9 +1608,9 @@ void ir_test_compound_assign_mod() {
     }));
 }
 
-void ir_test_compound_assign_and() {
+void ir_test_compound_assign_and(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 1;\n"
             "a &= 2;\n"
             "return 0;\n"
@@ -1632,9 +1632,9 @@ void ir_test_compound_assign_and() {
     }));
 }
 
-void ir_test_compound_assign_or() {
+void ir_test_compound_assign_or(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 1;\n"
             "a |= 2;\n"
             "return 0;\n"
@@ -1656,9 +1656,9 @@ void ir_test_compound_assign_or() {
     }));
 }
 
-void ir_test_compound_assign_xor() {
+void ir_test_compound_assign_xor(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 1;\n"
             "a ^= 2;\n"
             "return 0;\n"
@@ -1680,9 +1680,9 @@ void ir_test_compound_assign_xor() {
     }));
 }
 
-void ir_test_compound_assign_shl() {
+void ir_test_compound_assign_shl(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 1;\n"
             "a <<= 2;\n"
             "return 0;\n"
@@ -1704,9 +1704,9 @@ void ir_test_compound_assign_shl() {
     }));
 }
 
-void ir_test_compound_assign_shr() {
+void ir_test_compound_assign_shr(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 1;\n"
             "a >>= 2;\n"
             "return 0;\n"
@@ -1728,9 +1728,9 @@ void ir_test_compound_assign_shr() {
     }));
 }
 
-void ir_test_cast_expression() {
+void ir_test_cast_expression(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
             "int a = 2;\n"
             "double d = (float) a;\n"
             "return 0;\n"
@@ -1756,9 +1756,9 @@ void ir_test_cast_expression() {
     }));
 }
 
-void test_ir_gen_empty_switch() {
+void test_ir_gen_empty_switch(void) {
     const char *input =
-        "int main() {\n"
+        "int main(void) {\n"
         "    switch (1);\n"
         "    return 0;\n"
         "}\n";
@@ -1773,7 +1773,7 @@ void test_ir_gen_empty_switch() {
     }));
 }
 
-void test_ir_gen_switch() {
+void test_ir_gen_switch(void) {
     const char *input =
         "int foo(int bar) {\n"
         "    switch(bar) {\n"
@@ -1805,7 +1805,7 @@ void test_ir_gen_switch() {
     }));
 }
 
-void test_ir_gen_switch_default_fallthrough() {
+void test_ir_gen_switch_default_fallthrough(void) {
     const char *input =
             "int foo(int bar) {\n"
             "    switch(bar) {\n"
@@ -1833,7 +1833,7 @@ void test_ir_gen_switch_default_fallthrough() {
     }));
 }
 
-void test_ir_gen_loop_inside_switch() {
+void test_ir_gen_loop_inside_switch(void) {
     const char *input =
             "int foo(int bar) {\n"
             "    switch(bar) {\n"
@@ -1882,7 +1882,43 @@ void test_ir_gen_loop_inside_switch() {
     }));
 }
 
-int ir_gen_tests_init_suite() {
+void test_ir_gen_global_initializer_constant_propagation(void) {
+    const char *input =
+            "const int a = 14;\n"
+            "const int b = a + 1;\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_global_t *b = result.module->globals.buffer[1];
+    CU_ASSERT_TRUE_FATAL(b->initialized)
+    CU_ASSERT_TRUE_FATAL(b->value.kind == IR_CONST_INT)
+    CU_ASSERT_TRUE_FATAL(b->value.value.i == 15)
+}
+
+void test_ir_gen_constant_propagation(void) {
+    const char *input =
+            "int foo(void) {\n"
+            "    const int a = 1;\n"
+            "    const int b = 2;\n"
+            "    const int c = a + b;\n"
+            "    return a + b + c;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*i32 %0 = alloca i32",
+            "*i32 %1 = alloca i32",
+            "*i32 %2 = alloca i32",
+            "store i32 1, *i32 %0",
+            "store i32 2, *i32 %1",
+            "store i32 3, *i32 %2",
+            "ret i32 6"
+    }));
+}
+
+int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
         return CU_get_error();
@@ -1974,5 +2010,7 @@ int ir_gen_tests_init_suite() {
     CU_add_test(suite, "switch statement", test_ir_gen_switch);
     CU_add_test(suite, "switch statement (default fallthrough)", test_ir_gen_switch_default_fallthrough);
     CU_add_test(suite, "loop inside switch statement", test_ir_gen_loop_inside_switch);
+    CU_add_test(suite, "global initializer constant propagation", test_ir_gen_global_initializer_constant_propagation);
+    CU_add_test(suite, "constant propagation", test_ir_gen_constant_propagation);
     return CUE_SUCCESS;
 }

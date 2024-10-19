@@ -64,6 +64,7 @@ typedef enum ExpressionResultKind {
     EXPR_RESULT_INDIRECTION,
 } expression_result_kind_t;
 
+struct Symbol;
 struct ExpressionResult;
 typedef struct ExpressionResult {
     expression_result_kind_t kind;
@@ -71,6 +72,8 @@ typedef struct ExpressionResult {
     bool is_lvalue;
     bool addr_of;
     bool is_string_literal;
+    // Non-null if this was the result of a primary expression which was an identifier
+    const struct Symbol *symbol;
     // only 1 of these is initialized, depending on the value of kind
     ir_value_t value;
     struct ExpressionResult *indirection_inner;
@@ -100,6 +103,10 @@ typedef struct Symbol {
     const ir_type_t *ir_type;
     // Pointer to the memory location where this symbol is stored (variables only).
     ir_var_t ir_ptr;
+    // True if this has a constant value (e.g. constant storage class)
+    bool has_const_value;
+    // Constant value for this symbol, only valid if has_constant_value == true
+    ir_const_t const_value;
 } symbol_t;
 
 typedef struct Tag {
@@ -479,6 +486,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
                 .name = function->identifier->value,
                 .type = function_type,
             },
+            .has_const_value = false,
         };
         declare_symbol(context, symbol);
     }
@@ -525,6 +533,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
             .c_type = c_type,
             .ir_type = ir_param_type,
             .ir_ptr = param_ptr,
+            .has_const_value = false,
         };
         declare_symbol(context, symbol);
     }
@@ -1171,9 +1180,20 @@ void ir_visit_case_statement(ir_gen_context_t *context, const statement_t *state
     // inside the case statement.
 }
 
-const ir_type_t *ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer);
+typedef struct InitializerResult {
+    const ir_type_t *type;
+    bool has_const_value;
+    ir_const_t const_value;
+} ir_initializer_result_t;
 
-const ir_type_t *ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer) {
+const ir_initializer_result_t INITIALIZER_RESULT_ERR = {
+    .type = NULL,
+    .has_const_value = false,
+};
+
+ir_initializer_result_t ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer);
+
+ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer) {
     const ir_type_t *type = ir_get_type_of_value(ptr);
     assert(type->kind == IR_TYPE_PTR);
     assert(type->value.ptr.pointee->kind == IR_TYPE_ARRAY);
@@ -1265,7 +1285,7 @@ const ir_type_t *ir_visit_array_initializer(ir_gen_context_t *context, ir_value_
             ir_visit_initializer(context, ir_value_for_var(element_ptr), c_type->value.array.element_type, element.initializer);
         }
 
-        // book keeping for the array index
+        // bookkeeping for the array index
         index += 1;
         if (index > inferred_array_length) inferred_array_length = index;
     }
@@ -1275,7 +1295,10 @@ const ir_type_t *ir_visit_array_initializer(ir_gen_context_t *context, ir_value_
     // inferred from the initializer, which we hadn't visited yet when we created the symbol.
     if (known_size) {
         // known size, can just return the type
-        return ir_get_type_of_value(ptr)->value.ptr.pointee;
+        return (ir_initializer_result_t) {
+            .type = ir_get_type_of_value(ptr)->value.ptr.pointee,
+            .has_const_value = false, // TODO: constant arrays?
+        };
     } else {
         // create a new type with the inferred length
         ir_type_t *new_type = malloc(sizeof(ir_type_t));
@@ -1286,11 +1309,14 @@ const ir_type_t *ir_visit_array_initializer(ir_gen_context_t *context, ir_value_
                 .length = inferred_array_length,
             },
         };
-        return new_type;
+        return (ir_initializer_result_t) {
+            .type = new_type,
+            .has_const_value = false, // TODO: constant arrays?
+        };
     }
 }
 
-const ir_type_t *ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
+ir_initializer_result_t ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
     const ir_type_t *ir_type = ir_get_type_of_value(ptr);
     assert(ir_type->kind == IR_TYPE_PTR);
     switch (ir_type->value.ptr.pointee->kind) {
@@ -1308,13 +1334,13 @@ const ir_type_t *ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t
     }
 }
 
-const ir_type_t *ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer) {
+ir_initializer_result_t ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer) {
     switch (initializer->kind) {
         case INITIALIZER_EXPRESSION: {
             expression_result_t result =  ir_visit_expression(context, initializer->value.expression);
 
             // Error occurred while evaluating the initializer
-            if (result.kind == EXPR_RESULT_ERR) return NULL;
+            if (result.kind == EXPR_RESULT_ERR) return INITIALIZER_RESULT_ERR;
 
             // If the initializer is an lvalue, load the value
             // TODO: not sure that this is correct
@@ -1322,17 +1348,25 @@ const ir_type_t *ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr,
 
             // Verify that the types are compatible, convert if necessary
             result = convert_to_type(context, result.value, result.c_type, var_ctype);
-            if (result.kind == EXPR_RESULT_ERR) return NULL;
+            if (result.kind == EXPR_RESULT_ERR) return INITIALIZER_RESULT_ERR;
 
             // Store the result in the allocated storage
             ir_build_store(context->builder, ptr, result.value);
-            break;
+
+            return (ir_initializer_result_t) {
+                .type = ir_get_type_of_value(result.value),
+                .has_const_value = result.value.kind == IR_VALUE_CONST,
+                .const_value = result.value.constant,
+            };
         }
         case INITIALIZER_LIST: {
             return ir_visit_initializer_list(context, ptr, var_ctype, initializer->value.list);
         }
+        default: {
+            assert(false && "Invalid initializer kind");
+            exit(1);
+        }
     }
-    return NULL;
 }
 
 bool is_tag_incomplete_type(const tag_t *tag) {
@@ -1519,6 +1553,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
                 .name = name,
                 .type = is_function ? ir_type : get_ir_ptr_type(ir_type),
             },
+            .has_const_value = false,
         };
         declare_symbol(context, symbol);
 
@@ -1581,8 +1616,9 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             });
             return;
         }
-
         global->value = result.value.constant;
+        symbol->has_const_value = true;
+        symbol->const_value = result.value.constant;
     } else if (global != NULL) {
         // Default value for uninitialized global variables
         if (is_floating_type(declaration->type)) {
@@ -1658,7 +1694,8 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         .ir_ptr = (ir_var_t) {
             .name = temp_name(context),
             .type = get_ir_ptr_type(ir_type),
-        }
+        },
+        .has_const_value = false,
     };
     declare_symbol(context, symbol);
 
@@ -1667,7 +1704,9 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
 
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
-        const ir_type_t * value_type = ir_visit_initializer(context, ir_value_for_var(symbol->ir_ptr), symbol->c_type, declaration->initializer);
+        ir_initializer_result_t initializer_result =
+                ir_visit_initializer(context, ir_value_for_var(symbol->ir_ptr), symbol->c_type, declaration->initializer);
+        const ir_type_t *value_type = initializer_result.type;
 
         // If the variable was an array with a length inferred from the initializer list (e.g. `int a[] = {1, 2, 3};`),
         // we need to go back and update the symbol type and alloca parameter now that we know the size.
@@ -1680,6 +1719,14 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
             ir_instruction_t *alloca_instr = ir_builder_get_instruction(alloca_node);
             alloca_instr->value.alloca.type = value_type;
             alloca_instr->value.alloca.result = symbol->ir_ptr;
+        }
+
+        // If this variable has a constant type, and the initializer is a constant, then we can treat this as a compile
+        // time constant (e.g. for constant propagation, or for use in something requiring a constant expression).
+        // TODO: does this work correctly for pointers (e.g. `const int *foo = &bar`)?
+        if (symbol->c_type->is_const && initializer_result.has_const_value) {
+            symbol->has_const_value = true;
+            symbol->const_value = initializer_result.const_value;
         }
     }
 }
@@ -3092,6 +3139,7 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
                 .is_lvalue = true,
                 .is_string_literal = false,
                 .addr_of = false,
+                .symbol = symbol,
                 .value = (ir_value_t) {
                     .kind = IR_VALUE_VAR,
                     .var = symbol->ir_ptr,
@@ -3842,6 +3890,22 @@ expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t re
     assert(res.is_lvalue && "Expected lvalue");
     if (res.kind == EXPR_RESULT_VALUE) {
         assert(ir_get_type_of_value(res.value)->kind == IR_TYPE_PTR && "Expected pointer type");
+        if (res.symbol != NULL && res.symbol->c_type->is_const && res.symbol->has_const_value) {
+            // TODO: not quite sure this is correct for const pointers (e.g. `const int *foo = bar`)
+            // This value is a compile time constant. Use the constant value instead of loading from memory.
+            return (expression_result_t) {
+                .kind = EXPR_RESULT_VALUE,
+                .c_type = res.c_type,
+                .is_lvalue = false,
+                .is_string_literal = false,
+                .addr_of = false,
+                .value = (ir_value_t) {
+                    .kind = IR_VALUE_CONST,
+                    .constant = res.symbol->const_value,
+                },
+            };
+        }
+
         ir_var_t temp = temp_var(context, ir_get_type_of_value(res.value)->value.ptr.pointee);
         ir_var_t ptr = (ir_var_t) {
             .name = res.value.var.name,
