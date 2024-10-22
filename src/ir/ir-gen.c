@@ -1252,7 +1252,7 @@ ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir
                 // create a new initializer list that just includes this element, with the first designator removed
                 designator_list_t nested_designators = VEC_INIT;
                 for (int j = 1; j < element.designation->size; j += 1) {
-                    VEC_APPEND(&nested_designators, element.designation->buffer[i]);
+                    VEC_APPEND(&nested_designators, element.designation->buffer[j]);
                 }
                 initializer_list_t nested_initializer_list = VEC_INIT;
                 initializer_list_element_t nested_element = {
@@ -1267,6 +1267,8 @@ ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir
                 };
                 // recursively visit it
                 ir_visit_initializer(context, ir_value_for_var(element_ptr), c_element_type, &nested_initializer);
+                VEC_DESTROY(&nested_initializer_list);
+                VEC_DESTROY(&nested_designators);
             } else {
                 // visit the initializer
                 ir_visit_initializer(context, ir_value_for_var(element_ptr), c_element_type, element.initializer);
@@ -1316,6 +1318,114 @@ ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir
     }
 }
 
+ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
+    assert(c_type->kind == TYPE_STRUCT_OR_UNION);
+    const ir_type_t *ir_ptr_type = ir_get_type_of_value(ptr);
+    assert(ir_ptr_type->kind == IR_TYPE_PTR);
+    const ir_type_t *ir_struct_type = ir_ptr_type->value.ptr.pointee;
+    assert(ir_struct_type->kind == IR_TYPE_STRUCT_OR_UNION);
+
+    const field_ptr_vector_t *fields = &c_type->value.struct_or_union.fields;
+    const hash_table_t *field_map = &c_type->value.struct_or_union.field_map;
+
+    const ir_struct_field_ptr_vector_t *ir_fields = &ir_struct_type->value.struct_or_union.fields;
+    const hash_table_t *ir_field_map = &ir_struct_type->value.struct_or_union.field_map;
+
+    int field_index = 0;
+    for (int i = 0; i < initializer_list->size; i += 1) {
+        initializer_list_element_t element = initializer_list->buffer[i];
+        if (element.designation != NULL && element.designation->size > 0) {
+            // Handle the designator top level designator, then recursively visit the initializer
+            designator_t designator = element.designation->buffer[0];
+            if (designator.kind != DESIGNATOR_FIELD) {
+                // TODO: error for invalid designator
+                // TODO: source position for designators
+                fprintf(stderr, "Index designator can only be used to initialize an array element\n");
+                exit(1);
+            }
+
+            // Look up the field
+            const token_t *field_name = designator.value.field;
+            struct_field_t *field = NULL;
+            if (!hash_table_lookup(field_map, field_name->value, (void**) &field)) {
+                append_compilation_error(&context->errors, (compilation_error_t) {
+                    .kind = ERR_INVALID_STRUCT_FIELD_REFERENCE,
+                    .location = field_name->position,
+                    .value.invalid_struct_field_reference = {
+                        .field = *field_name,
+                        .type = c_type,
+                    },
+                });
+
+                // TODO: how to handle errors processing the initializer list?
+                continue;
+            }
+            field_index = field->index;
+
+            // Get the IR field (may have a different index due to padding)
+            ir_struct_field_t *ir_field = NULL;
+            assert(hash_table_lookup(ir_field_map, field_name->value, (void**) &ir_field));
+
+            // Get a pointer to the field
+            ir_var_t element_ptr = temp_var(context, get_ir_ptr_type(ir_field->type));
+            ir_build_get_struct_member_ptr(context->builder, ptr, ir_field->index, element_ptr);
+
+            if (element.designation->size > 1) {
+                // create a new initializer list that just includes this element, with the first designator removed
+                designator_list_t nested_designators = VEC_INIT;
+                for (int j = 1; j < element.designation->size; j += 1) {
+                    VEC_APPEND(&nested_designators, element.designation->buffer[j]);
+                }
+                initializer_list_t nested_initializer_list = VEC_INIT;
+                initializer_list_element_t nested_element = {
+                        .designation = &nested_designators,
+                        .initializer = element.initializer,
+                };
+                VEC_APPEND(&nested_initializer_list, nested_element);
+                initializer_t nested_initializer = {
+                        .kind = INITIALIZER_LIST,
+                        .span = element.initializer->span, // TODO: this should include the designator
+                        .value.list = &nested_initializer_list,
+                };
+                // recursively visit it
+                ir_visit_initializer(context, ir_value_for_var(element_ptr), field->type, &nested_initializer);
+                VEC_DESTROY(&nested_initializer_list);
+                VEC_DESTROY(&nested_designators);
+            } else {
+                // visit the initializer
+                ir_visit_initializer(context, ir_value_for_var(element_ptr), field->type, element.initializer);
+            }
+        } else {
+            // No designator, this just refers to the current field index (either the first field, or the field following
+            // the last field we visited in the list).
+            // e.g. `struct Foo foo = { 1, 2, 3 };`
+            if (field_index >= fields->size) {
+                // TODO: warn about too many elements in struct initializer
+                continue;
+            }
+
+            const struct_field_t *field = fields->buffer[field_index];
+
+            // Get the IR field, it may have a different index after adding padding, so look it up by name.
+            const ir_struct_field_t *ir_field = NULL;
+            assert(hash_table_lookup(ir_field_map, field->identifier->value, (void**) &ir_field));
+
+            // Get a pointer to the field
+            ir_var_t element_ptr = temp_var(context, get_ir_ptr_type(ir_field->type));
+            ir_build_get_struct_member_ptr(context->builder, ptr, ir_field->index, element_ptr);
+
+            // visit the initializer
+            ir_visit_initializer(context, ir_value_for_var(element_ptr), field->type, element.initializer);
+        }
+        field_index += 1;
+    }
+
+    return (ir_initializer_result_t) {
+        .type = ir_struct_type,
+        .has_const_value = false,
+    };
+}
+
 ir_initializer_result_t ir_visit_initializer_list(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
     const ir_type_t *ir_type = ir_get_type_of_value(ptr);
     assert(ir_type->kind == IR_TYPE_PTR);
@@ -1323,9 +1433,7 @@ ir_initializer_result_t ir_visit_initializer_list(ir_gen_context_t *context, ir_
         case IR_TYPE_ARRAY:
             return ir_visit_array_initializer(context, ptr, c_type, initializer_list);
         case IR_TYPE_STRUCT_OR_UNION: {
-            // TODO
-            fprintf(stderr, "%s:%d: Codegen for struct initializer lists unimplemented\n", __FILE__, __LINE__);
-            exit(1);
+            return ir_visit_struct_initializer(context, ptr, c_type, initializer_list);
         }
         default: {
             fprintf(stderr, "%s:%d: Invalid type for initializer list\n", __FILE__, __LINE__);
@@ -1372,6 +1480,61 @@ ir_initializer_result_t ir_visit_initializer(ir_gen_context_t *context, ir_value
 bool is_tag_incomplete_type(const tag_t *tag) {
     assert(tag != NULL);
     return tag->ir_type == NULL;
+}
+
+const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type);
+
+/**
+ * Recursively resolve a struct type.
+ * Needed to avoid incorrectly resolving the types of fields if a new struct or enum type with the same name as one
+ * referenced by a field has been declared between the struct definition and its use.
+ * Example:
+ * ```
+ * struct Bar { float a; float b; };
+ * enum Baz { A, B, C };
+ * struct Foo { struct Bar a; enum Baz b; };
+ * if (c) {
+ *     struct Bar { int a; int b; };
+ *     struct Foo foo;               // <--- foo.a should have the type struct { float, float }
+ *                                   //      but if we wait to look up what the type of tag Bar is at this point,
+ *                                   //      we will choose the wrong one (struct { int, int })
+ * }
+ * ```
+ * @param context Codegen context
+ * @param c_type Type to resolve (must be a struct)
+ * @return Resolved C type
+ */
+const type_t *resolve_struct_type(ir_gen_context_t *context, const type_t *c_type) {
+    assert(c_type->kind == TYPE_STRUCT_OR_UNION);
+
+    // TODO: this needlessly makes copies of every struct type
+
+    type_t *resolved = malloc(sizeof(type_t));
+    *resolved = *c_type;
+    resolved->value.struct_or_union.field_map = hash_table_create_string_keys(64);
+    resolved->value.struct_or_union.fields = (field_ptr_vector_t) VEC_INIT;
+
+    for (int i = 0; i < c_type->value.struct_or_union.fields.size; i += 1) {
+        const struct_field_t *field = c_type->value.struct_or_union.fields.buffer[i];
+        const type_t *field_type = field->type;
+        // TODO: this should also apply to enums?
+        if (field->type->kind == TYPE_STRUCT_OR_UNION) {
+            if (!field->type->value.struct_or_union.has_body || lookup_tag_in_current_scope(context, field->type->value.struct_or_union.identifier->value) == NULL) {
+                // incomplete type we should try to resolve, or tag we haven't created yet
+                const tag_t *tag = tag_for_declaration(context, field_type);
+                field_type = tag->c_type;
+            }
+            field_type = resolve_struct_type(context, field_type);
+            struct_field_t *new_field = malloc(sizeof(struct_field_t));
+            *new_field = *field;
+            new_field->type = field_type;
+            field = new_field;
+        }
+        VEC_APPEND(&resolved->value.struct_or_union.fields, (struct_field_t*) field);
+        hash_table_insert(&resolved->value.struct_or_union.field_map, field->identifier->value, (void*) field);
+    }
+
+    return resolved;
 }
 
 const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type) {
@@ -1447,10 +1610,13 @@ const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type
         };
         declare_tag(context, tag);
 
+        // Resolve the struct c type
+        const type_t *resolved_type = resolve_struct_type(context, c_type);
+
         // Visit the struct/union body to build the IR type, and update the tag
-        const ir_type_t *ir_type = get_ir_struct_type(context, c_type, id);
+        const ir_type_t *ir_type = get_ir_struct_type(context, resolved_type, id);
         tag->ir_type = ir_type;
-        tag->c_type = c_type;
+        tag->c_type = resolved_type;
 
         return tag;
     }
@@ -3478,12 +3644,7 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
         assert(c_field->index == i); // assuming they're in order
         ir_struct_field_t *ir_field = malloc(sizeof(ir_struct_field_t));
         const ir_type_t *ir_field_type = NULL;
-        if (c_field->type->kind == TYPE_STRUCT_OR_UNION) {
-            const tag_t *tag = tag_for_declaration(context, c_field->type);
-            ir_field_type = tag->ir_type;
-        } else {
-            ir_field_type = get_ir_type(context, c_field->type);
-        }
+        ir_field_type = get_ir_type(context, c_field->type);
 
         *ir_field = (ir_struct_field_t) {
             .name = c_field->identifier->value,

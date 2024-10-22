@@ -81,6 +81,7 @@ VEC_DEFINE(FieldPtrVector, field_ptr_vector_t, struct_field_t*)
 typedef struct Struct {
     const token_t *identifier; // null for anonymous structs
     field_ptr_vector_t fields;
+    hash_table_t field_map; // map of field name -> field
     bool is_union;
     bool has_body;
     bool packed; // if true, no padding should be added, defaults to false

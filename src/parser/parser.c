@@ -519,6 +519,17 @@ bool _parse_declaration(parser_t *parser, declaration_t *first_declarator, ptr_v
         // This is a declaration without an identifier, e.g. "int;", or "typedef float;".
         // This is legal, but useless (unless it declares a struct/union or enum type).
         // TODO: warning for empty declaration
+        if (type.kind == TYPE_STRUCT_OR_UNION) {
+            type_t *type_heap = malloc(sizeof(type_t));
+            *type_heap = type;
+            declaration_t *declaration = malloc(sizeof(declaration_t));
+            *declaration = (declaration_t) {
+                .type = type_heap,
+                .identifier = NULL,
+                .initializer = NULL
+            };
+            VEC_APPEND(declarations, declaration);
+        }
         return true;
     }
 
@@ -949,6 +960,9 @@ bool parse_struct_declaration(parser_t *parser, struct_t *struct_type) {
         }
         field->index = struct_type->fields.size;
         VEC_APPEND(&struct_type->fields, field);
+        if (field->identifier != NULL) {
+            hash_table_insert(&struct_type->field_map, field->identifier->value, field);
+        }
     } while (accept(parser, TK_COMMA, NULL));
 
     return require(parser, TK_SEMICOLON, NULL, "struct-declaration", NULL);
@@ -966,6 +980,7 @@ bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct
     accept(parser, TK_IDENTIFIER, &identifier);
     *struct_type = (struct_t) {
         .fields = VEC_INIT,
+        .field_map = hash_table_create_string_keys(64),
         .is_union = is_union,
         .identifier = identifier,
         .has_body = false,

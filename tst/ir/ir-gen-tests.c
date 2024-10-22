@@ -774,6 +774,109 @@ void test_ir_gen_array_initializer_with_designators(void) {
     }));
 }
 
+void test_ir_gen_struct_initializer(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    struct Foo { int a; int b; int c; };\n"
+            "    struct Foo foo = { 1, 2, 3 };\n"
+            "    return foo.b;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*struct.Foo_0 %0 = alloca struct.Foo_0",
+            "*i32 %1 = get_struct_member_ptr *struct.Foo_0 %0, i32 0",
+            "store i32 1, *i32 %1",
+            "*i32 %2 = get_struct_member_ptr *struct.Foo_0 %0, i32 1",
+            "store i32 2, *i32 %2",
+            "*i32 %3 = get_struct_member_ptr *struct.Foo_0 %0, i32 2",
+            "store i32 3, *i32 %3",
+            "*i32 %4 = get_struct_member_ptr *struct.Foo_0 %0, i32 1",
+            "i32 %5 = load *i32 %4",
+            "ret i32 %5"
+    }));
+}
+
+void test_ir_gen_struct_initializer_with_designators(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    struct Foo { int a; int b; int c; };\n"
+            "    struct Foo foo = { .b = 2, 3, .a = 1 };\n" // mix between designated and non-designated initializer elements
+            "    return foo.b;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*struct.Foo_0 %0 = alloca struct.Foo_0",
+            "*i32 %1 = get_struct_member_ptr *struct.Foo_0 %0, i32 1",
+            "store i32 2, *i32 %1",
+            "*i32 %2 = get_struct_member_ptr *struct.Foo_0 %0, i32 2",
+            "store i32 3, *i32 %2",
+            "*i32 %3 = get_struct_member_ptr *struct.Foo_0 %0, i32 0",
+            "store i32 1, *i32 %3",
+            "*i32 %4 = get_struct_member_ptr *struct.Foo_0 %0, i32 1",
+            "i32 %5 = load *i32 %4",
+            "ret i32 %5"
+    }));
+}
+
+void test_ir_gen_struct_initializer_with_designators_nested(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    struct Inner { int a; int b; };\n"
+            "    struct Outer { struct Inner inner; };\n"
+            "    struct Outer s = { .inner = { 1, 2 } };\n"
+            "    return s.inner.b;"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*struct.Outer_1 %0 = alloca struct.Outer_1",
+        "*struct.Inner_0 %1 = get_struct_member_ptr *struct.Outer_1 %0, i32 0",
+        "*i32 %2 = get_struct_member_ptr *struct.Inner_0 %1, i32 0",
+        "store i32 1, *i32 %2",
+        "*i32 %3 = get_struct_member_ptr *struct.Inner_0 %1, i32 1",
+        "store i32 2, *i32 %3",
+        "*struct.Inner_0 %4 = get_struct_member_ptr *struct.Outer_1 %0, i32 0",
+        "*i32 %5 = get_struct_member_ptr *struct.Inner_0 %4, i32 1",
+        "i32 %6 = load *i32 %5",
+        "ret i32 %6"
+    }));
+}
+
+void test_ir_gen_struct_initializer_with_designators_deeply_nested(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    struct Inner { int a; };\n"
+            "    struct Middle { struct Inner inner; };\n"
+            "    struct Outer { struct Middle middle; };\n"
+            "    struct Outer s = { .middle.inner.a = 4 };\n"
+            "    return s.middle.inner.a;"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*struct.Outer_2 %0 = alloca struct.Outer_2",
+            "*struct.Middle_1 %1 = get_struct_member_ptr *struct.Outer_2 %0, i32 0",
+            "*struct.Inner_0 %2 = get_struct_member_ptr *struct.Middle_1 %1, i32 0",
+            "*i32 %3 = get_struct_member_ptr *struct.Inner_0 %2, i32 0",
+            "store i32 4, *i32 %3",
+            "*struct.Middle_1 %4 = get_struct_member_ptr *struct.Outer_2 %0, i32 0",
+            "*struct.Inner_0 %5 = get_struct_member_ptr *struct.Middle_1 %4, i32 0",
+            "*i32 %6 = get_struct_member_ptr *struct.Inner_0 %5, i32 0",
+            "i32 %7 = load *i32 %6",
+            "ret i32 %7"
+    }));
+}
+
 void test_ir_gen_if_else_statement(void) {
     const char* input =
         "int main(int a) {\n"
@@ -1222,6 +1325,27 @@ void test_ir_gen_anonymous_struct(void) {
         "*i32 %1 = get_struct_member_ptr *struct.__anon_struct__1_0 %0, i32 0",
         "store i32 0, *i32 %1",
         "ret i32 0"
+    }));
+}
+
+void test_ir_gen_nested_anonymous_struct(void) {
+    const char* input =
+            "int main(void) {\n"
+            "    struct Outer { struct { int a; } inner; };\n"
+            "    struct Outer val;\n"
+            "    val.inner.a = 0;\n"
+            "    return 0;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*struct.Outer_0 %0 = alloca struct.Outer_0",
+            "*struct.__anon_struct__1_1 %1 = get_struct_member_ptr *struct.Outer_0 %0, i32 0",
+            "*i32 %2 = get_struct_member_ptr *struct.__anon_struct__1_1 %1, i32 0",
+            "store i32 0, *i32 %2",
+            "ret i32 0"
     }));
 }
 
@@ -1963,6 +2087,10 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "array load ptr", test_ir_gen_array_index_on_ptr);
     CU_add_test(suite, "array (unspecified size) with initializer", test_ir_gen_array_unspecified_size_with_initializer);
     CU_add_test(suite, "array initializer with designators", test_ir_gen_array_initializer_with_designators);
+    CU_add_test(suite, "struct initializer", test_ir_gen_struct_initializer);
+    CU_add_test(suite, "struct initializer with designators", test_ir_gen_struct_initializer_with_designators);
+    CU_add_test(suite, "struct initializer with designators - nested inner struct", test_ir_gen_struct_initializer_with_designators_nested);
+    CU_add_test(suite, "struct initializer with designators - deeply nested", test_ir_gen_struct_initializer_with_designators_deeply_nested);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);
@@ -1982,6 +2110,7 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "struct pointer read field", test_ir_gen_struct_ptr_read_field);
     CU_add_test(suite, "struct definition scoping", test_ir_gen_struct_definition_scoping);
     CU_add_test(suite, "anonymous struct", test_ir_gen_anonymous_struct);
+    CU_add_test(suite, "anonymous struct - nested", test_ir_gen_nested_anonymous_struct);
     CU_add_test(suite, "sizeof type primitive", test_ir_gen_sizeof_type_primitive);
     CU_add_test(suite, "sizeof type struct", test_ir_gen_sizeof_type_struct);
     CU_add_test(suite, "sizeof unary expression", test_ir_gen_sizeof_unary_expression);
