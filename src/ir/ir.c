@@ -445,16 +445,25 @@ void ir_validate_visit_instruction(
             }
             break;
         case IR_MEMCPY: {
-            ir_validate_visit_variable(variables, errors, instruction, instruction->value.unary_op.result);
-            ir_validate_visit_value(variables, errors, instruction, instruction->value.unary_op.operand);
-            // Result must be an array, struct, or pointer
-            if (instruction->value.unary_op.result.type->kind != IR_TYPE_PTR &&
-                instruction->value.unary_op.result.type->kind != IR_TYPE_ARRAY &&
-                instruction->value.unary_op.result.type->kind != IR_TYPE_STRUCT_OR_UNION
+            ir_validate_visit_value(variables, errors, instruction, instruction->value.memcpy.src);
+            ir_validate_visit_value(variables, errors, instruction, instruction->value.memcpy.dest);
+            ir_validate_visit_value(variables, errors, instruction, instruction->value.memcpy.length);
+            // Result must be an array or pointer
+            if (ir_get_type_of_value(instruction->value.memcpy.dest)->kind != IR_TYPE_PTR &&
+                ir_get_type_of_value(instruction->value.memcpy.dest)->kind != IR_TYPE_ARRAY
             ) {
                 append_ir_validation_error(errors, (ir_validation_error_t) {
                         .instruction = instruction,
-                        .message = "memcpy result must be an array, pointer, or struct"
+                        .message = "memcpy destination must be an array or pointer"
+                });
+            }
+            // Source must be an array or pointer
+            if (ir_get_type_of_value(instruction->value.memcpy.src)->kind != IR_TYPE_PTR &&
+                ir_get_type_of_value(instruction->value.memcpy.src)->kind != IR_TYPE_ARRAY
+                    ) {
+                append_ir_validation_error(errors, (ir_validation_error_t) {
+                        .instruction = instruction,
+                        .message = "memcpy source must be an array or pointer"
                 });
             }
             break;
@@ -828,7 +837,6 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
             break;
         case IR_LOAD:
         case IR_NOT:
-        case IR_MEMCPY:
         case IR_TRUNC:
         case IR_EXT:
         case IR_FTOI:
@@ -842,6 +850,15 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
             if (instr->value.memset.ptr.kind == IR_VALUE_VAR) uses[count++] = &instr->value.memset.ptr.var;
             if (instr->value.memset.value.kind == IR_VALUE_VAR) uses[count++] = &instr->value.memset.value.var;
             if (instr->value.memset.length.kind == IR_VALUE_VAR) uses[count++] = &instr->value.memset.length.var;
+            break;
+        case IR_MEMCPY:
+            if (instr->value.memcpy.dest.kind == IR_VALUE_VAR) uses[count++] = &instr->value.memcpy.dest.var;
+            if (instr->value.memcpy.src.kind == IR_VALUE_VAR) uses[count++] = &instr->value.memcpy.src.var;
+            if (instr->value.memcpy.length.kind == IR_VALUE_VAR) uses[count++] = &instr->value.memcpy.length.var;
+            break;
+        case IR_SWITCH:
+            if (instr->value.switch_.value.kind == IR_VALUE_VAR) uses[count++] = &instr->value.switch_.value.var;
+            break;
     }
     return count;
 }
@@ -883,7 +900,6 @@ ir_var_t *ir_get_def(ir_instruction_t *instr) {
         case IR_STORE: break;
         case IR_LOAD:
         case IR_NOT:
-        case IR_MEMCPY:
         case IR_TRUNC:
         case IR_EXT:
         case IR_FTOI:
@@ -892,7 +908,11 @@ ir_var_t *ir_get_def(ir_instruction_t *instr) {
         case IR_ITOP:
         case IR_BITCAST:
             return &instr->value.unary_op.result;
-        case IR_MEMSET: break;
+        // No defs
+        case IR_MEMSET:
+        case IR_MEMCPY:
+        case IR_SWITCH:
+            break;
     }
     return NULL;
 }

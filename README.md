@@ -231,7 +231,7 @@ Types:
 - [x] Designated array initializers
 - [x] Structs
 - [ ] Bitfields
-- [ ] Struct initializers
+- [x] Struct initializers
 - [ ] Enums
 - [x] Pointers
 

@@ -454,7 +454,7 @@ typedef struct IrInstruction {
          * Those are:
          * - bitwise: not
          * - type conversion: trunc, ext, ftoi, itof, ptoi, itop, bitcast
-         * - memory: load, memcpy
+         * - memory: load
          */
         struct {
             ir_value_t operand;
@@ -488,6 +488,11 @@ typedef struct IrInstruction {
             ir_value_t value;
             ir_value_t length;
         } memset;
+        struct {
+            ir_value_t dest;
+            ir_value_t src;
+            ir_value_t length;
+        } memcpy;
         struct {
             ir_value_t value;
             ir_switch_case_vector_t cases;

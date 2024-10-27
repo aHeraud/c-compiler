@@ -1613,6 +1613,8 @@ bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *paramete
  * @return true if the type name was parsed successfully, false otherwise
  */
 bool parse_type_name(parser_t *parser, type_t **type_out) {
+    if (typedef_name(parser, false, NULL, type_out)) return true;
+
     type_t *base_type = malloc(sizeof(type_t));
     parse_specifier_qualifier_list(parser, base_type);
 
@@ -3085,26 +3087,18 @@ bool parse_cast_expression(parser_t *parser, expression_t *expr) {
     // We expect to see '(' followed by a type name
     // A special case is '(' followed by an identifier, which could either be a primary expression, or could be a
     // cast expression if that identifier is a typedef-name (which we have to look up in the symbol table).
-    bool is_cast = false;
+    //
+    // Note: '(' <type-name> ')' could also be the start of a compound literal. We need to reach the following token to
+    // decide (if it's a '{', it must be a compound literal or a syntax error).
+    // This is very ugly
     parse_checkpoint_t checkpoint = create_checkpoint(parser);
-    if (accept(parser, TK_LPAREN, NULL)) {
-        if (peek(parser, TK_IDENTIFIER) && typedef_name(parser, true, NULL, NULL)) {
-            is_cast = true;
-        } else {
-            // if the next token could be the start of a type name, then this is a cast expression,
-            for (int i = 0; i < sizeof (DECLARATION_SPECIFIER_TOKENS) / sizeof (token_kind_t); i += 1) {
-                if (peek(parser, DECLARATION_SPECIFIER_TOKENS[i])) {
-                    is_cast = true;
-                    break;
-                }
-            }
-        }
-    }
+    type_t *type = NULL;
+    bool is_cast = accept(parser, TK_LPAREN, NULL) && parse_type_name(parser, &type) &&
+                   accept(parser, TK_RPAREN, NULL) && !peek(parser, TK_LBRACE);
     backtrack(parser, checkpoint);
 
     if (is_cast) {
         accept(parser, TK_LPAREN, &token);
-        type_t *type = NULL;
         if (!parse_type_name(parser, &type)) {
             if (type != NULL) {
                 free(type);
@@ -3303,6 +3297,40 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
 }
 
 bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
+    // Can either be a primary expression, followed by:
+    // 1. array index         - '[' <expression> ']')
+    // 2. Function call       - '(' <argument-expression-list>? ')'
+    // 3. Member access       - '.' <identifier>
+    // 4. Member access (ptr) - '->' <identifier>
+    // 5. Increment           - '++'
+    // 6. Decrement           - '--'
+    // Alternatively, can be:
+    // 1. Compound literal    - '(' <type-name> ')' '{' <initializer-list> ',' '}'
+
+    // Try the compound literal first, to avoid excess lookahead/backtracking, as we only need a few tokens
+    // TODO: don't use backtracking here, just use 2 tokens of lookahead, provide better syntax error
+    parse_checkpoint_t checkpoint = create_checkpoint(parser);
+    token_t *compound_lit_start = NULL;
+    type_t *compound_lit_type = NULL;
+    if (accept(parser, TK_LPAREN, &compound_lit_start) && parse_type_name(parser, &compound_lit_type) && accept(parser, TK_RPAREN, NULL) && accept(parser, TK_LBRACE, NULL)) {
+        initializer_list_t initializer_list;
+        if (!parse_initializer_list(parser, &initializer_list)) {
+            return false;
+        }
+        require(parser, TK_RBRACE, NULL, "postfix-expression", "initializer-list");
+        *expr = (expression_t) {
+                .span = SPAN_STARTING(compound_lit_start->position),
+                .kind = EXPRESSION_COMPOUND_LITERAL,
+                .value.compound_literal = {
+                        .type = compound_lit_type,
+                        .initializer_list = initializer_list
+                },
+        };
+        return true;
+    } else {
+        backtrack(parser, checkpoint);
+    };
+
     expression_t *primary = malloc(sizeof(expression_t));
     if (!parse_primary_expression(parser, primary)) {
         free(primary);

@@ -503,9 +503,17 @@ void llvm_gen_visit_instruction(
                            ir_to_llvm_value(context, &instr->value.store.value),
                            ir_to_llvm_value(context, &instr->value.store.ptr));
             break;
-        case IR_MEMCPY:
-            assert(false && "Not implemented");
+        case IR_MEMCPY: {
+            // TODO: alignment for more efficient memcpy?
+            const int align = 1;
+            LLVMBuildMemCpy(context->llvm_builder,
+                            ir_to_llvm_value(context, &instr->value.memcpy.dest),
+                            align,
+                            ir_to_llvm_value(context, &instr->value.memcpy.src),
+                            align,
+                            ir_to_llvm_value(context, &instr->value.memcpy.length));
             break;
+        }
         case IR_GET_ARRAY_ELEMENT_PTR: {
             ir_value_t ptr = instr->value.binary_op.left;
             const ir_type_t *ptr_type = ir_get_type_of_value(ptr);

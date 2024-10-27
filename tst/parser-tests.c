@@ -106,7 +106,7 @@ const type_t *pointer_to(const type_t *type) {
     return pointer;
 }
 
-void test_parse_primary_expression_ident() {
+void test_parse_primary_expression_ident(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "bar";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -124,7 +124,7 @@ void test_parse_primary_expression_ident() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_primary_expression_int() {
+void test_parse_primary_expression_int(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "42";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -142,7 +142,7 @@ void test_parse_primary_expression_int() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_primary_expression_float() {
+void test_parse_primary_expression_float(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "42.0";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -160,7 +160,7 @@ void test_parse_primary_expression_float() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_primary_expression_char() {
+void test_parse_primary_expression_char(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "'a'";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -174,7 +174,7 @@ void test_parse_primary_expression_char() {
     CU_ASSERT_STRING_EQUAL_FATAL(node.value.primary.value.token.value, "'a'")
 }
 
-void test_parse_primary_expression_parenthesized() {
+void test_parse_primary_expression_parenthesized(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "(42)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -188,7 +188,7 @@ void test_parse_primary_expression_parenthesized() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
 }
 
-void test_parse_primary_expression_parenthesized_identifier() {
+void test_parse_primary_expression_parenthesized_identifier(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "(count)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -202,7 +202,7 @@ void test_parse_primary_expression_parenthesized_identifier() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
 }
 
-void test_parse_postfix_expression_function_call() {
+void test_parse_postfix_expression_function_call(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "pow(4,2)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -229,7 +229,7 @@ void test_parse_postfix_expression_function_call() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_postfix_expression_array_subscript() {
+void test_parse_postfix_expression_array_subscript(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "arr[1 + 1]";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -253,7 +253,7 @@ void test_parse_postfix_expression_array_subscript() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_postfix_expression_2d_array_subscript() {
+void test_parse_postfix_expression_2d_array_subscript(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "arr[i][j]";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -278,7 +278,7 @@ void test_parse_postfix_expression_2d_array_subscript() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_postfix_expression_member_access() {
+void test_parse_postfix_expression_member_access(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "foo.bar";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -305,7 +305,7 @@ void test_parse_postfix_expression_member_access() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_type_name_function_pointer() {
+void test_parse_type_name_function_pointer(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "int (*)(void)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -315,7 +315,7 @@ void test_parse_type_name_function_pointer() {
     CU_ASSERT_TRUE_FATAL(parse_type_name(&parser, &type))
 }
 
-void test_parse_unary_sizeof_constant() {
+void test_parse_unary_sizeof_constant(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof 1";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -333,7 +333,7 @@ void test_parse_unary_sizeof_constant() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_unary_sizeof_type() {
+void test_parse_unary_sizeof_type(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof(int)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -348,7 +348,7 @@ void test_parse_unary_sizeof_type() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_unary_sizeof_function_pointer_type() {
+void test_parse_unary_sizeof_function_pointer_type(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof(int (*)(void))";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -373,7 +373,7 @@ void test_parse_unary_sizeof_function_pointer_type() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_unary_sizeof_parenthesized_expression() {
+void test_parse_unary_sizeof_parenthesized_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "sizeof(1+1)";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -397,7 +397,7 @@ void test_parse_unary_sizeof_parenthesized_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_prefix_increment() {
+void test_parse_prefix_increment(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "++a";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -418,7 +418,7 @@ void test_parse_prefix_increment() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expected,  &expr))
 }
 
-void test_parse_prefix_decrement() {
+void test_parse_prefix_decrement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "--b";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -439,7 +439,7 @@ void test_parse_prefix_decrement() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expected,  &expr))
 }
 
-void test_parse_postfix_increment() {
+void test_parse_postfix_increment(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "a++";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -460,7 +460,7 @@ void test_parse_postfix_increment() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expected,  &expr))
 }
 
-void test_parse_postfix_decrement() {
+void test_parse_postfix_decrement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "b--";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -481,7 +481,7 @@ void test_parse_postfix_decrement() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expected,  &expr))
 }
 
-void test_parse_cast_expression() {
+void test_parse_cast_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "(float) 14";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -499,7 +499,7 @@ void test_parse_cast_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
 
-void test_parse_multiplicative_expression() {
+void test_parse_multiplicative_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 / 2 * 3 % 4";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -528,7 +528,7 @@ void test_parse_multiplicative_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_additive_expression() {
+void test_parse_additive_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 + 2 - 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -551,7 +551,7 @@ void test_parse_additive_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_additive_expression_2() {
+void test_parse_additive_expression_2(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 + 2 * 3;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -576,7 +576,7 @@ void test_parse_additive_expression_2() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, expected))
 }
 
-void test_parse_shift_expression() {
+void test_parse_shift_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 << 2 >> 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -599,7 +599,7 @@ void test_parse_shift_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_relational_expression() {
+void test_parse_relational_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 < 2 > 3 <= 4 >= 5";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -634,7 +634,7 @@ void test_parse_relational_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_equality_expression() {
+void test_parse_equality_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 == 2 != 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -657,7 +657,7 @@ void test_parse_equality_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_and_expression() {
+void test_parse_and_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 & 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -675,7 +675,7 @@ void test_parse_and_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_xor_expression() {
+void test_parse_xor_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 ^ 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -693,7 +693,7 @@ void test_parse_xor_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_inclusive_or_expression() {
+void test_parse_inclusive_or_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 | 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -711,7 +711,7 @@ void test_parse_inclusive_or_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_logical_and_expression() {
+void test_parse_logical_and_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 && 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -729,7 +729,7 @@ void test_parse_logical_and_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_logical_and_expression_float_operands() {
+void test_parse_logical_and_expression_float_operands(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "0.0 && 1.0";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -747,7 +747,7 @@ void test_parse_logical_and_expression_float_operands() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_logical_or_expression() {
+void test_parse_logical_or_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 || 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -765,7 +765,7 @@ void test_parse_logical_or_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_conditional_expression() {
+void test_parse_conditional_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1 ? 2 : 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -785,7 +785,7 @@ void test_parse_conditional_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, &expected))
 }
 
-void test_parse_assignment_expression() {
+void test_parse_assignment_expression(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "val = 2";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -803,7 +803,7 @@ void test_parse_assignment_expression() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_compound_assignment_expression_add() {
+void test_parse_compound_assignment_expression_add(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "val += 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -820,7 +820,7 @@ void test_parse_compound_assignment_expression_add() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_compound_assignment_expression_div() {
+void test_parse_compound_assignment_expression_div(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "val /= 3";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -837,7 +837,19 @@ void test_parse_compound_assignment_expression_div() {
     CU_ASSERT_TRUE_FATAL(expression_eq(&node, expected))
 }
 
-void test_parse_int_declaration_specifiers() {
+void test_parse_compound_literal_expression(void) {
+    lexer_global_context_t context = create_lexer_context();
+    char *input = "(struct Foo) { 1, }";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    expression_t node;
+    CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &node))
+    CU_ASSERT_TRUE_FATAL(node.kind == EXPRESSION_COMPOUND_LITERAL)
+    CU_ASSERT_TRUE_FATAL(node.value.compound_literal.type->kind == TYPE_STRUCT_OR_UNION)
+    CU_ASSERT_TRUE_FATAL(node.value.compound_literal.initializer_list.size == 1);
+}
+
+void test_parse_int_declaration_specifiers(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -848,7 +860,7 @@ void test_parse_int_declaration_specifiers() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 }
 
-void test_parse_invalid_declaration_specifiers() {
+void test_parse_invalid_declaration_specifiers(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "signed float";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -859,7 +871,7 @@ void test_parse_invalid_declaration_specifiers() {
     CU_ASSERT_TRUE_FATAL(types_equal(&type, &INT))
 }
 
-void test_parse_struct_definition() {
+void test_parse_struct_definition(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "struct Foo { int a; float b[10]; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -884,7 +896,7 @@ void test_parse_struct_definition() {
     CU_ASSERT_TRUE_FATAL(field->bitfield_width == NULL)
 }
 
-void test_parse_union_definition() {
+void test_parse_union_definition(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "union Foo { int i; float f; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -900,7 +912,7 @@ void test_parse_union_definition() {
     CU_ASSERT_EQUAL_FATAL(type.value.struct_or_union.fields.size, 2)
 }
 
-void test_parse_struct_definition_with_bitfields() {
+void test_parse_struct_definition_with_bitfields(void) {
     lexer_global_context_t context = create_lexer_context();
     // both named and anonymous bitfields
     char *input = "struct Foo { int a : 1; int : 7; };";
@@ -929,7 +941,7 @@ void test_parse_struct_definition_with_bitfields() {
     CU_ASSERT_TRUE_FATAL(expression_eq(field->bitfield_width, integer_constant("7")))
 }
 
-void test_parse_initializer_expression_simple() {
+void test_parse_initializer_expression_simple(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "14;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -941,7 +953,7 @@ void test_parse_initializer_expression_simple() {
     CU_ASSERT_TRUE_FATAL(expression_eq(initializer.value.expression, integer_constant("14")))
 }
 
-void test_parse_initializer_list_array() {
+void test_parse_initializer_list_array(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "{0, 1, 2}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -961,7 +973,7 @@ void test_parse_initializer_list_array() {
     }
 }
 
-void test_parse_initializer_list_array_trailing_comma() {
+void test_parse_initializer_list_array_trailing_comma(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "{0, 1, 2,}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -981,7 +993,7 @@ void test_parse_initializer_list_array_trailing_comma() {
     }
 }
 
-void test_parse_initializer_list_array_index_designator() {
+void test_parse_initializer_list_array_index_designator(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "{[0] = 0}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1001,7 +1013,7 @@ void test_parse_initializer_list_array_index_designator() {
     CU_ASSERT_TRUE_FATAL(expression_eq(element.initializer->value.expression, integer_constant("0")))
 }
 
-void test_parse_initializer_list_struct() {
+void test_parse_initializer_list_struct(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "{.a = 0, .b = { .c = 1 }}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1038,7 +1050,7 @@ void test_parse_initializer_list_struct() {
     CU_ASSERT_STRING_EQUAL_FATAL(designator_c.value.field->value, "c")
 }
 
-void test_parse_empty_declaration() {
+void test_parse_empty_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1053,7 +1065,7 @@ void test_parse_empty_declaration() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 }
 
-void test_parse_simple_declaration() {
+void test_parse_simple_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int a;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1075,7 +1087,7 @@ void test_parse_simple_declaration() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_simple_declaration_with_initializer() {
+void test_parse_simple_declaration_with_initializer(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int a = 1 & 1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1106,7 +1118,7 @@ void test_parse_simple_declaration_with_initializer() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_declaration_boolean() {
+void test_parse_declaration_boolean(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "_Bool a = 1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1130,7 +1142,7 @@ void test_parse_declaration_boolean() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_pointer_declaration() {
+void test_parse_pointer_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "void *a;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1147,7 +1159,7 @@ void test_parse_pointer_declaration() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_compound_declaration() {
+void test_parse_compound_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int a, b = 0, c = d + 1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1191,7 +1203,7 @@ void test_parse_compound_declaration() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[2], &expected_c))
 }
 
-void test_parse_function_declaration_no_parameters() {
+void test_parse_function_declaration_no_parameters(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int foo();";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1224,7 +1236,7 @@ void test_parse_function_declaration_no_parameters() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_function_declaration_with_parameters() {
+void test_parse_function_declaration_with_parameters(void) {
     lexer_global_context_t context = create_lexer_context();
     // combination of abstract declarator and direct declarator parameters
     char *input = "int foo(int a, float (*)(void), ...);";
@@ -1274,7 +1286,7 @@ void test_parse_function_declaration_with_parameters() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_function_declaration_returning_pointer() {
+void test_parse_function_declaration_returning_pointer(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int *foo();";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1307,7 +1319,7 @@ void test_parse_function_declaration_returning_pointer() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_array_declaration() {
+void test_parse_array_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int foo[10];";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1329,7 +1341,7 @@ void test_parse_array_declaration() {
     CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected_type))
 }
 
-void test_parse_array_declaration_with_initializer() {
+void test_parse_array_declaration_with_initializer(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int arr[3] = { 1, 2, 3 };";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1351,7 +1363,7 @@ void test_parse_array_declaration_with_initializer() {
     CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected_type))
 }
 
-void test_parse_2d_array_declaration() {
+void test_parse_2d_array_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int bar[1][2];";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1380,7 +1392,7 @@ void test_parse_2d_array_declaration() {
     CU_ASSERT_TRUE_FATAL(types_equal(declaration->type, &expected_type))
 }
 
-void test_parse_array_of_functions_declaration() {
+void test_parse_array_of_functions_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "int foo[](void);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1421,7 +1433,7 @@ void test_parse_array_of_functions_declaration() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_function_pointer() {
+void test_parse_function_pointer(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "int (*foo)(void);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1462,7 +1474,7 @@ void test_parse_function_pointer() {
     CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "foo");
 }
 
-void test_parse_complex_declaration() {
+void test_parse_complex_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char* input = "float *(*(*bar[1][2])(void))(int);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1528,7 +1540,7 @@ void test_parse_complex_declaration() {
     CU_ASSERT_STRING_EQUAL_FATAL(declaration->identifier->value, "bar");
 }
 
-void test_parse_empty_global_declaration() {
+void test_parse_empty_global_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1539,7 +1551,7 @@ void test_parse_empty_global_declaration() {
     CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF) // should have consumed the entire input
 }
 
-void test_parse_struct_type_declaration() {
+void test_parse_struct_type_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "struct Foo { int a; };";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1550,7 +1562,7 @@ void test_parse_struct_type_declaration() {
     CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF) // should have consumed the entire input
 }
 
-void test_parse_typedef_struct_type() {
+void test_parse_typedef_struct_type(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "typedef struct Foo { int a; } foo;\n"
                   "foo value;\n";
@@ -1582,7 +1594,7 @@ void test_parse_typedef_struct_type() {
     CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_STRUCT_OR_UNION)
 }
 
-void test_abstract_declarator_pointer_int() {
+void test_abstract_declarator_pointer_int(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "*"; // int token has already been parsed
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1593,7 +1605,7 @@ void test_abstract_declarator_pointer_int() {
     CU_ASSERT_TRUE_FATAL(result->value.pointer.base->kind == TYPE_INTEGER);
 }
 
-void test_abstract_declarator_function_pointer() {
+void test_abstract_declarator_function_pointer(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "(*)(void)"; // int token has already been parsed
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1604,7 +1616,7 @@ void test_abstract_declarator_function_pointer() {
     CU_ASSERT_TRUE_FATAL(result->value.pointer.base->kind == TYPE_FUNCTION)
 }
 
-void test_parse_function_prototype_void() {
+void test_parse_function_prototype_void(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "float foo(void);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1635,7 +1647,7 @@ void test_parse_function_prototype_void() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_function_prototype() {
+void test_parse_function_prototype(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "double pow(float a, short b);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1680,7 +1692,7 @@ void test_parse_function_prototype() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(declarations.buffer[0], &expected))
 }
 
-void test_parse_empty_statement() {
+void test_parse_empty_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = ";";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1696,7 +1708,7 @@ void test_parse_empty_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
-void test_parse_expression_statement() {
+void test_parse_expression_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1713,7 +1725,7 @@ void test_parse_expression_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
-void test_parse_compound_statement() {
+void test_parse_compound_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "{ 1; 'a'; 1.0; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1762,7 +1774,7 @@ void test_parse_compound_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
-void test_parse_compound_statement_with_error() {
+void test_parse_compound_statement_with_error(void) {
     // The parser should recover, and continue parsing the rest of the statements.
     lexer_global_context_t context = create_lexer_context();
     char *input = "{ a-; 1; }";
@@ -1790,7 +1802,7 @@ void test_parse_compound_statement_with_error() {
     CU_ASSERT_TRUE_FATAL(parser.errors.size == 1)
 }
 
-void test_parse_if_statement() {
+void test_parse_if_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "if (1) 2;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1811,7 +1823,7 @@ void test_parse_if_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
-void test_parse_if_else_statement() {
+void test_parse_if_else_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "if (1) 2; else 3;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1832,7 +1844,7 @@ void test_parse_if_else_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
-void test_parse_if_else_if_else_statement() {
+void test_parse_if_else_if_else_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "if (1) 2; else if (3) 4; else 5;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1853,7 +1865,7 @@ void test_parse_if_else_if_else_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
-void test_parse_switch_statement() {
+void test_parse_switch_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "switch(foo);"; // switch + empty statement
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1869,7 +1881,7 @@ void test_parse_switch_statement() {
     CU_ASSERT_EQUAL_FATAL(node.value.switch_.statement->kind, STATEMENT_EMPTY)
 }
 
-void test_parse_return_statement() {
+void test_parse_return_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "return 1;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1889,7 +1901,7 @@ void test_parse_return_statement() {
     CU_ASSERT_TRUE_FATAL(statement_eq(&node, expected))
 }
 
-void test_parse_while_statement() {
+void test_parse_while_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "while (cond > 0) { cond = cond - 1; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1909,7 +1921,7 @@ void test_parse_while_statement() {
     CU_ASSERT_EQUAL_FATAL(node.value.while_.body->kind, STATEMENT_COMPOUND)
 }
 
-void test_parse_while_statement_with_empty_body() {
+void test_parse_while_statement_with_empty_body(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "while (1);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1925,7 +1937,7 @@ void test_parse_while_statement_with_empty_body() {
     CU_ASSERT_EQUAL_FATAL(node.value.while_.body->kind, STATEMENT_EMPTY)
 }
 
-void test_parse_do_while_statement() {
+void test_parse_do_while_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "do { cond = cond - 1; } while (cond > 0);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1945,7 +1957,7 @@ void test_parse_do_while_statement() {
     CU_ASSERT_EQUAL_FATAL(node.value.do_while.body->kind, STATEMENT_COMPOUND)
 }
 
-void test_parse_for_statement() {
+void test_parse_for_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input =
         "for (int i = 0; i < 10; i = i + 1) {\n"
@@ -1972,7 +1984,7 @@ void test_parse_for_statement() {
     CU_ASSERT_EQUAL_FATAL(node.value.for_.body->kind, STATEMENT_COMPOUND)
 }
 
-void test_parse_for_statement_no_optional_parts() {
+void test_parse_for_statement_no_optional_parts(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "for (;;);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -1990,7 +2002,7 @@ void test_parse_for_statement_no_optional_parts() {
     CU_ASSERT_EQUAL_FATAL(node.value.for_.body->kind, STATEMENT_EMPTY)
 }
 
-void test_parse_for_statement_expr_initializer() {
+void test_parse_for_statement_expr_initializer(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "for (i = 0;;);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2006,7 +2018,7 @@ void test_parse_for_statement_expr_initializer() {
     CU_ASSERT_PTR_NOT_NULL_FATAL(node.value.for_.initializer.expression)
 }
 
-void parse_external_declaration_declaration() {
+void parse_external_declaration_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int a = 4;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2027,7 +2039,7 @@ void parse_external_declaration_declaration() {
     CU_ASSERT_TRUE_FATAL(declaration_eq(node.value.declaration.declarations[0], &expected))
 }
 
-void parse_external_definition_prototype_var_args() {
+void parse_external_definition_prototype_var_args(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int printf(const char *format, ...);";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2061,7 +2073,7 @@ void parse_external_definition_prototype_var_args() {
     CU_ASSERT_TRUE_FATAL(strcmp(declaration->identifier->value, "printf") == 0)
 }
 
-void parse_external_declaration_function_definition() {
+void parse_external_declaration_function_definition(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "float square(float val) { return val * val; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2104,7 +2116,7 @@ void parse_external_declaration_function_definition() {
     CU_ASSERT_TRUE_FATAL(statement_eq(node.value.function_definition->body, &body))
 }
 
-void parse_external_definition_function_taking_void() {
+void parse_external_definition_function_taking_void(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "int main(void) { return 0; }";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2139,7 +2151,7 @@ void parse_external_definition_function_taking_void() {
     CU_ASSERT_TRUE_FATAL(statement_eq(node.value.function_definition->body, &body))
 }
 
-void test_parse_external_declaration_typedef() {
+void test_parse_external_declaration_typedef(void) {
     lexer_global_context_t context = create_lexer_context();
     const char* input = "typedef int integer;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2152,7 +2164,7 @@ void test_parse_external_declaration_typedef() {
     CU_ASSERT_STRING_EQUAL_FATAL(external_declaration.value.declaration.declarations[0]->identifier->value, "integer")
 }
 
-void test_parse_external_declaration_typedef_ptr() {
+void test_parse_external_declaration_typedef_ptr(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "typedef int* ptr;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2167,7 +2179,7 @@ void test_parse_external_declaration_typedef_ptr() {
     CU_ASSERT_EQUAL_FATAL(decl->type->value.pointer.base->storage_class, STORAGE_CLASS_AUTO)
 }
 
-void test_parse_external_declaration_typedef_const_ptr() {
+void test_parse_external_declaration_typedef_const_ptr(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "typedef int * const ptr;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2183,7 +2195,7 @@ void test_parse_external_declaration_typedef_const_ptr() {
     CU_ASSERT_EQUAL_FATAL(decl->type->value.pointer.base->storage_class, STORAGE_CLASS_AUTO)
 }
 
-void test_parse_external_declaration_that_uses_typedef() {
+void test_parse_external_declaration_that_uses_typedef(void) {
     lexer_global_context_t context = create_lexer_context();
     const char* input = "typedef float type;\ntype foo;\n";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2199,7 +2211,7 @@ void test_parse_external_declaration_that_uses_typedef() {
     CU_ASSERT_TRUE_FATAL(decl->type->kind == TYPE_FLOATING)
 }
 
-void test_parse_break_statement() {
+void test_parse_break_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "break;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2210,7 +2222,7 @@ void test_parse_break_statement() {
     CU_ASSERT_TRUE_FATAL(statement.kind == STATEMENT_BREAK)
 }
 
-void test_parse_continue_statement() {
+void test_parse_continue_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "continue;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2221,7 +2233,7 @@ void test_parse_continue_statement() {
     CU_ASSERT_TRUE_FATAL(statement.kind == STATEMENT_CONTINUE)
 }
 
-void test_parse_goto_statement() {
+void test_parse_goto_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "goto foo;";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2234,7 +2246,7 @@ void test_parse_goto_statement() {
     CU_ASSERT_STRING_EQUAL_FATAL(statement.value.goto_.identifier->value, "foo")
 }
 
-void test_parse_labeled_statement() {
+void test_parse_labeled_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "yoshi: ;"; // label + empty statement
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2247,7 +2259,7 @@ void test_parse_labeled_statement() {
     CU_ASSERT_TRUE_FATAL(statement.value.label_.statement->kind == STATEMENT_EMPTY)
 }
 
-void test_parse_default_statement() {
+void test_parse_default_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "default: ;"; // default + empty statement
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2260,7 +2272,7 @@ void test_parse_default_statement() {
     CU_ASSERT_TRUE_FATAL(statement.value.case_.statement->kind == STATEMENT_EMPTY)
 }
 
-void test_parse_case_statement() {
+void test_parse_case_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "case 4: ;"; // case + empty statement
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
@@ -2273,9 +2285,9 @@ void test_parse_case_statement() {
     CU_ASSERT_TRUE_FATAL(statement.value.case_.statement->kind == STATEMENT_EMPTY)
 }
 
-void test_parse_program() {
+void test_parse_program(void) {
     lexer_global_context_t context = create_lexer_context();
-    const char* input = "float square(float);\nfloat square(float val) {\n\treturn val * val;\n}\nint main() {\n\treturn square(2.0);\n}";
+    const char* input = "float square(float);\nfloat square(float val) {\n\treturn val * val;\n}\nint main(void) {\n\treturn square(2.0);\n}";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
 
@@ -2283,11 +2295,11 @@ void test_parse_program() {
     CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
 }
 
-void test_parse_program_typedef_used_in_different_scope() {
+void test_parse_program_typedef_used_in_different_scope(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input =
         "typedef int integer;\n"
-        "int main() {\n"
+        "int main(void) {\n"
         "    integer foo = 1;\n"
         "    return foo;\n"
         "}\n";
@@ -2299,7 +2311,7 @@ void test_parse_program_typedef_used_in_different_scope() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 }
 
-void test_parse_program_typedef_identifier_shadowing() {
+void test_parse_program_typedef_identifier_shadowing(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input =
         "typedef int identifier; // <-- identifier is a typedef-name\n"
@@ -2317,7 +2329,7 @@ void test_parse_program_typedef_identifier_shadowing() {
     CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
 }
 
-void test_parse_program_illegal_symbol_redefinition_in_function_scope() {
+void test_parse_program_illegal_symbol_redefinition_in_function_scope(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input =
         "void foo(int a) \n"   // <-- declare a as a parameter
@@ -2333,7 +2345,7 @@ void test_parse_program_illegal_symbol_redefinition_in_function_scope() {
 
 }
 
-int parser_tests_init_suite() {
+int parser_tests_init_suite(void) {
     CU_pSuite pSuite = CU_add_suite("parser", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "primary expression - identifier", test_parse_primary_expression_ident) ||
         NULL == CU_add_test(pSuite, "primary expression - integer", test_parse_primary_expression_int) ||
@@ -2371,6 +2383,7 @@ int parser_tests_init_suite() {
         NULL == CU_add_test(pSuite, "assignment expression", test_parse_assignment_expression) ||
         NULL == CU_add_test(pSuite, "compound assignment expression (add)", test_parse_compound_assignment_expression_add) ||
         NULL == CU_add_test(pSuite, "compound assignment expression (div)", test_parse_compound_assignment_expression_div) ||
+        NULL == CU_add_test(pSuite, "compound literal", test_parse_compound_literal_expression) ||
         NULL == CU_add_test(pSuite, "int declaration specifiers", test_parse_int_declaration_specifiers) ||
         NULL == CU_add_test(pSuite, "invalid declaration specifiers", test_parse_invalid_declaration_specifiers) ||
         NULL == CU_add_test(pSuite, "struct definition", test_parse_struct_definition) ||

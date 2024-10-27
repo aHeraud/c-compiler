@@ -291,7 +291,7 @@ const char* ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *inst
             snprintf(buffer, size, "store %s, %s", FMT_VAL(instr->value.store.value), FMT_VAL(instr->value.store.ptr));
             break;
         case IR_MEMCPY:
-            snprintf(buffer, size, "memcpy %s, %s", FMT_VAR(instr->value.unary_op.result), FMT_VAL(instr->value.unary_op.operand));
+            snprintf(buffer, size, "memcpy %s, %s, %s", FMT_VAL(instr->value.memcpy.dest), FMT_VAL(instr->value.memcpy.src), FMT_VAL(instr->value.memcpy.length));
             break;
         case IR_MEMSET:
             snprintf(buffer, size, "memset %s, %s, %s", FMT_VAL(instr->value.memset.ptr), FMT_VAL(instr->value.memset.value), FMT_VAL(instr->value.memset.length));

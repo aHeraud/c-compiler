@@ -105,9 +105,10 @@ The comparison operations are:
 - store: Store the value b into the pointer a `*a = b`
    + a must be a pointer type
    + b must be the same type as the pointer target
-- memcpy: Copy intrinsic, copy the value from a to b `memcpy dest, src`
+- memcpy: Copy intrinsic, copy the value from a to b `memcpy dest, src, len`
    + If src and dest are different sizes, the smaller size is used.
    + dest must be a pointer, array, or struct type
+   + len must be an integer
 - memset: Memset intrinsic, fills the destination with len elements of the provided value `memset dest, val, len`
    + dest must be a pointer or array
 - get_array_element_pointer: Get a pointer to an element in an array: `get_array_element_pointer ptr, index, result`

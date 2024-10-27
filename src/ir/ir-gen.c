@@ -355,6 +355,7 @@ expression_result_t ir_visit_indirection_unexpr(ir_gen_context_t *context, const
 expression_result_t ir_visit_sizeof_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_increment_decrement(ir_gen_context_t *context, const expression_t *expr, bool pre, bool incr);
 expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_compound_literal(ir_gen_context_t *context, const expression_t *expr);
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir_arch_t *arch) {
     ir_gen_context_t context = {
@@ -1920,6 +1921,8 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
             return ir_visit_ternary_expression(context, expression);
         case EXPRESSION_UNARY:
             return ir_visit_unary_expression(context, expression);
+        case EXPRESSION_COMPOUND_LITERAL:
+            return ir_visit_compound_literal(context, expression);
     }
 
     // TODO
@@ -2456,13 +2459,14 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
         }
     }
 
-    if (right.is_lvalue) right = get_rvalue(context, right);
+    bool is_struct_assignment = right.c_type->kind == TYPE_STRUCT_OR_UNION;
+    if (!is_struct_assignment && right.is_lvalue) right = get_rvalue(context, right);
 
     // Generate an assignment instruction.
     if (!types_equal(left.c_type, right.c_type)) {
         // Convert the right operand to the type of the left operand.
         right = convert_to_type(context, right.value, right.c_type, left.c_type);
-        if (right.c_type == NULL) return EXPR_ERR;
+        if (right.kind == EXPR_RESULT_ERR) return EXPR_ERR;
     }
 
     ir_value_t ptr;
@@ -2474,7 +2478,14 @@ expression_result_t ir_visit_assignment_binexpr(ir_gen_context_t *context, const
         return EXPR_ERR;
     }
 
-    ir_build_store(context->builder, ptr, right.value);
+    if (is_struct_assignment) {
+        // the struct types should be the same, so it doesn't matter if we use the length of the dest or src
+        ssize_t size = ir_size_of_type_bytes(context->arch, ir_get_type_of_value(ptr)->value.ptr.pointee);
+        ir_value_t length_val = ir_make_const_int(context->arch->ptr_int_type, size);
+        ir_build_memcpy(context->builder, ptr, right.value, length_val);
+    } else {
+        ir_build_store(context->builder, ptr, right.value);
+    }
 
     // assignments can be chained, e.g. `a = b = c;`
     return left;
@@ -3277,6 +3288,33 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
         .is_string_literal = false,
         .addr_of = false,
         .value = ir_value_for_var(result),
+    };
+}
+
+expression_result_t ir_visit_compound_literal(ir_gen_context_t *context, const expression_t *expr) {
+    assert(expr->kind == EXPRESSION_COMPOUND_LITERAL);
+
+    const type_t *type = expr->value.compound_literal.type;
+
+    // TODO: type check
+
+    const tag_t *tag = lookup_tag(context, type->value.struct_or_union.identifier->value);
+    type = tag->c_type;
+
+    // Create a stack slot to store the result temporarily because we don't know where this is being stored
+    const ir_type_t *ir_type = tag->ir_type;
+    ir_var_t res = temp_var(context, get_ir_ptr_type(ir_type));
+    insert_alloca(context, ir_type, res);
+
+    ir_visit_initializer_list(context, ir_value_for_var(res), type, &expr->value.compound_literal.initializer_list);
+
+    return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
+        .value = ir_value_for_var(res),
+        .c_type = type,
+        .is_lvalue = true,
+        .symbol = NULL,
+        .is_string_literal = false,
     };
 }
 

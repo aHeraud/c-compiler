@@ -133,6 +133,20 @@ typedef struct CastExpression {
     struct Expression *expression;
 } cast_expression_t;
 
+struct Initializer;
+struct DesignatorList;
+typedef struct InitializerListElement {
+    struct DesignatorList *designation;
+    struct Initializer *initializer;
+} initializer_list_element_t;
+VEC_DEFINE(InitializerList, initializer_list_t, initializer_list_element_t)
+
+// This seems like it could go somewhere else (primary expression?)
+typedef struct CompoundLiteralExpression {
+    type_t *type;
+    struct InitializerList initializer_list;
+} compound_literal_expression_t;
+
 typedef struct Expression {
     source_span_t span;
     enum {
@@ -145,6 +159,7 @@ typedef struct Expression {
         EXPRESSION_MEMBER_ACCESS,
         EXPRESSION_SIZEOF,
         EXPRESSION_CAST,
+        EXPRESSION_COMPOUND_LITERAL,
     } kind;
     union {
         primary_expression_t primary;
@@ -156,6 +171,7 @@ typedef struct Expression {
         member_access_expression_t member_access;
         type_t *sizeof_type;
         cast_expression_t cast;
+        compound_literal_expression_t compound_literal;
     } value;
 } expression_t;
 
@@ -291,8 +307,6 @@ typedef struct FunctionDefinition {
     statement_t *body;
 } function_definition_t;
 
-struct Initializer;
-
 typedef struct Designator {
     enum {
         DESIGNATOR_INDEX,
@@ -305,13 +319,6 @@ typedef struct Designator {
 } designator_t;
 
 VEC_DEFINE(DesignatorList, designator_list_t, designator_t)
-
-typedef struct InitializerListElement {
-    designator_list_t *designation;
-    struct Initializer *initializer;
-} initializer_list_element_t;
-
-VEC_DEFINE(InitializerList, initializer_list_t, initializer_list_element_t)
 
 typedef struct Initializer {
     enum {

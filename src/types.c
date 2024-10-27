@@ -71,6 +71,26 @@ bool types_equal(const type_t *a, const type_t *b) {
         case TYPE_ARRAY:
             return types_equal(a->value.array.element_type, b->value.array.element_type) &&
                    expression_eq(a->value.array.size, b->value.array.size);
+        case TYPE_STRUCT_OR_UNION: {
+            const token_t *a_ident = a->value.struct_or_union.identifier;
+            const token_t *b_ident = b->value.struct_or_union.identifier;
+            bool identifier_equal = (a_ident == NULL && b_ident == NULL) ||
+                    (a_ident != NULL && b_ident != NULL && strcmp(a_ident->value, b_ident->value) == 0);
+            if (!identifier_equal) return false;
+            if (a->value.struct_or_union.is_union != b->value.struct_or_union.is_union) return false;
+            if (a->value.struct_or_union.fields.size != b->value.struct_or_union.fields.size) return false;
+            if (a->value.struct_or_union.packed != b->value.struct_or_union.packed) return false;
+            for (int i = 0; i < a->value.struct_or_union.fields.size; i += 1) {
+                const struct_field_t *a_field = a->value.struct_or_union.fields.buffer[i];
+                const struct_field_t *b_field = b->value.struct_or_union.fields.buffer[i];
+                bool f_identifier_equal = (a_field->identifier == NULL && b_field->identifier == NULL) ||
+                                        (a_field->identifier != NULL && b_field->identifier != NULL && strcmp(a_field->identifier->value, b_field->identifier->value) == 0);
+                if (!f_identifier_equal) return false;
+                if (!types_equal(a_field->type, b_field->type)) return false;
+                // TODO: bitfield width?
+            }
+            return true;
+        }
         case TYPE_FUNCTION:
             if (!types_equal(a->value.function.return_type, b->value.function.return_type)) {
                 return false;

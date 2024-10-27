@@ -467,6 +467,22 @@ ir_instruction_node_t *ir_build_store(ir_function_builder_t *builder, ir_value_t
     return ir_builder_insert_instruction(builder, instruction);
 }
 
+ir_instruction_node_t *ir_build_memcpy(ir_function_builder_t *builder, ir_value_t dest_ptr,  ir_value_t src_ptr, ir_value_t length) {
+    const ir_type_t *dest_type = ir_get_type_of_value(dest_ptr);
+    const ir_type_t *src_type = ir_get_type_of_value(src_ptr);
+    assert(dest_type->kind == IR_TYPE_PTR || dest_type->kind == IR_TYPE_ARRAY);
+    assert(src_type->kind == IR_TYPE_PTR || src_type->kind == IR_TYPE_ARRAY);
+    ir_instruction_t  instruction = {
+        .opcode = IR_MEMCPY,
+        .value.memcpy = {
+            .dest = dest_ptr,
+            .src = src_ptr,
+            .length = length,
+        }
+    };
+    return ir_builder_insert_instruction(builder, instruction);
+}
+
 ir_instruction_node_t *ir_build_get_array_element_ptr(ir_function_builder_t *builder, ir_value_t ptr, ir_value_t index, ir_var_t result) {
     ir_instruction_t instruction = {
         .opcode = IR_GET_ARRAY_ELEMENT_PTR,

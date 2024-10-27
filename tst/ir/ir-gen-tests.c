@@ -877,6 +877,69 @@ void test_ir_gen_struct_initializer_with_designators_deeply_nested(void) {
     }));
 }
 
+void test_ir_gen_struct_assignment_memcpy(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    struct Foo { int a; };"
+            "    struct Foo a, b;\n"
+            "    a = b;\n"
+            "    return 0;\n"
+            "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*struct.Foo_0 %0 = alloca struct.Foo_0",
+            "*struct.Foo_0 %1 = alloca struct.Foo_0",
+            "memcpy *struct.Foo_0 %0, *struct.Foo_0 %1, i64 4",
+            "ret i32 0"
+    }));
+}
+
+void test_ir_gen_struct_initializer_compound_literal(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    struct Foo { int a; int b; };\n"
+            "    (struct Foo) { 1, 2, };"
+            "    return 0;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*struct.Foo_0 %0 = alloca struct.Foo_0",
+            "*i32 %1 = get_struct_member_ptr *struct.Foo_0 %0, i32 0",
+            "store i32 1, *i32 %1",
+            "*i32 %2 = get_struct_member_ptr *struct.Foo_0 %0, i32 1",
+            "store i32 2, *i32 %2",
+            "ret i32 0"
+    }));
+}
+
+void test_ir_gen_compound_literal_assign(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    struct Foo { int a; };\n"
+            "    struct Foo foo;\n"
+            "    foo = (struct Foo) { 1, };\n"
+            "    return 0;\n"
+            "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*struct.Foo_0 %0 = alloca struct.Foo_0",
+            "*struct.Foo_0 %1 = alloca struct.Foo_0",
+            "*i32 %2 = get_struct_member_ptr *struct.Foo_0 %1, i32 0",
+            "store i32 1, *i32 %2",
+            "memcpy *struct.Foo_0 %0, *struct.Foo_0 %1, i64 4",
+            "ret i32 0"
+    }));
+}
+
 void test_ir_gen_if_else_statement(void) {
     const char* input =
         "int main(int a) {\n"
@@ -2091,6 +2154,9 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "struct initializer with designators", test_ir_gen_struct_initializer_with_designators);
     CU_add_test(suite, "struct initializer with designators - nested inner struct", test_ir_gen_struct_initializer_with_designators_nested);
     CU_add_test(suite, "struct initializer with designators - deeply nested", test_ir_gen_struct_initializer_with_designators_deeply_nested);
+    CU_add_test(suite, "struct assignment memcpy", test_ir_gen_struct_assignment_memcpy);
+    CU_add_test(suite, "struct initializer - compound literal", test_ir_gen_struct_initializer_compound_literal);
+    CU_add_test(suite, "compound literal assign", test_ir_gen_compound_literal_assign);
     CU_add_test(suite, "if-else statement", test_ir_gen_if_else_statement);
     CU_add_test(suite, "call expr (returns void)", test_ir_gen_call_expr_returns_void);
     CU_add_test(suite, "function arg promotion", test_ir_gen_function_arg_promotion);
