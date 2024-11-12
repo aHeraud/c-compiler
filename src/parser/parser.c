@@ -267,6 +267,10 @@ void print_parse_error(FILE *__restrict stream, parse_error_t *error) {
         case PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE:
             fprintf(stream, "redeclaration of symbol %s as different type", error->value.redeclaration_of_symbol.redec->value);
             break;
+        case PARSE_ERROR_ENUM_SPECIFIER_WITHOUT_IDENTIFIER_OR_ENUMERATOR_LIST:
+            fprintf(stream, "%s:%d:%d error: enum specifier must be followed by an identifier or an enumerator list\n",
+                    error->token->position.path, error->token->position.line, error->token->position.column);
+            break;
     }
 }
 
@@ -519,7 +523,7 @@ bool _parse_declaration(parser_t *parser, declaration_t *first_declarator, ptr_v
         // This is a declaration without an identifier, e.g. "int;", or "typedef float;".
         // This is legal, but useless (unless it declares a struct/union or enum type).
         // TODO: warning for empty declaration
-        if (type.kind == TYPE_STRUCT_OR_UNION) {
+        if (type.kind == TYPE_STRUCT_OR_UNION || type.kind == TYPE_ENUM) {
             type_t *type_heap = malloc(sizeof(type_t));
             *type_heap = type;
             declaration_t *declaration = malloc(sizeof(declaration_t));
@@ -667,6 +671,7 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
     type_t *typedef_type = NULL;
 
     struct_t *struct_type = NULL;
+    enum_specifier_t *enum_specifier = NULL;
 
     while (true) {
         token_t *token;
@@ -817,13 +822,16 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
             token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
                                                            double_, signed_, unsigned_, complex_, struct_or_union,
                                                            typedef_name_token, enum_);
+            if (conflict != NULL) append_parse_error(&parser->errors, illegal_declaration_specifiers(next_token(parser), conflict));
             struct_type = malloc(sizeof(struct_t));
-            if (!parse_struct_or_union_specifier(parser, &struct_or_union, struct_type)) {
-                return false;
-            }
-        } else if (accept(parser, TK_ENUM, &token)) {
-            fprintf(stderr, "Error: %s:%d: Parsing of enums not yet implemented\n", __FILE__, __LINE__);
-            exit(1);
+            if (!parse_struct_or_union_specifier(parser, &struct_or_union, struct_type)) return false;
+        } else if (peek(parser, TK_ENUM)) {
+            token_t *conflict = (token_t *) FIRST_NON_NULL(void_, bool_, char_, short_, int_, long_, long_long, float_,
+                                                           double_, signed_, unsigned_, complex_, struct_or_union,
+                                                           typedef_name_token, enum_);
+            if (conflict != NULL) append_parse_error(&parser->errors, illegal_declaration_specifiers(next_token(parser), conflict));
+            enum_specifier = malloc(sizeof(enum_specifier_t));
+            if (!parse_enum_specifier(parser, enum_specifier)) return false;
         } else {
             break;
         }
@@ -868,6 +876,11 @@ bool parse_specifiers(parser_t *parser, bool is_declaration, type_t *type) {
     } else if (struct_or_union != NULL) {
         type->kind = TYPE_STRUCT_OR_UNION;
         type->value.struct_or_union = *struct_type;
+    } else if (enum_specifier != NULL) {
+        type->kind = TYPE_ENUM;
+        type->value.enum_specifier = *enum_specifier;
+        free(enum_specifier);
+        enum_specifier = NULL;
     } else if (ANY_NON_NULL(bool_, char_, short_, int_, long_long, signed_, unsigned_)) {
         type->kind = TYPE_INTEGER;
         type->value.integer.is_signed = unsigned_ == NULL;
@@ -1032,6 +1045,87 @@ bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct
 
     return true;
 }
+
+/**
+ * <enumerator> ::= <enumeration-constant>
+ *                | <enumeration-constant> = <constant-expression>
+ * @param parser
+ * @return success
+ */
+bool parse_enumerator(parser_t *parser, enumerator_t *enumerator) {
+    // parse the required identifier
+    token_t *identifier = NULL;
+    if (!require(parser, TK_IDENTIFIER, &identifier, "enumerator", "enumerator-list")) return false;
+
+    // optional initializer
+    expression_t *expr = NULL;
+    if (accept(parser, TK_ASSIGN, NULL)) {
+        expr = malloc(sizeof(expression_t));
+        if (!parse_expression(parser, expr)) {
+            free(expr);
+            return false;
+        }
+    }
+
+    *enumerator = (enumerator_t ) {
+        .identifier = identifier,
+        .value = expr,
+    };
+
+    return true;
+}
+
+bool parse_enumerator_list(parser_t *parser, enumerator_vector_t *list) {
+    // TODO: can leak inner expression on error
+    enumerator_t enumerator;
+
+    if (!parse_enumerator(parser, &enumerator)) return false;
+    VEC_APPEND(list, enumerator);
+
+    while (accept(parser, TK_COMMA, NULL) && !peek(parser, TK_RBRACE)) {
+        // TODO: can leak inner expression on error
+        if (!parse_enumerator(parser, &enumerator)) return false;
+        VEC_APPEND(list, enumerator);
+    }
+
+    return true;
+}
+
+bool parse_enum_specifier(parser_t *parser, enum_specifier_t *enum_specifier) {
+    // parse the enum keyword, required
+    token_t *keyword;
+    if (!require(parser, TK_ENUM, &keyword, "enum-specifier", NULL))
+        return false;
+
+    // parse the tag identifier, optional if an enumerator list is specified
+    token_t *identifier = NULL;
+    accept(parser, TK_IDENTIFIER, &identifier);
+
+    // check for the presence of the enumerator-list
+    token_t *enumerator_list_start = NULL;
+    enumerator_vector_t list = VEC_INIT;
+    if (accept(parser, TK_LBRACE, &enumerator_list_start)) {
+        if (!parse_enumerator_list(parser, &list)) return false;
+        if (!require(parser, TK_RBRACE, NULL, "enum-specifier", NULL))
+            return false;
+    } else if (identifier == NULL) {
+        // no enumerator list, so the identifier is required
+        append_parse_error(&parser->errors, (parse_error_t) {
+            .token = keyword,
+            .previous_token = NULL,
+            .previous_production_name = NULL,
+            .kind = PARSE_ERROR_ENUM_SPECIFIER_WITHOUT_IDENTIFIER_OR_ENUMERATOR_LIST,
+        });
+        return false;
+    }
+
+    *enum_specifier = (enum_specifier_t) {
+        .identifier = identifier,
+        .enumerators = list,
+    };
+    return true;
+}
+
 
 bool parse_declaration_specifiers(parser_t *parser, type_t *type) {
     return parse_specifiers(parser, true, type);

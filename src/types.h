@@ -16,6 +16,7 @@ typedef enum TypeKind {
     TYPE_FUNCTION,
     TYPE_ARRAY,
     TYPE_STRUCT_OR_UNION,
+    TYPE_ENUM,
 } type_kind_t;
 
 typedef enum IntegerType {
@@ -87,6 +88,18 @@ typedef struct Struct {
     bool packed; // if true, no padding should be added, defaults to false
 } struct_t;
 
+typedef struct Enumerator {
+    const token_t *identifier;
+    const struct Expression *value; // may be null
+} enumerator_t;
+
+VEC_DEFINE(EnumeratorVector, enumerator_vector_t, enumerator_t)
+
+typedef struct EnumSpecifier {
+    const token_t *identifier; // null for anonymous enums
+    enumerator_vector_t enumerators;
+} enum_specifier_t;
+
 /**
  * Represents a C type.
  */
@@ -116,6 +129,7 @@ typedef struct Type {
             struct Expression *size;
         } array;
         struct_t struct_or_union;
+        enum_specifier_t enum_specifier;
     } value;
 } type_t;
 

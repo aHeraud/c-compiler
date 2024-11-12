@@ -2345,6 +2345,42 @@ void test_parse_program_illegal_symbol_redefinition_in_function_scope(void) {
 
 }
 
+void test_parse_enum_declaration(void) {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "enum Foo { A, B = 4 };";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = VEC_INIT;
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    declaration_t *decl = declarations.buffer[0];
+    const type_t *enum_type = decl->type;
+    CU_ASSERT_TRUE_FATAL(enum_type->kind == TYPE_ENUM)
+    CU_ASSERT_TRUE_FATAL(enum_type->value.enum_specifier.identifier != NULL)
+    CU_ASSERT_STRING_EQUAL(enum_type->value.enum_specifier.identifier->value, "Foo")
+    CU_ASSERT_TRUE_FATAL(enum_type->value.enum_specifier.enumerators.size == 2)
+    CU_ASSERT_STRING_EQUAL(enum_type->value.enum_specifier.enumerators.buffer[0].identifier->value, "A")
+    CU_ASSERT_PTR_NULL(enum_type->value.enum_specifier.enumerators.buffer[0].value)
+    CU_ASSERT_STRING_EQUAL(enum_type->value.enum_specifier.enumerators.buffer[1].identifier->value, "B")
+    CU_ASSERT_PTR_NOT_NULL(enum_type->value.enum_specifier.enumerators.buffer[1].value)
+}
+
+void test_parse_var_enum_declaration_no_list(void) {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "enum Foo foo;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = VEC_INIT;
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    declaration_t *decl = declarations.buffer[0];
+    const type_t *enum_type = decl->type;
+    CU_ASSERT_TRUE_FATAL(enum_type->kind == TYPE_ENUM)
+    CU_ASSERT_TRUE_FATAL(enum_type->value.enum_specifier.identifier != NULL)
+    CU_ASSERT_STRING_EQUAL(enum_type->value.enum_specifier.identifier->value, "Foo")
+    CU_ASSERT_STRING_EQUAL(decl->identifier->value, "foo")
+}
+
 int parser_tests_init_suite(void) {
     CU_pSuite pSuite = CU_add_suite("parser", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "primary expression - identifier", test_parse_primary_expression_ident) ||
@@ -2447,7 +2483,9 @@ int parser_tests_init_suite(void) {
         NULL == CU_add_test(pSuite, "external declaration - using typedef", test_parse_external_declaration_that_uses_typedef) ||
         NULL == CU_add_test(pSuite, "program", test_parse_program) ||
         NULL == CU_add_test(pSuite, "typedef used in lower scope", test_parse_program_typedef_used_in_different_scope) ||
-        NULL == CU_add_test(pSuite, "illegal symbol redefinition in function scope", test_parse_program_illegal_symbol_redefinition_in_function_scope)
+        NULL == CU_add_test(pSuite, "illegal symbol redefinition in function scope", test_parse_program_illegal_symbol_redefinition_in_function_scope) ||
+        NULL == CU_add_test(pSuite, "parse enum declaration", test_parse_enum_declaration) ||
+        NULL == CU_add_test(pSuite, "parse enum variable declaration", test_parse_var_enum_declaration_no_list)
     ) {
         CU_cleanup_registry();
         return CU_get_error();

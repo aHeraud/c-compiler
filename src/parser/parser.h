@@ -22,6 +22,7 @@ typedef struct ParseError {
         PARSE_ERROR_PARAMETER_TYPE_MALFORMED,
         PARSE_ERROR_EXPECTED_EXPRESSION,
         PARSE_ERROR_REDECLARATION_OF_SYMBOL_AS_DIFFERENT_TYPE,
+        PARSE_ERROR_ENUM_SPECIFIER_WITHOUT_IDENTIFIER_OR_ENUMERATOR_LIST,
     } kind;
     union {
         struct {
@@ -98,6 +99,7 @@ bool parse_pointer(parser_t *parser, const type_t *base_type, type_t **pointer_t
 bool parse_parameter_type_list(parser_t *parser, parameter_type_list_t *parameters);
 bool parse_type_name(parser_t *parser, type_t **type_out);
 bool parse_abstract_declarator(parser_t *parser, type_t base_type, type_t **type_out);
+bool parse_enum_specifier(parser_t *parser, enum_specifier_t *specifier);
 
 bool parse_statement(parser_t *parser, statement_t *statement);
 bool parse_compound_statement(parser_t* parser, statement_t *statement, const token_t *open);
