@@ -2347,7 +2347,7 @@ void test_parse_program_illegal_symbol_redefinition_in_function_scope(void) {
 
 void test_parse_enum_declaration(void) {
     lexer_global_context_t context = create_lexer_context();
-    const char *input = "enum Foo { A, B = 4 };";
+    const char *input = "enum Foo { A, B = 4, };";
     lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
     parser_t parser = pinit(lexer);
     ptr_vector_t declarations = VEC_INIT;

@@ -2105,6 +2105,43 @@ void test_ir_gen_constant_propagation(void) {
     }));
 }
 
+void test_ir_gen_enum_declare_assign_use(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    enum Foo { A } foo = A;\n"
+            "    return foo;\n"
+            "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*i32 %1 = alloca i32",
+            "store i32 0, *i32 %1",
+            "i32 %2 = load *i32 %1",
+            "ret i32 %2"
+    }));
+}
+
+void test_ir_gen_enum_assign_to_int_var(void) {
+    const char *input =
+            "int main(void) {\n"
+            "    enum Foo { A };\n"
+            "    int foo = A;\n"
+            "    return foo;\n"
+            "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "*i32 %1 = alloca i32",
+            "store i32 0, *i32 %1",
+            "i32 %2 = load *i32 %1",
+            "ret i32 %2"
+    }));
+}
+
 int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -2207,5 +2244,7 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "loop inside switch statement", test_ir_gen_loop_inside_switch);
     CU_add_test(suite, "global initializer constant propagation", test_ir_gen_global_initializer_constant_propagation);
     CU_add_test(suite, "constant propagation", test_ir_gen_constant_propagation);
+    CU_add_test(suite, "enum declare assign use", test_ir_gen_enum_declare_assign_use);
+    CU_add_test(suite, "enum assign to int var", test_ir_gen_enum_assign_to_int_var);
     return CUE_SUCCESS;
 }

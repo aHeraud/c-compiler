@@ -1061,7 +1061,7 @@ bool parse_enumerator(parser_t *parser, enumerator_t *enumerator) {
     expression_t *expr = NULL;
     if (accept(parser, TK_ASSIGN, NULL)) {
         expr = malloc(sizeof(expression_t));
-        if (!parse_expression(parser, expr)) {
+        if (!parse_conditional_expression(parser, expr)) {
             free(expr);
             return false;
         }

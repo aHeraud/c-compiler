@@ -42,6 +42,8 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_CASE_EXPRESSION,
     ERR_CASE_STATEMENT_OUTSIDE_OF_SWITCH,
     ERR_DUPLICATE_SWITCH_CASE,
+    ERR_EXPECTED_CONSTANT_EXPRESSION,
+    ERR_ENUMERATION_CONSTANT_MUST_HAVE_INTEGER_TYPE,
 } compilation_error_kind_t;
 
 typedef struct CompilationError {

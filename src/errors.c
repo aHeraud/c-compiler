@@ -226,6 +226,16 @@ void print_compilation_error(const compilation_error_t *error) {
             }
             break;
         }
+        case ERR_EXPECTED_CONSTANT_EXPRESSION: {
+            fprintf(stderr, ERROR_PREFIX "Expected constant expression\n",
+                    error->location.path, error->location.line, error->location.column);
+            break;
+        }
+        case ERR_ENUMERATION_CONSTANT_MUST_HAVE_INTEGER_TYPE: {
+            fprintf(stderr, ERROR_PREFIX "Expression defining the value of an enumeration constant must have integer type\n",
+                    error->location.path, error->location.line, error->location.column);
+            break;
+        }
         default: {
             fprintf(stderr, ERROR_PREFIX "Unknown error kind\n",
                     error->location.path, error->location.line, error->location.column);

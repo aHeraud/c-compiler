@@ -86,6 +86,7 @@ typedef struct Scope {
 } scope_t;
 
 enum SymbolKind {
+    SYMBOL_ENUMERATION_CONSTANT,
     SYMBOL_LOCAL_VARIABLE,
     SYMBOL_GLOBAL_VARIABLE,
     SYMBOL_FUNCTION,
@@ -333,6 +334,7 @@ void ir_visit_case_statement(ir_gen_context_t *context, const statement_t *state
 void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declaration);
 expression_result_t ir_visit_expression(ir_gen_context_t *context, const expression_t *expression);
+expression_result_t ir_visit_constant_expression(ir_gen_context_t *context, const expression_t *expression);
 expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const expression_t *expr);
@@ -1227,15 +1229,9 @@ ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir
                 fprintf(stderr, "field designator can only be used to initialize a struct or union type\n");
                 exit(1);
             }
-            expression_result_t index_expr = ir_visit_expression(context, designator.value.index);
+            expression_result_t index_expr = ir_visit_constant_expression(context, designator.value.index);
             if (index_expr.kind == EXPR_RESULT_ERR) continue;
             if (index_expr.is_lvalue) index_expr = get_rvalue(context, index_expr);
-            if (index_expr.value.kind != IR_VALUE_CONST) {
-                // TODO: error for non constant array index designator expression
-                // TODO: source position for designators
-                fprintf(stderr, "array index designator must be a constant expression\n");
-                exit(1);
-            }
             if (index_expr.value.constant.kind != IR_CONST_INT) {
                 // TODO: array index designator constant must have integer type
                 // TODO: source position for designators
@@ -1538,14 +1534,108 @@ const type_t *resolve_struct_type(ir_gen_context_t *context, const type_t *c_typ
     return resolved;
 }
 
+expression_result_t ir_visit_constant_expression(ir_gen_context_t *context, const expression_t *expression) {
+    // Create a dummy fake instruction context and a function builder (visit_expression will attempt to generate
+    // instructions if this expression isn't actually a compile time constant).
+    ir_function_definition_t *cur_fn = context->function;
+    ir_function_builder_t *cur_builder = context->builder;
+    context->function = & (ir_function_definition_t) {
+            .name = "__gen_constexpr",
+            .type = NULL,
+            .num_params = 0,
+            .params = NULL,
+            .is_variadic = false,
+            .body = NULL,
+    };
+    context->builder = ir_builder_create();
+
+    expression_result_t result = ir_visit_expression(context, expression);
+    if (result.kind != EXPR_RESULT_VALUE) result = EXPR_ERR;
+
+    if (result.kind == EXPR_RESULT_VALUE && result.value.kind != IR_VALUE_CONST) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_EXPECTED_CONSTANT_EXPRESSION,
+            .location = expression->span.start,
+        });
+        result = EXPR_ERR;
+    }
+
+    // Delete the builder, throw away any generated instructions, and restore whatever the previous values were
+    ir_builder_destroy(context->builder);
+    context->function = NULL;
+
+    context->function = cur_fn;
+    context->builder = cur_builder;
+
+    return result;
+}
+
+void visit_enumeration_constants(ir_gen_context_t *context, const enum_specifier_t *enum_specifier) {
+    long value = 0;
+    for (int i = 0; i < enum_specifier->enumerators.size; i += 1) {
+        enumerator_t el = enum_specifier->enumerators.buffer[i];
+        if (el.value != NULL) {
+            expression_result_t res = ir_visit_constant_expression(context, el.value);
+            if (res.kind == EXPR_RESULT_VALUE) {
+                if (res.value.constant.kind != IR_CONST_INT) {
+                    append_compilation_error(&context->errors, (compilation_error_t) {
+                        .kind = ERR_ENUMERATION_CONSTANT_MUST_HAVE_INTEGER_TYPE,
+                        .location = el.value->span.start,
+                    });
+                } else {
+                    value = res.value.constant.value.i;
+                }
+            }
+        }
+
+        bool is_global = context->function == NULL;
+        const char *name = is_global ? global_name(context) : temp_name(context);
+
+        symbol_t *symbol = malloc(sizeof(symbol_t));
+        *symbol = (symbol_t) {
+            .identifier = el.identifier,
+            .has_const_value = true,
+            .ir_type = context->arch->sint,
+            .c_type = &INT,
+            .ir_ptr = {
+                .type = NULL,
+                .name = NULL,
+            },
+            .kind = SYMBOL_ENUMERATION_CONSTANT,
+            .const_value = ir_make_const_int(context->arch->sint, value++).constant,
+            .name = name,
+        };
+        declare_symbol(context, symbol);
+
+        if (is_global) {
+            ir_global_t *global = malloc(sizeof(ir_global_t));
+            *global = (ir_global_t) {
+                .initialized = true,
+                .value = symbol->const_value,
+                .type = symbol->ir_type,
+                .name = symbol->name,
+            };
+            VEC_APPEND(&context->module->globals, global);
+        }
+    }
+}
+
 const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type) {
-    assert(c_type->kind == TYPE_STRUCT_OR_UNION); // TODO: enum
+    assert(c_type->kind == TYPE_STRUCT_OR_UNION || c_type->kind == TYPE_ENUM);
 
     // From section 6.7.2.2 of C99 standard
     // Is this declaring a new tag, modifying a forward declaration, or just referencing an existing one?
 
-    bool incomplete_type = !c_type->value.struct_or_union.has_body;
-    const token_t *identifier = c_type->value.struct_or_union.identifier;
+    bool incomplete_type;
+    const token_t *identifier;
+    if (c_type->kind == TYPE_STRUCT_OR_UNION) {
+        incomplete_type = !c_type->value.struct_or_union.has_body;
+        identifier = c_type->value.struct_or_union.identifier;
+    } else {
+        assert(c_type->kind == TYPE_ENUM);
+        incomplete_type = c_type->value.enum_specifier.enumerators.size == 0;
+        identifier = c_type->value.enum_specifier.identifier;
+    }
 
     if (identifier == NULL) {
         // anonymous tag, generate a unique identifier
@@ -1611,13 +1701,22 @@ const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type
         };
         declare_tag(context, tag);
 
-        // Resolve the struct c type
-        const type_t *resolved_type = resolve_struct_type(context, c_type);
+        if (c_type->kind == TYPE_STRUCT_OR_UNION) {
+            // Resolve the struct c type
+            const type_t *resolved_type = resolve_struct_type(context, c_type);
 
-        // Visit the struct/union body to build the IR type, and update the tag
-        const ir_type_t *ir_type = get_ir_struct_type(context, resolved_type, id);
-        tag->ir_type = ir_type;
-        tag->c_type = resolved_type;
+            // Visit the struct/union body to build the IR type, and update the tag
+            const ir_type_t *ir_type = get_ir_struct_type(context, resolved_type, id);
+            tag->ir_type = ir_type;
+            tag->c_type = resolved_type;
+        } else {
+            // TODO: smaller enumeration constants based on max value?
+            tag->ir_type = context->arch->sint;
+            tag->c_type = &INT;
+
+            // Declare identifiers in the current scope for the enumeration constants
+            visit_enumeration_constants(context, &c_type->value.enum_specifier);
+        }
 
         return tag;
     }
@@ -1743,22 +1842,9 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
     if (declaration->initializer != NULL) {
         assert(global != NULL);
 
-        // Set up function builder state for the global initializer
-        // (a valid initializer is a constant expression which will generate no instructions, but we use the same
-        // code to generate IR for all expressions)
-        context->function = & (ir_function_definition_t) {
-            .name = "global_initializer",
-            .type = NULL,
-            .num_params = 0,
-            .params = NULL,
-            .is_variadic = false,
-            .body = NULL,
-        };
-        context->builder = ir_builder_create();
-
         expression_result_t result;
         if (declaration->initializer->kind == INITIALIZER_EXPRESSION) {
-            result = ir_visit_expression(context, declaration->initializer->value.expression);
+            result = ir_visit_constant_expression(context, declaration->initializer->value.expression);
         } else {
             fprintf(stderr, "%s:%d: Codegen for initializer lists unimplemented\n", __FILE__, __LINE__);
             exit(1);
@@ -1767,10 +1853,6 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
 
         // Typecheck/convert the initializer
         result = convert_to_type(context, result.value, result.c_type, declaration->type);
-
-        // Delete the builder, throw away any generated instructions
-        ir_builder_destroy(context->builder);
-        context->function = NULL;
 
         if (result.value.kind != IR_VALUE_CONST) {
             // The initializer must be a constant expression
@@ -1814,9 +1896,9 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         return;
     }
 
-    // Does this declare or reference a tag? (TODO: also support enums)
+    // Does this declare or reference a tag?
     const tag_t *tag = NULL;
-    if (declaration->type->kind == TYPE_STRUCT_OR_UNION) {
+    if (declaration->type->kind == TYPE_STRUCT_OR_UNION || declaration->type->kind == TYPE_ENUM) {
         tag = tag_for_declaration(context, declaration->type);
     }
 
@@ -3337,18 +3419,36 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
                 });
                 return EXPR_ERR;
             }
-            return (expression_result_t) {
-                .kind = EXPR_RESULT_VALUE,
-                .c_type = symbol->c_type,
-                .is_lvalue = true,
-                .is_string_literal = false,
-                .addr_of = false,
-                .symbol = symbol,
-                .value = (ir_value_t) {
-                    .kind = IR_VALUE_VAR,
-                    .var = symbol->ir_ptr,
-                },
-            };
+
+            if (symbol->kind == SYMBOL_ENUMERATION_CONSTANT) {
+                // some symbols don't actually represent a variable and have no address
+                return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
+                    .symbol = symbol,
+                    .value = (ir_value_t) {
+                        .kind = IR_VALUE_CONST,
+                        .constant = symbol->const_value,
+                    },
+                    .c_type = symbol->c_type,
+                    .is_lvalue = false,
+                    .is_string_literal = false,
+                    .addr_of = false,
+                };
+            } else {
+                // others just represent an address in the data segment or on the stack
+                return (expression_result_t) {
+                    .kind = EXPR_RESULT_VALUE,
+                    .c_type = symbol->c_type,
+                    .is_lvalue = true,
+                    .is_string_literal = false,
+                    .addr_of = false,
+                    .symbol = symbol,
+                    .value = (ir_value_t) {
+                        .kind = IR_VALUE_VAR,
+                        .var = symbol->ir_ptr,
+                    },
+                };
+            }
         }
         case PE_CONSTANT: {
             return ir_visit_constant(context, expr);
