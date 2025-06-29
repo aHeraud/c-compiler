@@ -232,7 +232,7 @@ Types:
 - [x] Structs
 - [ ] Bitfields
 - [x] Struct initializers
-- [ ] Enums
+- [x] Enums
 - [x] Pointers
 
 Expressions/Operators:

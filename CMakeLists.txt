@@ -72,6 +72,7 @@ add_executable(cc src/main.c)
 target_link_libraries(cc PUBLIC cclib)
 target_link_libraries(cc PUBLIC LLVM) # TODO: only link the required libraries, not all of LLVM
 
+set(CMAKE_POLICY_VERSION_MINIMUM "3.10")
 set(CUNIT_DISABLE_TESTS TRUE)
 set(CUNIT_DISABLE_EXAMPLES TRUE)
 add_git_submodule("dependencies/cunit")

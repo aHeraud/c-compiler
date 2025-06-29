@@ -2142,6 +2142,92 @@ void test_ir_gen_enum_assign_to_int_var(void) {
     }));
 }
 
+void test_ir_gen_global_array_initializer_list(void) {
+    // Global array initializers should be constants, the resulting array should be stored in the resulting
+    // ir module's globals table.
+    const char *input = "int a[] = { 1, 2, 3 };";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    ir_global_t *a = result.module->globals.buffer[0];
+    // The global is a pointer to [i32; 3]
+    CU_ASSERT_TRUE_FATAL(a->type->kind == IR_TYPE_PTR &&
+                         a->type->value.ptr.pointee->kind == IR_TYPE_ARRAY &&
+                         a->type->value.ptr.pointee->value.array.length == 3 &&
+                         a->type->value.ptr.pointee->value.array.element->kind == IR_TYPE_I32);
+    CU_ASSERT_TRUE_FATAL(a->initialized);
+    CU_ASSERT_TRUE_FATAL(a->value.kind == IR_CONST_ARRAY);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.length == 3);
+    CU_ASSERT_TRUE_FATAL(a->value.type->kind == IR_TYPE_ARRAY &&
+                         a->value.type->value.array.length == 3 &&
+                         a->value.type->value.array.element->kind == IR_TYPE_I32);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.values[0].kind == IR_CONST_INT && a->value.value.array.values[0].value.i == 1);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.values[1].kind == IR_CONST_INT && a->value.value.array.values[1].value.i == 2);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.values[2].kind == IR_CONST_INT && a->value.value.array.values[2].value.i == 3);
+}
+
+void test_ir_global_array_initializer_list_with_excess_elements(void) {
+    const char *input = "int a[2] = { 1, 2, 3 };";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    ir_global_t *a = result.module->globals.buffer[0];
+    // The global is a pointer to [i32; 2]
+    CU_ASSERT_TRUE_FATAL(a->type->kind == IR_TYPE_PTR &&
+                         a->type->value.ptr.pointee->kind == IR_TYPE_ARRAY &&
+                         a->type->value.ptr.pointee->value.array.length == 2 &&
+                         a->type->value.ptr.pointee->value.array.element->kind == IR_TYPE_I32);
+    CU_ASSERT_TRUE_FATAL(a->initialized);
+    CU_ASSERT_TRUE_FATAL(a->value.kind == IR_CONST_ARRAY);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.length == 2);
+    CU_ASSERT_TRUE_FATAL(a->value.type->kind == IR_TYPE_ARRAY &&
+                         a->value.type->value.array.length == 2 &&
+                         a->value.type->value.array.element->kind == IR_TYPE_I32);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.values[0].kind == IR_CONST_INT && a->value.value.array.values[0].value.i == 1);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.values[1].kind == IR_CONST_INT && a->value.value.array.values[1].value.i == 2);
+}
+
+void test_ir_global_array_initializer_list_with_fewer_elements(void) {
+    const char *input = "int a[3] = { 1, 2 };";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    ir_global_t *a = result.module->globals.buffer[0];
+    // The global is a pointer to [i32; 3]
+    CU_ASSERT_TRUE_FATAL(a->type->kind == IR_TYPE_PTR &&
+                         a->type->value.ptr.pointee->kind == IR_TYPE_ARRAY &&
+                         a->type->value.ptr.pointee->value.array.length == 3 &&
+                         a->type->value.ptr.pointee->value.array.element->kind == IR_TYPE_I32);
+    // Even though the array has length of 3, the constant initializer only has a length of 2
+    CU_ASSERT_TRUE_FATAL(a->initialized);
+    CU_ASSERT_TRUE_FATAL(a->value.kind == IR_CONST_ARRAY);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.length == 3);
+    CU_ASSERT_TRUE_FATAL(a->value.type->kind == IR_TYPE_ARRAY &&
+                         a->value.type->value.array.length == 3 &&
+                         a->value.type->value.array.element->kind == IR_TYPE_I32);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.values[0].kind == IR_CONST_INT && a->value.value.array.values[0].value.i == 1);
+    CU_ASSERT_TRUE_FATAL(a->value.value.array.values[1].kind == IR_CONST_INT && a->value.value.array.values[1].value.i == 2);
+}
+
+void test_ir_sizeof_global_array_size_inferred_from_initializer(void) {
+    const char *input =
+            "int a[] = { 0, 0 };\n"
+            "int main() {\n"
+            "    return sizeof(a);\n"
+            "}";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+            "ret i32 8"
+    }));
+}
+
 int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -2246,5 +2332,9 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "constant propagation", test_ir_gen_constant_propagation);
     CU_add_test(suite, "enum declare assign use", test_ir_gen_enum_declare_assign_use);
     CU_add_test(suite, "enum assign to int var", test_ir_gen_enum_assign_to_int_var);
+    CU_add_test(suite, "global array initializer list", test_ir_gen_global_array_initializer_list);
+    CU_add_test(suite, "global array initializer list - with excess elements", test_ir_global_array_initializer_list_with_excess_elements);
+    CU_add_test(suite, "global array initializer list - with fewer element", test_ir_global_array_initializer_list_with_fewer_elements);
+    CU_add_test(suite, "global array initializer list - size inferred from initializer - sizeof", test_ir_sizeof_global_array_size_inferred_from_initializer);
     return CUE_SUCCESS;
 }

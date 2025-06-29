@@ -35,7 +35,7 @@ typedef struct IrGenContext {
     hash_table_t label_exists; // set of c label that actually exist, for validating the goto statements
     statement_ptr_vector_t goto_statements; // goto statements that need to be validated at the end of the fn
 
-    // Switch instruction node (in in a switch statement)
+    // Switch instruction node (in a switch statement)
     ir_instruction_node_t *switch_node;
     // Break label (if in a loop/switch case statement)
     char* break_label;
@@ -809,7 +809,7 @@ void ir_visit_return_statement(ir_gen_context_t *context, const statement_t *sta
 
         ir_build_ret(context->builder, value.value);
     } else {
-        if (return_type->kind != TYPE_VOID) {
+        if (return_type->kind != IR_TYPE_VOID) {
             // attempting to return void from a function that returns a value
             append_compilation_error(&context->errors, (compilation_error_t) {
                 .kind = ERR_NON_VOID_FUNCTION_RETURNS_VOID,
@@ -1184,14 +1184,15 @@ void ir_visit_case_statement(ir_gen_context_t *context, const statement_t *state
 }
 
 typedef struct InitializerResult {
+    const type_t *c_type;
     const ir_type_t *type;
-    bool has_const_value;
-    ir_const_t const_value;
+    bool has_constant_value;
+    ir_const_t constant_value;
 } ir_initializer_result_t;
 
 const ir_initializer_result_t INITIALIZER_RESULT_ERR = {
+    .c_type = NULL,
     .type = NULL,
-    .has_const_value = false,
 };
 
 ir_initializer_result_t ir_visit_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *var_ctype, const initializer_t *initializer);
@@ -1212,6 +1213,17 @@ ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir
         ir_build_bitcast(context->builder, ptr, tmp);
         ptr = ir_value_for_var(tmp);
     }
+
+    typedef struct IrConstArrayInitializerElement {
+        unsigned int index;
+        ir_const_t value;
+    } ir_const_array_initializer_element;
+
+    VEC_DEFINE(IrConstArrayInitializerList, ir_const_array_initializer_list, ir_const_array_initializer_element);
+
+    bool is_const = true;
+    ir_const_array_initializer_list elements = VEC_INIT;
+
 
     // TODO: if the initializer is constant and contiguous, we can declare it as a global constant and memcpy it
     // For now this just lazily generates code to initialize the array
@@ -1262,13 +1274,33 @@ ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir
                     .span = element.initializer->span, // TODO: this should include the designator
                     .value.list = &nested_initializer_list,
                 };
+
                 // recursively visit it
-                ir_visit_initializer(context, ir_value_for_var(element_ptr), c_element_type, &nested_initializer);
+                ir_initializer_result_t result = ir_visit_initializer(context, ir_value_for_var(element_ptr), c_element_type, &nested_initializer);
+
+                is_const &= result.has_constant_value;
+                if (is_const) {
+                    ir_const_array_initializer_element element = {
+                        .index = index,
+                        .value = result.constant_value,
+                    };
+                    VEC_APPEND(&elements, element);
+                }
+
+                // cleanup
                 VEC_DESTROY(&nested_initializer_list);
                 VEC_DESTROY(&nested_designators);
             } else {
                 // visit the initializer
-                ir_visit_initializer(context, ir_value_for_var(element_ptr), c_element_type, element.initializer);
+                ir_initializer_result_t result = ir_visit_initializer(context, ir_value_for_var(element_ptr), c_element_type, element.initializer);
+                is_const &= result.has_constant_value;
+                if (is_const) {
+                    ir_const_array_initializer_element element = {
+                        .index = index,
+                        .value = result.constant_value,
+                    };
+                    VEC_APPEND(&elements, element);
+                }
             }
         } else {
             // For fixed size arrays, we will ignore elements in the initializer list that exceed the length of the
@@ -1281,7 +1313,15 @@ ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir
             ir_value_t index_val = ir_make_const_int(ir_ptr_int_type(context), index);
             ir_var_t element_ptr = temp_var(context, element_ptr_type);
             ir_build_get_array_element_ptr(context->builder, ptr, index_val, element_ptr);
-            ir_visit_initializer(context, ir_value_for_var(element_ptr), c_type->value.array.element_type, element.initializer);
+            ir_initializer_result_t result = ir_visit_initializer(context, ir_value_for_var(element_ptr), c_type->value.array.element_type, element.initializer);
+            is_const &= result.has_constant_value;
+            if (is_const) {
+                ir_const_array_initializer_element element = {
+                    .index = index,
+                    .value = result.constant_value,
+                };
+                VEC_APPEND(&elements, element);
+            }
         }
 
         // bookkeeping for the array index
@@ -1292,27 +1332,84 @@ ir_initializer_result_t ir_visit_array_initializer(ir_gen_context_t *context, ir
     // Return the type of the array
     // We need to do this to handle arrays without a specified size (e.g. `int a[] = {1, 2, 3};`), as the size is
     // inferred from the initializer, which we hadn't visited yet when we created the symbol.
-    if (known_size) {
-        // known size, can just return the type
-        return (ir_initializer_result_t) {
-            .type = ir_get_type_of_value(ptr)->value.ptr.pointee,
-            .has_const_value = false, // TODO: constant arrays?
-        };
-    } else {
-        // create a new type with the inferred length
-        ir_type_t *new_type = malloc(sizeof(ir_type_t));
-        *new_type = (ir_type_t) {
+    unsigned int length = inferred_array_length;
+    ir_type_t *ir_type = ir_get_type_of_value(ptr)->value.ptr.pointee;
+    if (!known_size) {
+        // Create new ir/c types that contain the correct size.
+        ir_type = malloc(sizeof(ir_type_t));
+        *ir_type = (ir_type_t) {
             .kind = IR_TYPE_ARRAY,
             .value.array = {
                 .element = element_type,
-                .length = inferred_array_length,
+                .length = length,
             },
         };
-        return (ir_initializer_result_t) {
-            .type = new_type,
-            .has_const_value = false, // TODO: constant arrays?
+
+        type_t *new_c_type = malloc(sizeof(type_t));
+        *new_c_type = *c_type;
+        expression_t *size_expr = malloc(sizeof(expression_t));
+        char *size_token_value = malloc(length/10 + 2);
+        snprintf(size_token_value, length/10 + 2, "%d", length);
+        *size_expr = (expression_t) {
+            // TODO: source position
+            .kind = EXPRESSION_PRIMARY,
+            .value.primary = {
+                .kind = PE_CONSTANT,
+                .value.token = {
+                    .kind = TK_INTEGER_CONSTANT,
+                    .value = size_token_value,
+                },
+            },
         };
+        new_c_type->value.array.size = size_expr;
+        c_type = new_c_type;
+    } else {
+        // array lengths are compile time constants
+        expression_result_t size_result = ir_visit_constant_expression(context, c_type->value.array.size);
+        assert(size_result.kind == EXPR_RESULT_VALUE &&
+               size_result.value.kind == IR_VALUE_CONST &&
+               size_result.value.constant.kind == IR_CONST_INT);
+        length = size_result.value.constant.value.i;
     }
+
+    ir_initializer_result_t result = {
+        .c_type = c_type,
+        .type = ir_type,
+        .constant_value = false,
+    };
+
+    if (is_const) {
+        ir_const_t *array_elements = malloc(length * sizeof(ir_const_t));
+
+        // zero initialize
+        ir_value_t zero_value = ir_get_zero_value(context, element_type);
+        assert(zero_value.kind == IR_VALUE_CONST);
+        for (int i = 0; i < length; i++) {
+            array_elements[i] = zero_value.constant;
+        }
+
+        // set the initialized elements
+        for (int i = 0; i < elements.size; i += 1) {
+            unsigned int element_index = elements.buffer[i].index;
+            assert(element_index < length);
+            array_elements[element_index] = elements.buffer[i].value;
+        }
+
+        ir_const_t const_value = {
+            .kind = IR_CONST_ARRAY,
+            .type = ir_type,
+            .value = {
+                .array = {
+                    .length = length,
+                    .values = array_elements,
+                },
+            },
+        };
+        result.has_constant_value = true;
+        result.constant_value = const_value;
+    }
+
+    return result;
 }
 
 ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
@@ -1418,8 +1515,9 @@ ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, i
     }
 
     return (ir_initializer_result_t) {
+        .c_type = c_type,
         .type = ir_struct_type,
-        .has_const_value = false,
+        .has_constant_value = false,
     };
 }
 
@@ -1460,8 +1558,9 @@ ir_initializer_result_t ir_visit_initializer(ir_gen_context_t *context, ir_value
 
             return (ir_initializer_result_t) {
                 .type = ir_get_type_of_value(result.value),
-                .has_const_value = result.value.kind == IR_VALUE_CONST,
-                .const_value = result.value.constant,
+                .c_type = var_ctype,
+                .has_constant_value = result.value.kind == IR_VALUE_CONST,
+                .constant_value = result.value.constant,
             };
         }
         case INITIALIZER_LIST: {
@@ -1842,32 +1941,50 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
     if (declaration->initializer != NULL) {
         assert(global != NULL);
 
-        expression_result_t result;
-        if (declaration->initializer->kind == INITIALIZER_EXPRESSION) {
-            result = ir_visit_constant_expression(context, declaration->initializer->value.expression);
-        } else {
-            fprintf(stderr, "%s:%d: Codegen for initializer lists unimplemented\n", __FILE__, __LINE__);
-            exit(1);
-        }
-        if (result.c_type == NULL) return; // Invalid initializer
+        // Create a dummy fake instruction context and a function builder (visit_expression will attempt to generate
+        // instructions if this expression isn't actually a compile time constant).
+        ir_function_definition_t *cur_fn = context->function;
+        ir_function_builder_t *cur_builder = context->builder;
+        context->function = & (ir_function_definition_t) {
+                .name = "__gen_global_initializer",
+                .type = NULL,
+                .num_params = 0,
+                .params = NULL,
+                .is_variadic = false,
+                .body = NULL,
+        };
+        context->builder = ir_builder_create();
 
-        // Typecheck/convert the initializer
-        result = convert_to_type(context, result.value, result.c_type, declaration->type);
+        ir_initializer_result_t initializer_result =
+                ir_visit_initializer(context, ir_value_for_var(symbol->ir_ptr), symbol->c_type, declaration->initializer);
 
-        if (result.value.kind != IR_VALUE_CONST) {
+        // Delete the builder, throw away any generated instructions, and restore whatever the previous values were
+        ir_builder_destroy(context->builder);
+        context->function = NULL;
+        context->function = cur_fn;
+        context->builder = cur_builder;
+
+        if (!initializer_result.has_constant_value) {
             // The initializer must be a constant expression
             append_compilation_error(&context->errors, (compilation_error_t) {
-                .kind = ERR_GLOBAL_INITIALIZER_NOT_CONSTANT,
-                .location = declaration->initializer->span.start,
-                .value.global_initializer_not_constant = {
-                    .declaration = declaration,
-                },
+                    .kind = ERR_GLOBAL_INITIALIZER_NOT_CONSTANT,
+                    .location = declaration->initializer->span.start,
+                    .value.global_initializer_not_constant = {
+                            .declaration = declaration,
+                    },
             });
             return;
         }
-        global->value = result.value.constant;
+
+        global->value = initializer_result.constant_value;
         symbol->has_const_value = true;
-        symbol->const_value = result.value.constant;
+        symbol->const_value = initializer_result.constant_value;
+        // If this is an array whose length is inferred from the initializer, the type information needs to be
+        // updated based on the initializer list result.
+        global->type = get_ir_ptr_type(initializer_result.type);
+        symbol->c_type = initializer_result.c_type;
+        symbol->ir_type = get_ir_ptr_type(initializer_result.type);
+        symbol->ir_ptr.type = symbol->ir_type;
     } else if (global != NULL) {
         // Default value for uninitialized global variables
         if (is_floating_type(declaration->type)) {
@@ -1973,9 +2090,9 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         // If this variable has a constant type, and the initializer is a constant, then we can treat this as a compile
         // time constant (e.g. for constant propagation, or for use in something requiring a constant expression).
         // TODO: does this work correctly for pointers (e.g. `const int *foo = &bar`)?
-        if (symbol->c_type->is_const && initializer_result.has_const_value) {
+        if (symbol->c_type->is_const && initializer_result.has_constant_value) {
             symbol->has_const_value = true;
-            symbol->const_value = initializer_result.const_value;
+            symbol->const_value = initializer_result.constant_value;
         }
     }
 }
@@ -3845,6 +3962,25 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
         ir_var_t result = temp_var(context, type);
         ir_build_ptoi(context->builder, zero, result);
         return ir_value_for_var(result);
+    } else if (type->kind == IR_TYPE_ARRAY) {
+        unsigned int length = type->value.array.length;
+        ir_const_t array = {
+            .kind = IR_CONST_ARRAY,
+            .type = type,
+            .value.array = {
+                .length = length,
+                .values = malloc(length * sizeof(ir_const_t)),
+            },
+        };
+        ir_value_t zero = ir_get_zero_value(context, type->value.array.element);
+        assert(zero.kind == IR_VALUE_CONST);
+        for (int i = 0; i < length; i += 1) {
+            array.value.array.values[i] = zero.constant;
+        }
+        return (ir_value_t) {
+            .kind = IR_VALUE_CONST,
+            .constant = array,
+        };
     } else {
         // TODO: struct, arrays, enums, etc...
         fprintf(stderr, "Unimplemented default value for type %s\n", ir_fmt_type(alloca(256), 256, type));

@@ -156,6 +156,9 @@ const char* ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
                 buffer += l;
                 size -= l;
             }
+            l = snprintf(buffer, size, "}");
+            buffer += l;
+            size -= l;
         }
     }
     return buffer;
