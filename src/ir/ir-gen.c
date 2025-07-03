@@ -580,10 +580,11 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
     if (errors.size > 0) {
         // We will just print the first error and exit for now.
         const char* error_message = errors.buffer[0].message;
-        const char *instruction = ir_fmt_instr(alloca(512), 512, errors.buffer[0].instruction);
-        const char *function_type_str = ir_fmt_type(alloca(512), 512, context->function->type);
-        fprintf(stderr, "IR validation error in function %s %s\n", function->identifier->value, function_type_str);
-        fprintf(stderr, "At instruction: %s\n", instruction);
+        char temp[1024];
+        ir_fmt_type(temp, 1024, context->function->type);
+        fprintf(stderr, "IR validation error in function %s %s\n", function->identifier->value, temp);
+        ir_fmt_instr(temp, 1024, errors.buffer[0].instruction);
+        fprintf(stderr, "At instruction: %s\n", temp);
         fprintf(stderr, "%s\n", error_message);
         exit(1);
     }
@@ -3983,7 +3984,9 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
         };
     } else {
         // TODO: struct, arrays, enums, etc...
-        fprintf(stderr, "Unimplemented default value for type %s\n", ir_fmt_type(alloca(256), 256, type));
+        char _type[512];
+        ir_fmt_type(_type, 512, type);
+        fprintf(stderr, "Unimplemented default value for type %s\n", _type);
         exit(1);
     }
 }
@@ -4143,9 +4146,10 @@ expression_result_t convert_to_type(
             ir_build_ptoi(context->builder, value, result);
         } else {
             // TODO, other conversions, proper error handling
-            fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
-                    ir_fmt_type(alloca(256), 256, source_type),
-                    ir_fmt_type(alloca(256), 256, result_type));
+            char _type1[512], _type2[512];
+            ir_fmt_type(_type1, 512, source_type);
+            ir_fmt_type(_type2, 512, result_type);
+            fprintf(stderr, "Unimplemented type conversion from %s to %s\n", _type1, _type2);
             return EXPR_ERR;
         }
     } else if (ir_is_float_type(result_type)) {
@@ -4202,9 +4206,10 @@ expression_result_t convert_to_type(
             ir_build_itof(context->builder, value, result);
         } else {
             // TODO: proper error handling
-            fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
-                    ir_fmt_type(alloca(256), 256, source_type),
-                    ir_fmt_type(alloca(256), 256, result_type));
+            char _type1[512], _type2[512];
+            ir_fmt_type(_type1, 512, source_type);
+            ir_fmt_type(_type2, 512, result_type);
+            fprintf(stderr, "Unimplemented type conversion from %s to %s\n", _type1, _type2);
             return EXPR_ERR;
         }
     } else if (result_type->kind == IR_TYPE_PTR) {
@@ -4265,15 +4270,17 @@ expression_result_t convert_to_type(
             ir_build_itop(context->builder, ir_value_for_var(temp), result);
         } else if (source_type->kind == IR_TYPE_ARRAY) {
             // TODO
-            fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
-                    ir_fmt_type(alloca(256), 256, source_type),
-                    ir_fmt_type(alloca(256), 256, result_type));
+            char _type1[512], _type2[512];
+            ir_fmt_type(_type1, 512, source_type);
+            ir_fmt_type(_type2, 512, result_type);
+            fprintf(stderr, "Unimplemented type conversion from %s to %s\n", _type1, _type2);
             return EXPR_ERR;
         }
     } else {
-        fprintf(stderr, "Unimplemented type conversion from %s to %s\n",
-                ir_fmt_type(alloca(256), 256, source_type),
-                ir_fmt_type(alloca(256), 256, result_type));
+        char _type1[512], _type2[512];
+        ir_fmt_type(_type1, 512, source_type);
+        ir_fmt_type(_type2, 512, result_type);
+        fprintf(stderr, "Unimplemented type conversion from %s to %s\n", _type1, _type2);
         return EXPR_ERR;
     }
 

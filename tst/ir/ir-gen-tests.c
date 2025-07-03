@@ -25,8 +25,8 @@ do { \
     bool body_equals = true;                                                    \
     if (size_equals) {                                                          \
         for (int i = 0; i < function->body.size; i += 1) {                      \
-            const char *instruction =                                           \
-                ir_fmt_instr(alloca(1024), 1024, &function->body.buffer[i]);    \
+            const char instruction[1024];                                       \
+            ir_fmt_instr(instruction, 1024, &function->body.buffer[i]);         \
             if (strcmp(_body[i], instruction) != 0) {                           \
                 body_equals = false;                                            \
                 fprintf(stderr, "Expected (at index %u): %s, Actual: %s\n",     \
@@ -44,8 +44,8 @@ do { \
         fprintf(stderr, "\nActual:\n");                                         \
         for (int i = 0; i < function->body.size; i += 1) {                      \
             char instr[1024];                                                   \
-            fprintf(stderr, "%s\n",                                             \
-                ir_fmt_instr(instr, 1024, &function->body.buffer[i]));          \
+            ir_fmt_instr(instr, 1024, &function->body.buffer[i]);               \
+            fprintf(stderr, "%s\n", instr);                                     \
         }                                                                       \
         CU_FAIL()                                                               \
     }                                                                           \
