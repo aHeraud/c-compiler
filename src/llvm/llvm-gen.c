@@ -776,9 +776,14 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
                     fprintf(stderr, "%s:%d: LLVM codegen for IR constant strings not implemented\n", __FILE__, __LINE__);
                     exit(1);
                 case IR_CONST_ARRAY: {
-                    // This is _probably_ unreachable, since this should be handled when visiting the ir globals
-                    fprintf(stderr, "%s:%d: LLVM codegen for IR constant arrays not implemented\n", __FILE__, __LINE__);
-                    exit(1);
+                    LLVMTypeRef element_type = ir_to_llvm_type(context, ir_type->value.array.element);
+                    const size_t len = ir_type->value.array.length;
+                    LLVMValueRef *elements = malloc(sizeof(LLVMValueRef) * len);
+                    for (int i = 0; i < len; i += 1) {
+                        ir_value_t element = { .kind = IR_VALUE_CONST, .constant = value->constant.value.array.values[i] };
+                        elements[i] = ir_to_llvm_value(context, &element);
+                    }
+                    return LLVMConstArray(element_type, elements, len);
                 }
             }
         }
