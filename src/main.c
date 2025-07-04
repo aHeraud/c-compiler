@@ -2,12 +2,13 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "errors.h"
 #include "target.h"
 #include "ir/arch.h"
 #include "util/vectors.h"
 #include "parser/lexer.h"
 #include "parser/parser.h"
-#include "ir/ir-gen.h"
+#include "ir/codegen/codegen.h"
 #include "ir/cfg.h"
 #include "ir/fmt.h"
 #include "llvm/llvm-gen.h"

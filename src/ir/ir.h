@@ -389,6 +389,7 @@ typedef struct IrConst {
         IR_CONST_INT,
         IR_CONST_FLOAT,
         IR_CONST_STRING,
+        IR_CONST_STRUCT,
     } kind;
     const ir_type_t *type;
     union {
@@ -399,6 +400,10 @@ typedef struct IrConst {
         long long i;
         long double f;
         const char* s;
+        struct {
+            struct IrConst *fields;
+            size_t length;
+        } _struct;
     } value;
 } ir_const_t;
 

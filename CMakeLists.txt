@@ -58,13 +58,18 @@ add_library(cclib STATIC
         src/parser/numeric-constants.h src/parser/numeric-constants.c
         src/ir/ir.h src/ir/ir.c
         src/ir/ir-builder.h src/ir/ir-builder.c
-        src/ir/ir-gen.h src/ir/ir-gen.c
         src/errors.h src/errors.c
         src/ir/cfg.h src/ir/cfg.c
-        src/llvm/llvm-gen.h src/llvm/llvm-gen.c
         src/ir/ssa.h src/ir/ssa.c
         src/ir/fmt.h src/ir/fmt.c
         src/ir/arch.h src/ir/arch.c
+        src/ir/codegen/codegen.h src/ir/codegen/codegen.c
+        src/ir/codegen/internal.h src/ir/codegen/internal.c
+        src/ir/codegen/declarations.c
+        src/ir/codegen/expressions.c
+        src/ir/codegen/initializers.c
+        src/ir/codegen/statements.c
+        src/llvm/llvm-gen.h src/llvm/llvm-gen.c
 )
 
 add_executable(cc src/main.c)

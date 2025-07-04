@@ -1,11 +1,13 @@
 #include <CUnit/Basic.h>
 
-#include "ir/ir-gen.h"
+#include "errors.h"
+#include "ir/arch.h"
+#include "ir/codegen/codegen.h"
+#include "ir/codegen/internal.h"
 #include "ir/fmt.h"
 
 #include "../tests.h"
 #include "../test-common.h"
-#include "ir/arch.h"
 
 /// IR generation tests
 /// These are a bit fragile, since they rely on the output of the IR generation matching exactly.

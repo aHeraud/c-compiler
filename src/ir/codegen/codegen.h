@@ -1,9 +1,7 @@
-#ifndef C_COMPILER_IR_GEN_H
-#define C_COMPILER_IR_GEN_H
+#ifndef CODEGEN_H
+#define CODEGEN_H
 
-#include "ast.h"
 #include "ir/ir.h"
-#include "../errors.h"
 
 typedef struct IrGenResult {
     ir_module_t *module;
@@ -12,4 +10,4 @@ typedef struct IrGenResult {
 
 ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir_arch_t *arch);
 
-#endif //C_COMPILER_IR_GEN_H
+#endif //CODEGEN_H
