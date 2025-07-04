@@ -2230,6 +2230,32 @@ void test_ir_sizeof_global_array_size_inferred_from_initializer(void) {
     }));
 }
 
+void test_ir_global_array_nested_designated_initializer_list(void) {
+    const char *input = "int a[2][2] = { [1][1] = 1 };";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    ir_global_t *a = result.module->globals.buffer[0];
+    // The global is a pointer to [i32; [i32; 2]]
+    CU_ASSERT_TRUE_FATAL(a->type->kind == IR_TYPE_PTR &&
+                         a->type->value.ptr.pointee->kind == IR_TYPE_ARRAY &&
+                         a->type->value.ptr.pointee->value.array.length == 2 &&
+                         a->type->value.ptr.pointee->value.array.element->kind == IR_TYPE_ARRAY);
+
+    // a[0] = { 0, 0 }
+    ir_const_t a_0 = a->value.value.array.values[0];
+    CU_ASSERT_TRUE_FATAL(a_0.value.array.length == 2 &&
+        a_0.value.array.values[0].value.i == 0 &&
+        a_0.value.array.values[1].value.i == 0);
+
+    // a[1] = { 0, 1 }
+    ir_const_t a_1 = a->value.value.array.values[1];
+    CU_ASSERT_TRUE_FATAL(a_1.value.array.length == 2 &&
+        a_1.value.array.values[0].value.i == 0 &&
+        a_1.value.array.values[1].value.i == 1);
+}
+
 int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -2338,5 +2364,6 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "global array initializer list - with excess elements", test_ir_global_array_initializer_list_with_excess_elements);
     CU_add_test(suite, "global array initializer list - with fewer element", test_ir_global_array_initializer_list_with_fewer_elements);
     CU_add_test(suite, "global array initializer list - size inferred from initializer - sizeof", test_ir_sizeof_global_array_size_inferred_from_initializer);
+    CU_add_test(suite, "global array initializer list - nested designated initializer", test_ir_global_array_nested_designated_initializer_list);
     return CUE_SUCCESS;
 }

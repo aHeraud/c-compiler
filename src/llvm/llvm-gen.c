@@ -767,8 +767,12 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
         case IR_VALUE_CONST: {
             const ir_type_t *ir_type = value->constant.type;
             switch (value->constant.kind) {
-                case IR_CONST_INT:
-                    return LLVMConstInt(ir_to_llvm_type(context, ir_type), value->constant.value.i, false);
+                case IR_CONST_INT: {
+                    LLVMTypeRef llvm_type = ir_type->kind == IR_TYPE_PTR
+                        ? ir_to_llvm_type(context, context->target->arch->ir_arch->ptr_int_type)
+                        : ir_to_llvm_type(context, ir_type);
+                    return LLVMConstInt(llvm_type, value->constant.value.i, false);
+                }
                 case IR_CONST_FLOAT:
                     return LLVMConstReal(ir_to_llvm_type(context, ir_type), value->constant.value.f);
                 case IR_CONST_STRING:

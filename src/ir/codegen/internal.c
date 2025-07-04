@@ -346,9 +346,10 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
         };
     } else if (type->kind == IR_TYPE_PTR) {
         ir_value_t zero = ir_get_zero_value(context, get_ir_type(context,c_ptr_uint_type()));
-        ir_var_t result = temp_var(context, type);
-        ir_build_ptoi(context->builder, zero, result);
-        return ir_value_for_var(result);
+        // ir_var_t result = temp_var(context, type);
+        // ir_build_itop(context->builder, zero, result);
+        // return ir_value_for_var(result);
+        return zero;
     } else if (type->kind == IR_TYPE_ARRAY) {
         unsigned int length = type->value.array.length;
         ir_const_t array = {
@@ -359,9 +360,9 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
                 .values = malloc(length * sizeof(ir_const_t)),
             },
         };
-        ir_value_t zero = ir_get_zero_value(context, type->value.array.element);
-        assert(zero.kind == IR_VALUE_CONST);
         for (int i = 0; i < length; i += 1) {
+            ir_value_t zero = ir_get_zero_value(context, type->value.array.element);
+            assert(zero.kind == IR_VALUE_CONST);
             array.value.array.values[i] = zero.constant;
         }
         return ir_value_for_const(array);

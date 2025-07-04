@@ -304,7 +304,7 @@ typedef struct ParseCheckpoint {
 } parse_checkpoint_t;
 
 parser_t pinit(lexer_t lexer) {
-    parser_symbol_table_t symbol_table = malloc(sizeof(parser_symbol_table_t));
+    parser_symbol_table_t symbol_table = malloc(sizeof(struct ParserSymbolTable));
     symbol_table->root_scope = malloc(sizeof(parser_scope_t));
     *symbol_table->root_scope = (parser_scope_t) {
         .parent = NULL,
