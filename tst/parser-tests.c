@@ -2226,6 +2226,15 @@ void test_parse_external_declaration_that_uses_typedef(void) {
     CU_ASSERT_TRUE_FATAL(decl->type->kind == TYPE_FLOATING)
 }
 
+void test_parse_external_declaration_typedef_volatile_int(void) {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input = "typedef volatile int newtype;\n";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    translation_unit_t program;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
+}
+
 void test_parse_break_statement(void) {
     lexer_global_context_t context = create_lexer_context();
     const char *input = "break;";
@@ -2497,6 +2506,7 @@ int parser_tests_init_suite(void) {
         NULL == CU_add_test(pSuite, "external declaration - typedef ptr", test_parse_external_declaration_typedef_ptr) ||
         NULL == CU_add_test(pSuite, "external declaration - typedef const ptr", test_parse_external_declaration_typedef_const_ptr) ||
         NULL == CU_add_test(pSuite, "external declaration - using typedef", test_parse_external_declaration_that_uses_typedef) ||
+        NULL == CU_add_test(pSuite, "external declaration - typedef volatile int", test_parse_external_declaration_typedef_volatile_int) ||
         NULL == CU_add_test(pSuite, "program", test_parse_program) ||
         NULL == CU_add_test(pSuite, "typedef used in lower scope", test_parse_program_typedef_used_in_different_scope) ||
         NULL == CU_add_test(pSuite, "illegal symbol redefinition in function scope", test_parse_program_illegal_symbol_redefinition_in_function_scope) ||
