@@ -441,9 +441,8 @@ token_t lscan(struct Lexer* lexer) {
                         }
                         return lscan(lexer); // scan next token
                     default:
-                        fprintf(stderr, "%s:%d:%d: Unknown preprocessor directive '%s'\n",
-                                directive_name.position.path, directive_name.position.line, directive_name.position.column, directive_name.value);
-                        exit(1); // TODO: error recovery
+                        // not a preprocessor directive
+                        return lscan(lexer); // scan next token
                 }
             } else {
                 // only really valid while processing macros, but the parser can handle it

@@ -1594,6 +1594,21 @@ void test_parse_typedef_struct_type(void) {
     CU_ASSERT_EQUAL_FATAL(decl->type->kind, TYPE_STRUCT_OR_UNION)
 }
 
+void test_parse_typedef_anonymous_struct_type(void) {
+    lexer_global_context_t context = create_lexer_context();
+    char *input =
+        "typedef struct {\n"
+        "    int a;\n"
+        "    int b;\n"
+        "} my_struct;\n";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    translation_unit_t translation_unit;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &translation_unit))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_EQUAL_FATAL(lscan(&parser.lexer).kind, TK_EOF) // should have consumed the entire input
+}
+
 void test_abstract_declarator_pointer_int(void) {
     lexer_global_context_t context = create_lexer_context();
     char *input = "*"; // int token has already been parsed
@@ -2448,6 +2463,7 @@ int parser_tests_init_suite(void) {
         NULL == CU_add_test(pSuite, "declaration - empty", test_parse_empty_global_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - struct type", test_parse_struct_type_declaration) ||
         NULL == CU_add_test(pSuite, "declaration - typedef struct type", test_parse_typedef_struct_type) ||
+        NULL == CU_add_test(pSuite, "declaration - typedef anonymous struct type", test_parse_typedef_anonymous_struct_type) ||
         NULL == CU_add_test(pSuite, "abstract declaration - pointer to int", test_abstract_declarator_pointer_int) ||
         NULL == CU_add_test(pSuite, "abstract declaration - function pointer", test_abstract_declarator_function_pointer) ||
         NULL == CU_add_test(pSuite, "function prototype (void)", test_parse_function_prototype_void) ||

@@ -19,19 +19,18 @@ void preprocessor_directive(struct Lexer* lexer, token_t* token) {
     }
 
     char_vector_t directive_name_vec = {malloc(32), 0, 32};
-    if (!isalpha(c0) && c0 != '_') {
-        fprintf(stderr, "Invalid preprocessor directive name at %s:%d:%d\n",
-                lexer->input_path, lexer->position.line, lexer->position.column); // TODO: print the line
-        exit(1); // TODO: error recovery
+    if (isalpha(c0) || c0 != '_') {
+        append_char(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity, ladvance(lexer));
     }
-
-    append_char(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity, ladvance(lexer));
     while ((c0 = lpeek(lexer, 1)) && (isalnum(c0) || c0 == '_')) {
         append_char(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity, ladvance(lexer));
     }
     append_char(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity, '\0');
     shrink_char_vector(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity);
 
+    token->kind = TK_NONE;
+    token->position = lexer->position;
+    token->value = "";
     for (int i = 0; i < sizeof(PREPROCESSOR_DIRECTIVES) / sizeof(struct ReservedWord); i++) {
         struct ReservedWord directive = PREPROCESSOR_DIRECTIVES[i];
         if (strcmp(directive.word, directive_name_vec.buffer) == 0) {
@@ -42,9 +41,13 @@ void preprocessor_directive(struct Lexer* lexer, token_t* token) {
         }
     }
 
-    fprintf(stderr, "%s:%d:%d: Invalid preprocessor directive '%s'\n",
-            lexer->input_path, lexer->position.line, lexer->position.column, directive_name_vec.buffer);
-    exit(1); // TODO: error recovery
+    if (token->kind == TK_NONE) {
+        // consume the rest of the line
+        char c;
+        do {
+            c = ladvance(lexer);
+        } while (c != '\n');
+    }
 }
 
 // For resolving relative paths in #include directives
@@ -315,6 +318,11 @@ void append_macro_parameter(macro_parameters_t* parameters, token_vector_t param
 void preprocessor_parse_macro_invocation_parameters(lexer_t* lexer, macro_definition_t* macro_definition, macro_parameters_t* parameters) {
     assert(parameters != NULL);
     *parameters = (macro_parameters_t) { .list = NULL, .size = 0, .capacity = 0};
+
+    // skip whitespace
+    while (lpeek(lexer, 1) == ' ' || lpeek(lexer, 1) == '\t') {
+        ladvance(lexer);
+    }
 
     if (lpeek(lexer, 1) != '(' || (macro_definition->parameters.size == 0 && macro_definition->variadic)) {
         // no parameters
