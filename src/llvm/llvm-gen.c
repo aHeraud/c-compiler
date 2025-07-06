@@ -118,6 +118,13 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
                 value = LLVMConstArray(element_type, elements, len);
                 break;
             }
+            case IR_CONST_STRUCT: {
+                ir_value_t ir_value = {
+                    .kind = IR_VALUE_CONST,
+                    .constant = global->value,
+                };
+                value = ir_to_llvm_value(&context, &ir_value);
+            }
         }
         LLVMSetInitializer(llvm_global, value);
         hash_table_insert(&context.global_var_map, global->name, llvm_global);
@@ -788,6 +795,18 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
                         elements[i] = ir_to_llvm_value(context, &element);
                     }
                     return LLVMConstArray(element_type, elements, len);
+                }
+                case IR_CONST_STRUCT: {
+                    LLVMValueRef *constant_values = malloc(sizeof(LLVMValueRef) * value->constant.value._struct.length);
+                    for (int i = 0; i < value->constant.value._struct.length; i += 1) {
+                        ir_value_t field_value = {
+                            .kind = IR_VALUE_CONST,
+                            .constant = value->constant.value._struct.fields[i]
+                        };
+                        constant_values[i] = ir_to_llvm_value(context, &field_value);
+                    }
+                    // Note: packed = true, since the ir generator creates new padding fields
+                    return LLVMConstStruct(constant_values, value->constant.value._struct.length, true);
                 }
             }
         }

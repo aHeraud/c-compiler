@@ -2256,6 +2256,43 @@ void test_ir_global_array_nested_designated_initializer_list(void) {
         a_1.value.array.values[1].value.i == 1);
 }
 
+void test_ir_global_struct_initializer_list(void) {
+    const char *input = "struct Foo { int a; int b; } foo = { 1, 2 };";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    ir_global_t *foo = result.module->globals.buffer[0];
+    CU_ASSERT_TRUE_FATAL(foo->type->kind == IR_TYPE_PTR &&
+                         foo->type->value.ptr.pointee->kind == IR_TYPE_STRUCT_OR_UNION);
+    CU_ASSERT_TRUE_FATAL(foo->value.kind == IR_CONST_STRUCT &&
+                         foo->value.value._struct.length == 2);
+    ir_const_t a = foo->value.value._struct.fields[0];
+    CU_ASSERT_TRUE_FATAL(a.kind == IR_CONST_INT &&
+                         a.value.i == 1);
+    ir_const_t b = foo->value.value._struct.fields[1];
+    CU_ASSERT_TRUE_FATAL(b.kind == IR_CONST_INT &&
+                         b.value.i == 2);
+}
+
+void test_ir_global_array_of_structs_initializer_list(void) {
+    const char *input =
+        "struct Foo { int a; };\n"
+        "struct Foo foo[1] = { { 1, }, };\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    ir_global_t *foo = result.module->globals.buffer[0];
+    CU_ASSERT_TRUE_FATAL(foo->type->kind == IR_TYPE_PTR &&
+                         foo->type->value.ptr.pointee->kind == IR_TYPE_ARRAY &&
+                         foo->type->value.ptr.pointee->value.array.length == 1);
+    ir_const_t element = foo->value.value.array.values[0];
+    CU_ASSERT_TRUE_FATAL(element.kind == IR_CONST_STRUCT &&
+                         element.value._struct.length == 1 &&
+                         element.value._struct.fields[0].kind == IR_CONST_INT);
+}
+
 int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -2365,5 +2402,7 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "global array initializer list - with fewer element", test_ir_global_array_initializer_list_with_fewer_elements);
     CU_add_test(suite, "global array initializer list - size inferred from initializer - sizeof", test_ir_sizeof_global_array_size_inferred_from_initializer);
     CU_add_test(suite, "global array initializer list - nested designated initializer", test_ir_global_array_nested_designated_initializer_list);
+    CU_add_test(suite, "global struct initializer list", test_ir_global_struct_initializer_list);
+    CU_add_test(suite, "global array initializer list - array of structs", test_ir_global_array_of_structs_initializer_list);
     return CUE_SUCCESS;
 }

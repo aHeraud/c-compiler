@@ -154,11 +154,23 @@ int ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
             free(str);
             break;
         }
-        case IR_CONST_ARRAY: {
+        case IR_CONST_ARRAY:
+        case IR_CONST_STRUCT:
+        {
+            size_t length;
+            const ir_const_t *values;
+            if (constant.kind == IR_CONST_ARRAY) {
+                length = constant.value.array.length;
+                values = constant.value.array.values;
+            } else {
+                length = constant.value._struct.length;
+                values = constant.value._struct.fields;
+            }
+
             _fmt_snprintf_or_err(result, err, buffer, size, "%s {", _type);
-            for (int i = 0; i < constant.value.array.length; i += 1) {
+            for (int i = 0; i < length; i += 1) {
                 if (i > 0) _fmt_snprintf_or_err(result, err, buffer, size, ",");
-                ir_const_t val = constant.value.array.values[i];
+                ir_const_t val = values[i];
                 int written = ir_fmt_const(buffer, size, val);
                 if (written == -1) goto err;
                 if (written >= size) {

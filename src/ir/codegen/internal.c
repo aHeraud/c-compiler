@@ -65,9 +65,9 @@ void enter_scope(ir_gen_context_t *context) {
     assert(context != NULL);
     scope_t *scope = malloc(sizeof(scope_t));
     *scope = (scope_t) {
-            .symbols = hash_table_create_string_keys(256),
-            .tags = hash_table_create_string_keys(256),
-            .parent = context->current_scope,
+        .symbols = hash_table_create_string_keys(256),
+        .tags = hash_table_create_string_keys(256),
+        .parent = context->current_scope,
     };
     context->current_scope = scope;
 }
@@ -830,6 +830,56 @@ ir_value_t ir_make_const_float(const ir_type_t *type, double value) {
 bool is_tag_incomplete_type(const tag_t *tag) {
     assert(tag != NULL);
     return tag->ir_type == NULL;
+}
+
+/**
+ * Some types (structs/enums) reference type definitions that occur elsewhere, which need to be looked up.
+ * Other types (arrays, pointers, structs) can reference these as inner types, so they also need to be handled
+ * specially.
+ * @param context Codegen context
+ * @param c_type  C type to resolve
+ * @return Resolved c type
+ */
+const type_t* resolve_type(ir_gen_context_t *context, const type_t *c_type) {
+    switch (c_type->kind) {
+        case TYPE_ARRAY: {
+            const type_t *element_type = c_type->value.array.element_type;
+            const type_t *resolved_element_type = resolve_type(context, element_type);
+            if (resolved_element_type != element_type) {
+                type_t *resolved_type = malloc(sizeof(type_t));
+                *resolved_type = *c_type;
+                resolved_type->value.array.element_type = resolved_element_type;
+                return resolved_type;
+            }
+            return c_type;
+        }
+        case TYPE_ENUM: {
+            // Is there a better way to check if this has been resolved?
+            if (c_type->value.enum_specifier.enumerators.size > 0) return c_type;
+            // Look up the tag starting at the current scope
+            tag_t *tag = lookup_tag(context, c_type->value.enum_specifier.identifier->value);
+            assert(tag != NULL);
+            return tag->c_type;
+        }
+        case TYPE_POINTER: {
+            const type_t *element_type = c_type->value.pointer.base;
+            const type_t *resolved_element_type = resolve_type(context, element_type);
+            if (resolved_element_type != element_type) {
+                type_t *resolved_type = malloc(sizeof(type_t));
+                *resolved_type = *c_type;
+                resolved_type->value.pointer.base = resolved_element_type;
+                return resolved_type;
+            }
+            return c_type;
+        }
+        case TYPE_STRUCT_OR_UNION: {
+            const tag_t *tag = lookup_tag(context, c_type->value.struct_or_union.identifier->value);
+            if (tag != NULL) return tag->c_type;
+        }
+        default:
+            // Scalar types don't reference other types, so don't need to be resolved
+            return c_type;
+    }
 }
 
 /**

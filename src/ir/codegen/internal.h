@@ -227,6 +227,8 @@ expression_result_t get_boolean_value(
 bool is_tag_incomplete_type(const tag_t *tag);
 const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type);
 
+const type_t* resolve_type(ir_gen_context_t *context, const type_t *c_type);
+
 /**
  * Recursively resolve a struct type.
  * Needed to avoid incorrectly resolving the types of fields if a new struct or enum type with the same name as one

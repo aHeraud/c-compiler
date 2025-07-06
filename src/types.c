@@ -108,6 +108,23 @@ bool types_equal(const type_t *a, const type_t *b) {
                 }
             }
             return true;
+        case TYPE_ENUM:
+            // compare identifier
+            if ((a->value.enum_specifier.identifier == NULL) != (b->value.enum_specifier.identifier == NULL))
+                return false;
+            if (a->value.enum_specifier.identifier != NULL &&
+                strcmp(a->value.enum_specifier.identifier->value, b->value.enum_specifier.identifier->value) != 0)
+                return false;
+            // compare enumerator values
+            if (a->value.enum_specifier.enumerators.size != b->value.enum_specifier.enumerators.size) return false;
+            for (int i = 0; i < a->value.enum_specifier.enumerators.size; i += 1) {
+                // enumerator name
+                if (strcmp(a->value.enum_specifier.enumerators.buffer[i].identifier->value, b->value.enum_specifier.enumerators.buffer[i].identifier->value) != 0)
+                    return false;
+                // enumerator value
+                // TODO: need to evaluate this to compare it for equality?
+            }
+            return true;
         default: // unknown type
             return false;
     }

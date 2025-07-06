@@ -167,13 +167,23 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
 
     // Does this declare or reference a tag? (TODO: also support enums)
     const tag_t *tag = NULL;
-    if (declaration->type->kind == TYPE_STRUCT_OR_UNION) {
+    if (declaration->type->kind == TYPE_STRUCT_OR_UNION || declaration->type->kind == TYPE_ENUM) {
         tag = tag_for_declaration(context, declaration->type);
     }
 
     if (declaration->identifier == NULL) {
         // this only declares a tag
         return;
+    }
+
+    const type_t *c_type;
+    const ir_type_t *ir_type;
+    if (tag != NULL) {
+        c_type = tag->c_type;
+        ir_type = tag->ir_type;
+    } else {
+        c_type = resolve_type(context, declaration->type);
+        ir_type = get_ir_type(context, c_type);
     }
 
     // Create the symbol for the variable declared by this declaration
@@ -184,7 +194,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
         // the global was previously given a value (e.g. has an initializer or is a function definition),
         // then it is a re-definition error.
 
-        if (declaration->type->kind == TYPE_FUNCTION) {
+        if (c_type->kind == TYPE_FUNCTION) {
             // Check if we've already processed a function definition with the same name
             if (hash_table_lookup(&context->function_definition_map, declaration->identifier->value, NULL)) {
                 append_compilation_error(&context->errors, (compilation_error_t) {
@@ -197,7 +207,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
                 });
             }
             // Check if the types match. Re-declaration is allowed if the types match.
-            if (!ir_types_equal(symbol->ir_type, get_ir_type(context,declaration->type))) {
+            if (!ir_types_equal(symbol->ir_type, ir_type)) {
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .location = declaration->identifier->position,
                     .kind = ERR_REDEFINITION_OF_SYMBOL,
@@ -213,7 +223,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             assert(hash_table_lookup(&context->global_map, declaration->identifier->value, (void**) &global));
             assert(global != NULL);
             // If the types are not equal, or the global has already been initialized, it is a redefinition error.
-            if (!ir_types_equal(global->type, get_ir_type(context,declaration->type)) || global->initialized) {
+            if (!ir_types_equal(global->type, ir_type) || global->initialized) {
                 append_compilation_error(&context->errors, (compilation_error_t) {
                     .location = declaration->identifier->position,
                     .kind = ERR_REDEFINITION_OF_SYMBOL,
@@ -240,13 +250,12 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             name = global_name(context);
         }
 
-        const ir_type_t *ir_type = get_ir_type(context,declaration->type);
         *symbol = (symbol_t) {
             .kind = is_function ? SYMBOL_FUNCTION : SYMBOL_GLOBAL_VARIABLE,
             .identifier = declaration->identifier,
             .name = declaration->identifier->value,
-            .c_type = declaration->type,
-            .ir_type = get_ir_type(context,declaration->type),
+            .c_type = c_type,
+            .ir_type = ir_type,
             .ir_ptr = (ir_var_t) {
                 .name = name,
                 .type = is_function ? ir_type : get_ir_ptr_type(ir_type),
@@ -257,7 +266,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
 
         // Add the global to the module's global list
         // *Function declarations are not IR globals*
-        if (declaration->type->kind != TYPE_FUNCTION) {
+        if (c_type->kind != TYPE_FUNCTION) {
             global = malloc(sizeof(ir_global_t));
             *global = (ir_global_t) {
                 .name = symbol->ir_ptr.name,
@@ -375,8 +384,8 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
     const type_t *c_type;
     const ir_type_t *ir_type;
     if (tag == NULL) {
-        c_type = declaration->type;
-        ir_type = get_ir_type(context, declaration->type);
+        c_type = resolve_type(context, declaration->type);
+        ir_type = get_ir_type(context, c_type);
     } else {
         c_type = tag->c_type;
         ir_type = tag->ir_type;

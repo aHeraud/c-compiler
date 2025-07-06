@@ -261,22 +261,28 @@ ir_initializer_result_t ir_visit_array_initializer(
     return result;
 }
 
-ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list) {
+ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, ir_value_t ptr, const type_t *c_type, const initializer_list_t *initializer_list, ir_const_t *constant_value) {
     assert(c_type->kind == TYPE_STRUCT_OR_UNION);
     const ir_type_t *ir_ptr_type = ir_get_type_of_value(ptr);
     assert(ir_ptr_type->kind == IR_TYPE_PTR);
     const ir_type_t *ir_struct_type = ir_ptr_type->value.ptr.pointee;
     assert(ir_struct_type->kind == IR_TYPE_STRUCT_OR_UNION);
 
+    assert(constant_value != NULL);
+
     const field_ptr_vector_t *fields = &c_type->value.struct_or_union.fields;
     const hash_table_t *field_map = &c_type->value.struct_or_union.field_map;
 
-    const ir_struct_field_ptr_vector_t *ir_fields = &ir_struct_type->value.struct_or_union.fields;
     const hash_table_t *ir_field_map = &ir_struct_type->value.struct_or_union.field_map;
+
+    bool is_constant = true;
 
     int field_index = 0;
     for (int i = 0; i < initializer_list->size; i += 1) {
         initializer_list_element_t element = initializer_list->buffer[i];
+        ir_initializer_result_t element_initializer_result;
+        ir_struct_field_t *ir_field = NULL;
+
         if (element.designation != NULL && element.designation->size > 0) {
             // Handle the designator top level designator, then recursively visit the initializer
             designator_t designator = element.designation->buffer[0];
@@ -306,12 +312,13 @@ ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, i
             field_index = field->index;
 
             // Get the IR field (may have a different index due to padding)
-            ir_struct_field_t *ir_field = NULL;
             assert(hash_table_lookup(ir_field_map, field_name->value, (void**) &ir_field));
 
             // Get a pointer to the field
             ir_var_t element_ptr = temp_var(context, get_ir_ptr_type(ir_field->type));
             ir_build_get_struct_member_ptr(context->builder, ptr, ir_field->index, element_ptr);
+
+            ir_const_t *field_constant = &constant_value->value._struct.fields[ir_field->index];
 
             if (element.designation->size > 1) {
                 // create a new initializer list that just includes this element, with the first designator removed
@@ -331,13 +338,14 @@ ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, i
                         .value.list = &nested_initializer_list,
                 };
                 // recursively visit it
-                ir_initializer_result_t element_initializer_result =
-                    ir_visit_initializer(context, ir_value_for_var(element_ptr), field->type, &nested_initializer);
+                element_initializer_result =
+                    _ir_visit_initializer_internal(context, ir_value_for_var(element_ptr), field->type, &nested_initializer, field_constant);
                 VEC_DESTROY(&nested_initializer_list);
                 VEC_DESTROY(&nested_designators);
             } else {
                 // visit the initializer
-                ir_visit_initializer(context, ir_value_for_var(element_ptr), field->type, element.initializer);
+                element_initializer_result =
+                    _ir_visit_initializer_internal(context, ir_value_for_var(element_ptr), field->type, element.initializer, field_constant);
             }
         } else {
             // No designator, this just refers to the current field index (either the first field, or the field following
@@ -351,23 +359,32 @@ ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, i
             const struct_field_t *field = fields->buffer[field_index];
 
             // Get the IR field, it may have a different index after adding padding, so look it up by name.
-            const ir_struct_field_t *ir_field = NULL;
             assert(hash_table_lookup(ir_field_map, field->identifier->value, (void**) &ir_field));
 
             // Get a pointer to the field
             ir_var_t element_ptr = temp_var(context, get_ir_ptr_type(ir_field->type));
             ir_build_get_struct_member_ptr(context->builder, ptr, ir_field->index, element_ptr);
 
+            ir_const_t *field_constant = NULL;
+            field_constant = &constant_value->value._struct.fields[ir_field->index];
+
             // visit the initializer
-            ir_visit_initializer(context, ir_value_for_var(element_ptr), field->type, element.initializer);
+            element_initializer_result =
+                _ir_visit_initializer_internal(context, ir_value_for_var(element_ptr), field->type, element.initializer, field_constant);
         }
+
+        is_constant &= element_initializer_result.has_constant_value;
+        if (is_constant)
+            constant_value->value._struct.fields[ir_field->index] = element_initializer_result.constant_value;
+
         field_index += 1;
     }
 
     return (ir_initializer_result_t) {
         .c_type = c_type,
         .type = ir_struct_type,
-        .has_constant_value = false,
+        .has_constant_value = is_constant,
+        .constant_value = *constant_value,
     };
 }
 
@@ -378,7 +395,7 @@ ir_initializer_result_t _ir_visit_initializer_list_internal(ir_gen_context_t *co
         case IR_TYPE_ARRAY:
             return ir_visit_array_initializer(context, ptr, c_type, initializer_list, constant_value);
         case IR_TYPE_STRUCT_OR_UNION: {
-            return ir_visit_struct_initializer(context, ptr, c_type, initializer_list);
+            return ir_visit_struct_initializer(context, ptr, c_type, initializer_list, constant_value);
         }
         default: {
             fprintf(stderr, "%s:%d: Invalid type for initializer list\n", __FILE__, __LINE__);
