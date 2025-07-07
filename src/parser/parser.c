@@ -2160,7 +2160,7 @@ bool parse_for_statement(parser_t* parser, statement_t *statement, token_t *keyw
     // 3. Or just a semicolon (special case of the above)
 
     // If the next-token is a declaration specifier, then it must be a declaration
-    bool is_declaration = false;
+    bool is_declaration = typedef_name(parser, true, NULL, NULL);
     for (int i = 0; i < sizeof (DECLARATION_SPECIFIER_TOKENS) / sizeof (token_kind_t); i += 1) {
         if (peek(parser, DECLARATION_SPECIFIER_TOKENS[i])) {
             is_declaration = true;
