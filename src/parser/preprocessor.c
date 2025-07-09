@@ -8,6 +8,10 @@
 #include "preprocessor.h"
 
 void preprocessor_directive(struct Lexer* lexer, token_t* token) {
+    token->kind = TK_NONE;
+    token->position = lexer->position;
+    token->value = "";
+
     char c = ladvance(lexer);
     assert(c == '#');
 
@@ -16,6 +20,16 @@ void preprocessor_directive(struct Lexer* lexer, token_t* token) {
     while (c0 == ' ' || c0 == '\t') {
         ladvance(lexer);
         c0 = lpeek(lexer, 1);
+    }
+
+    if (isdigit(c0)) {
+        // This might be a gnu style line directive (e.g. `# <line-number> "<source-file>" ...`)
+        // Just consume the rest of the line and ignore it
+        while (c0 != '\n' && c0 != 0) {
+            ladvance(lexer);
+            c0 = lpeek(lexer, 1);
+        }
+        return;
     }
 
     char_vector_t directive_name_vec = {malloc(32), 0, 32};
@@ -28,26 +42,18 @@ void preprocessor_directive(struct Lexer* lexer, token_t* token) {
     append_char(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity, '\0');
     shrink_char_vector(&directive_name_vec.buffer, &directive_name_vec.size, &directive_name_vec.capacity);
 
-    token->kind = TK_NONE;
-    token->position = lexer->position;
-    token->value = "";
     for (int i = 0; i < sizeof(PREPROCESSOR_DIRECTIVES) / sizeof(struct ReservedWord); i++) {
         struct ReservedWord directive = PREPROCESSOR_DIRECTIVES[i];
         if (strcmp(directive.word, directive_name_vec.buffer) == 0) {
             token->kind = directive.kind;
             token->value = directive_name_vec.buffer;
-            token->position = lexer->position;
             return;
         }
     }
 
-    if (token->kind == TK_NONE) {
-        // consume the rest of the line
-        char c;
-        do {
-            c = ladvance(lexer);
-        } while (c != '\n');
-    }
+    fprintf(stderr, "%s:%d:%d: Invalid preprocessor directive '%s'\n",
+            lexer->input_path, lexer->position.line, lexer->position.column, directive_name_vec.buffer);
+    exit(1);
 }
 
 // For resolving relative paths in #include directives

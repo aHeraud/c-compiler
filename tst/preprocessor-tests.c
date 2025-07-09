@@ -360,6 +360,19 @@ void test__LINE__substitution() {
     CU_ASSERT_EQUAL_FATAL(strcmp(tokens.buffer[2].value, "3"), 0)
 }
 
+void test_ignore_gnu_style_line_directive() {
+    char* input_path = "test_ignore_gnu_style_line_directive.c";
+    char *source_buffer = "# 123 \"test-file.c\" 1 2 3\n";
+    lexer_global_context_t context = create_context();
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer), &context);
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 0);
+}
+
 int preprocessor_tests_init_suite() {
     CU_pSuite pSuite = CU_add_suite("preprocessor", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "#include - relative path", test_includes_header_relative_path) ||
@@ -374,7 +387,8 @@ int preprocessor_tests_init_suite() {
         NULL == CU_add_test(pSuite, "#define - parameter name is defined macro", test_macro_define_and_replace_parameter_name_is_defined_macro) ||
         NULL == CU_add_test(pSuite, "#define - and #undef", test_macro_define_and_undefine) ||
         NULL == CU_add_test(pSuite, "__FILE__", test__FILE__substitution) ||
-        NULL == CU_add_test(pSuite, "__LINE__", test__LINE__substitution)
+        NULL == CU_add_test(pSuite, "__LINE__", test__LINE__substitution) ||
+        NULL == CU_add_test(pSuite, "ignore gnu style line directive", test_ignore_gnu_style_line_directive)
     ) {
         CU_cleanup_registry();
         exit(CU_get_error());
