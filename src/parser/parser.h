@@ -61,6 +61,7 @@ typedef struct Parser {
     size_t next_token_index;
     parse_error_vector_t errors;
     parser_symbol_table_t symbol_table;
+    unsigned int id_counter;
 } parser_t;
 
 parser_t pinit(lexer_t lexer);

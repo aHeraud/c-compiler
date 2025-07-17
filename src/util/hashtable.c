@@ -118,6 +118,7 @@ bool hash_table_insert(hash_table_t* table, const void* key, void* value) {
  * @return true if the value was found, false otherwise
  */
 bool hash_table_lookup(const hash_table_t* table, const void* key, void** value) {
+    if (table->num_buckets == 0) return false;
     size_t hashcode = table->hash_fn(key);
     size_t index = hashcode % table->num_buckets;
     hash_table_bucket_t* entry = table->buckets[index];
@@ -141,6 +142,7 @@ bool hash_table_lookup(const hash_table_t* table, const void* key, void** value)
  * @return true if the value was found, false otherwise
  */
 bool hash_table_remove(hash_table_t* table, const void* key, void** value) {
+    if (table->num_buckets == 0) return false;
     size_t hashcode = table->hash_fn(key);
     size_t index = hashcode % table->num_buckets;
     hash_table_bucket_t* entry = table->buckets[index];

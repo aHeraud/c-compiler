@@ -258,6 +258,7 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
         case TYPE_STRUCT_OR_UNION: {
             // This is only for looking up existing struct types, creating a new one should be done through
             // the function get_ir_struct_type
+            assert(c_type->value.struct_or_union.identifier != NULL);
             const tag_t *tag = lookup_tag(context, c_type->value.struct_or_union.identifier->value);
             if (tag == NULL) {
                 // Any valid declaration that declares a struct also creates the tag (for example: `struct Foo *foo`)
@@ -265,6 +266,7 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
                 // We will just return a default type
                 return &IR_I32;
             }
+            assert(tag->ir_type != NULL);
             return tag->ir_type;
         }
         default:
@@ -273,8 +275,19 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
 }
 
 // This should only be called when creating the declaration/tag
-const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_type, const char *id) {
+const ir_type_t *get_ir_struct_type(
+    ir_gen_context_t *context,
+    tag_t *tag,
+    const type_t *c_type,
+    const char *id
+) {
     assert(c_type != NULL && c_type->kind == TYPE_STRUCT_OR_UNION);
+
+    ir_type_t *ir_type = malloc(sizeof(ir_type_t));
+
+    // A bit of a hack to handle nested reference to the struct
+    *ir_type = *tag->ir_type;
+    tag->ir_type = ir_type;
 
     // map of field name -> field ptr
     hash_table_t field_map = hash_table_create_string_keys(32);
@@ -282,6 +295,8 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
     // get field list
     ir_struct_field_ptr_vector_t fields = VEC_INIT;
     for (size_t i = 0; i < c_type->value.struct_or_union.fields.size; i++) {
+        // TODO: handle illegal definitions where a struct contains a field which has the same type as itself
+
         const struct_field_t *c_field = c_type->value.struct_or_union.fields.buffer[i];
         assert(c_field->index == i); // assuming they're in order
         ir_struct_field_t *ir_field = malloc(sizeof(ir_struct_field_t));
@@ -293,6 +308,7 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
             .type = ir_field_type,
             .index = c_field->index,
         };
+
         hash_table_insert(&field_map, ir_field->name, ir_field);
         VEC_APPEND(&fields, ir_field);
     }
@@ -305,7 +321,6 @@ const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_t
     };
     if (!c_type->value.struct_or_union.packed && !c_type->value.struct_or_union.is_union) definition = ir_pad_struct(context->arch, &definition);
 
-    ir_type_t *ir_type = malloc(sizeof(ir_type_t));
     *ir_type = (ir_type_t) {
         .kind = IR_TYPE_STRUCT_OR_UNION,
         .value.struct_or_union = definition,
@@ -829,7 +844,7 @@ ir_value_t ir_make_const_float(const ir_type_t *type, double value) {
 
 bool is_tag_incomplete_type(const tag_t *tag) {
     assert(tag != NULL);
-    return tag->ir_type == NULL;
+    return tag->incomplete;
 }
 
 /**
@@ -874,7 +889,8 @@ const type_t* resolve_type(ir_gen_context_t *context, const type_t *c_type) {
         }
         case TYPE_STRUCT_OR_UNION: {
             const tag_t *tag = lookup_tag(context, c_type->value.struct_or_union.identifier->value);
-            if (tag != NULL) return tag->c_type;
+            assert(tag != NULL);
+            return tag->c_type;
         }
         default:
             // Scalar types don't reference other types, so don't need to be resolved

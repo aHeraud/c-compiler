@@ -31,7 +31,7 @@ expression_result_t ir_visit_constant_expression(ir_gen_context_t *context, cons
         .params = NULL,
         .is_variadic = false,
         .body = NULL,
-};
+    };
     context->builder = ir_builder_create();
 
     expression_result_t result = ir_visit_expression(context, expression);
@@ -1415,7 +1415,7 @@ expression_result_t ir_visit_member_access_expression(ir_gen_context_t *context,
             .kind = ERR_INVALID_STRUCT_FIELD_REFERENCE,
             .location = expr->value.member_access.operator.position,
             .value.invalid_struct_field_reference = {
-                .type = target.c_type,
+                .type = tag->c_type,
                 .field = expr->value.member_access.member
             }
         });

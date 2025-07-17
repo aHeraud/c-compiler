@@ -103,10 +103,11 @@ typedef struct Symbol {
 } symbol_t;
 
 typedef struct Tag {
-    const token_t *identifier;
-    const char* uid; // unique-id (module) for the tag
-    const type_t *c_type;
-    const ir_type_t *ir_type;
+    token_t *identifier;
+    char* uid; // unique-id (module) for the tag
+    type_t *c_type;
+    ir_type_t *ir_type;
+    bool incomplete; // This is an incomplete type (e.g. forward struct declaration like `struct Foo;`)
 } tag_t;
 
 extern const expression_result_t EXPR_ERR;
@@ -179,7 +180,7 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type);
  * @param id
  * @return New struct/union type
  */
-const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, const type_t *c_type, const char *id);
+const ir_type_t *get_ir_struct_type(ir_gen_context_t *context, tag_t *tag, const type_t *c_type, const char *id);
 
 /**
  * Get the IR type that is a pointer to the specified IR type

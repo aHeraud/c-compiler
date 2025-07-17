@@ -2293,6 +2293,64 @@ void test_ir_global_array_of_structs_initializer_list(void) {
                          element.value._struct.fields[0].kind == IR_CONST_INT);
 }
 
+void test_ir_forward_struct_declaration_ptr(void) {
+    // forward declaration of a struct, so a pointer to it can be created without having the full definition
+    const char *input =
+        "struct Foo;\n"
+        "struct Foo *foo;\n"
+        "struct Foo {\n"
+        "    int a;\n"
+        "};\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.buffer[0]->type->kind == IR_TYPE_PTR);
+}
+
+void test_ir_recursive_struct_field(void) {
+    const char *input =
+        "struct Foo {\n"
+        "    struct Foo *foo;\n"
+        "};\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+}
+
+void test_ir_union_inside_struct_inside_struct(void) {
+    const char *input =
+        "typedef union {\n"
+        "   int v32;\n"
+        "   struct {\n"
+        "       char a;\n"
+        "       char b;\n"
+        "       char c;\n"
+        "       char d;\n"
+        "   } v8;\n"
+        "} u1;\n"
+        "struct s1\n"
+        "{\n"
+        "   u1 a;\n"
+        "};\n"
+        "struct s1 s;\n"
+        "int main() {\n"
+        "    s.a.v32 = 0xFF00FF00;\n"
+        "    return 0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*union.__anon_struct__2_1 %0 = get_struct_member_ptr *struct.s1_0 @3, i32 0",
+        "*i32 %1 = get_struct_member_ptr *union.__anon_struct__2_1 %0, i32 0",
+        "store i32 4278255360, *i32 %1",
+        "ret i32 0"
+    }));
+}
+
 int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -2404,5 +2462,8 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "global array initializer list - nested designated initializer", test_ir_global_array_nested_designated_initializer_list);
     CU_add_test(suite, "global struct initializer list", test_ir_global_struct_initializer_list);
     CU_add_test(suite, "global array initializer list - array of structs", test_ir_global_array_of_structs_initializer_list);
+    CU_add_test(suite, "struct forward declaration - ptr", test_ir_forward_struct_declaration_ptr);
+    CU_add_test(suite, "struct recursive field", test_ir_recursive_struct_field);
+    CU_add_test(suite, "union inside struct inside struct", test_ir_union_inside_struct_inside_struct);
     return CUE_SUCCESS;
 }

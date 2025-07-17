@@ -317,6 +317,7 @@ parser_t pinit(lexer_t lexer) {
             .errors = {.size = 0, .capacity = 0, .buffer = NULL},
             .next_token_index = 0,
             .symbol_table = symbol_table,
+            .id_counter = 1,
     };
 }
 
@@ -1027,11 +1028,10 @@ bool parse_struct_or_union_specifier(parser_t *parser, token_t **keyword, struct
     // give the struct a generated identifier if it doesn't have one
     if (struct_type->identifier == NULL) {
         const char *ident_pfx = "__anon_struct__";
-        // we will just use the next token index to make the identifiers unique
         char index[64];
-        snprintf(index, 63, "%lu", parser->next_token_index);
+        snprintf(index, 63, "%u", parser->id_counter++);
         char *ident_value = malloc(strlen(ident_pfx) + strlen(index) + 1);
-        snprintf(ident_value, strlen(ident_pfx) + strlen(index), "%s%s", ident_pfx, index);
+        snprintf(ident_value, strlen(ident_pfx) + strlen(index) + 1, "%s%s", ident_pfx, index);
 
         token_t *token = malloc(sizeof(token_t));
         *token = (token_t) {

@@ -91,42 +91,52 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
                 name += 1;
             }
         }
-        LLVMValueRef llvm_global = LLVMAddGlobal(context.llvm_module, ir_to_llvm_type(&context, ir_type), name);
-        // TODO: don't set values for un-initialized static globals?
-        LLVMValueRef value;
-        switch (global->value.kind) {
-            case IR_CONST_STRING: {
-                value = LLVMConstString(global->value.value.s, strlen(global->value.value.s), false);
-                break;
-            }
-            case IR_CONST_INT: {
-                value = LLVMConstInt(ir_to_llvm_type(&context, ir_type), global->value.value.i, true);
-                break;
-            }
-            case IR_CONST_FLOAT: {
-                value = LLVMConstReal(ir_to_llvm_type(&context, ir_type), global->value.value.f);
-                break;
-            }
-            case IR_CONST_ARRAY: {
-                LLVMTypeRef element_type = ir_to_llvm_type(&context, global->value.type->value.array.element);
-                int len = global->value.value.array.length;
-                LLVMValueRef *elements = malloc(sizeof(LLVMValueRef) * len);
-                for (int i = 0; i < len; i += 1) {
-                    ir_value_t element = { .kind = IR_VALUE_CONST, .constant = global->value.value.array.values[i] };
-                    elements[i] = ir_to_llvm_value(&context, &element);
+        LLVMTypeRef llvm_type = ir_to_llvm_type(&context, ir_type);
+        LLVMValueRef llvm_global = LLVMAddGlobal(context.llvm_module, llvm_type, name);
+        if (global->initialized) {
+            LLVMValueRef value;
+            switch (global->value.kind) {
+                case IR_CONST_STRING: {
+                    value = LLVMConstString(global->value.value.s, strlen(global->value.value.s), false);
+                    break;
                 }
-                value = LLVMConstArray(element_type, elements, len);
-                break;
+                case IR_CONST_INT: {
+                    value = LLVMConstInt(ir_to_llvm_type(&context, ir_type), global->value.value.i, true);
+                    break;
+                }
+                case IR_CONST_FLOAT: {
+                    value = LLVMConstReal(ir_to_llvm_type(&context, ir_type), global->value.value.f);
+                    break;
+                }
+                case IR_CONST_ARRAY: {
+                    LLVMTypeRef element_type = ir_to_llvm_type(&context, global->value.type->value.array.element);
+                    int len = global->value.value.array.length;
+                    LLVMValueRef *elements = malloc(sizeof(LLVMValueRef) * len);
+                    for (int i = 0; i < len; i += 1) {
+                        ir_value_t element = { .kind = IR_VALUE_CONST, .constant = global->value.value.array.values[i] };
+                        elements[i] = ir_to_llvm_value(&context, &element);
+                    }
+                    value = LLVMConstArray(element_type, elements, len);
+                    break;
+                }
+                case IR_CONST_STRUCT: {
+                    ir_value_t ir_value = {
+                        .kind = IR_VALUE_CONST,
+                        .constant = global->value,
+                    };
+                    value = ir_to_llvm_value(&context, &ir_value);
+                    break;
+                }
+                default:
+                    assert(false);
+                    fprintf(stderr, "%s:%d: Invalid IR global kind", __FILE__, __LINE__);
+                    exit(1);
             }
-            case IR_CONST_STRUCT: {
-                ir_value_t ir_value = {
-                    .kind = IR_VALUE_CONST,
-                    .constant = global->value,
-                };
-                value = ir_to_llvm_value(&context, &ir_value);
-            }
+            LLVMSetInitializer(llvm_global, value);
+        } else {
+            // Zero initialize
+            LLVMSetInitializer(llvm_global, LLVMConstNull(llvm_type));
         }
-        LLVMSetInitializer(llvm_global, value);
         hash_table_insert(&context.global_var_map, global->name, llvm_global);
     }
 
@@ -726,8 +736,13 @@ LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type) 
             return LLVMFloatType();
         case IR_TYPE_F64:
             return LLVMDoubleType();
-        case IR_TYPE_PTR:
-            return LLVMPointerType(ir_to_llvm_type(context, type->value.ptr.pointee), 0);
+        case IR_TYPE_PTR: {
+            // This causes a stack overflow when handling structs which are self-referential
+            // Instead just return an opaque pointer.
+            // return LLVMPointerType(ir_to_llvm_type(context, type->value.ptr.pointee), 0);
+            return LLVMPointerType(LLVMVoidType(), 0);
+
+        }
         case IR_TYPE_ARRAY:
             return LLVMArrayType(ir_to_llvm_type(context, type->value.array.element), type->value.array.length);
         case IR_TYPE_STRUCT_OR_UNION: {

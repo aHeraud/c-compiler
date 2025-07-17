@@ -52,12 +52,55 @@ void visit_enumeration_constants(ir_gen_context_t *context, const enum_specifier
     }
 }
 
+const type_t *make_incomplete_type(const type_t *type) {
+    switch (type->kind) {
+        TYPE_ENUM: {
+            type_t *new_type = malloc(sizeof(type_t));
+            *new_type = *type;
+            new_type->value.enum_specifier.enumerators = (enumerator_vector_t) VEC_INIT;
+            return new_type;
+        }
+        TYPE_STRUCT_OR_UNION: {
+            type_t *new_type = malloc(sizeof(type_t));
+            *new_type = *type;
+            new_type->value.struct_or_union.has_body = false;
+            new_type->value.struct_or_union.field_map = hash_table_create_string_keys(64);
+            new_type->value.struct_or_union.fields = (field_ptr_vector_t) VEC_INIT;
+            return new_type;
+        }
+        default:
+            return type;
+    }
+}
+
+const ir_type_t *make_incomplete_ir_type(const ir_gen_context_t *context, const char *id, const type_t *type) {
+    switch (type->kind) {
+        case TYPE_ENUM: {
+            return context->arch->sint;
+        }
+        case TYPE_STRUCT_OR_UNION: {
+            ir_type_t *new_type = malloc(sizeof(ir_type_t));
+            *new_type = (ir_type_t) {
+                .kind = IR_TYPE_STRUCT_OR_UNION,
+                .value.struct_or_union = {
+                    .field_map = hash_table_create_string_keys(64),
+                    .fields = (ir_struct_field_ptr_vector_t) VEC_INIT,
+                    .is_union = type->value.struct_or_union.is_union,
+                    .id = id,
+                },
+            };
+            return new_type;
+        }
+        default:
+            return get_ir_type(context, type);
+    }
+}
+
 const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type) {
     assert(c_type->kind == TYPE_STRUCT_OR_UNION || c_type->kind == TYPE_ENUM);
 
     // From section 6.7.2.2 of C99 standard
     // Is this declaring a new tag, modifying a forward declaration, or just referencing an existing one?
-
     bool incomplete_type;
     const token_t *identifier;
     if (c_type->kind == TYPE_STRUCT_OR_UNION) {
@@ -100,6 +143,21 @@ const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type
         });
     }
 
+    // unique identifier for the tag
+    const char *id = NULL;
+    if (tag != NULL) {
+        id = tag->uid;
+    } else {
+        size_t id_len = strlen(identifier->value) + 7; // 5 chars for id counter (unsigned short), 1 for _ and 1 for null terminator
+        char *buffer = malloc(id_len);
+        snprintf(buffer, id_len, "%s_%u", identifier->value, context->global_id_counter++);
+        id = buffer;
+    }
+
+    // Initial incomplete types to declare the tag with
+    const type_t *incomplete_ctype = make_incomplete_type(c_type);
+    const ir_type_t *incomplete_ir_type = make_incomplete_ir_type(context, id, incomplete_ctype);
+
     if (incomplete_type) {
         // Could be a forward declaration, also could be a reference to an existing tag.
         if (tag == NULL) tag = lookup_tag(context, identifier->value);
@@ -108,50 +166,54 @@ const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type
             size_t id_len = strlen(identifier->value) + 7; // max of 5 chars for id (unsigned short), plus 1 for _ and 1 for null terminator
             char *id = malloc(id_len);
             snprintf(id, id_len, "%s_%u", identifier->value, context->global_id_counter++);
-            tag = malloc(sizeof(tag_t));
-            *tag = (tag_t) {
+            tag_t *new_tag = malloc(sizeof(tag_t));
+            *new_tag = (tag_t) {
                 .identifier = identifier,
                 .uid = id,
-                .ir_type = NULL,
-                .c_type = NULL, // null = incomplete
+                .ir_type = incomplete_ir_type,
+                .c_type = incomplete_ctype,
+                .incomplete = true,
             };
-            declare_tag(context, tag);
+            declare_tag(context, new_tag);
+            return new_tag;
         }
-        return tag;
-    } else {
-        // Defines a new tag
-        // First declare an incomplete tag to allow for recursive references (e.g. `struct Foo { struct Foo *next; };`)
-        size_t id_len = strlen(identifier->value) + 7; // 5 chars for id counter (unsigned short), 1 for _ and 1 for null terminator
-        char *id = malloc(id_len);
-        snprintf(id, id_len, "%s_%u", identifier->value, context->global_id_counter++);
-        tag = malloc(sizeof(tag_t));
-        *tag = (tag_t) {
-            .identifier = identifier,
-            .uid = id,
-            .ir_type = NULL,
-            .c_type = NULL, // null = incomplete
-        };
-        declare_tag(context, tag);
-
-        if (c_type->kind == TYPE_STRUCT_OR_UNION) {
-            // Resolve the struct c type
-            const type_t *resolved_type = resolve_struct_type(context, c_type);
-
-            // Visit the struct/union body to build the IR type, and update the tag
-            const ir_type_t *ir_type = get_ir_struct_type(context, resolved_type, id);
-            tag->ir_type = ir_type;
-            tag->c_type = resolved_type;
-        } else {
-            // TODO: smaller enumeration constants based on max value?
-            tag->ir_type = context->arch->sint;
-            tag->c_type = &INT;
-
-            // Declare identifiers in the current scope for the enumeration constants
-            visit_enumeration_constants(context, &c_type->value.enum_specifier);
-        }
-
         return tag;
     }
+
+    // Defines a new tag
+    // First declare an incomplete tag to allow for recursive references (e.g. `struct Foo { struct Foo *next; };`)
+
+    bool needs_creation = tag == NULL;
+    if (tag == NULL) tag = malloc(sizeof(tag_t));
+
+    *tag = (tag_t) {
+        .identifier = identifier,
+        .uid = id,
+        .ir_type = incomplete_ir_type,
+        .c_type = incomplete_ctype,
+        .incomplete = true,
+    };
+
+    if (needs_creation) declare_tag(context, tag);
+
+    if (c_type->kind == TYPE_STRUCT_OR_UNION) {
+        // Resolve the struct c type
+        const type_t *resolved_type = resolve_struct_type(context, c_type);
+
+        // Visit the struct/union body to build the IR type, and update the tag
+        const ir_type_t *ir_type = get_ir_struct_type(context, tag, resolved_type, id);
+        tag->ir_type = ir_type;
+        tag->c_type = resolved_type;
+    } else {
+        // TODO: smaller enumeration constants based on max value?
+        tag->ir_type = context->arch->sint;
+        tag->c_type = &INT;
+
+        // Declare identifiers in the current scope for the enumeration constants
+        visit_enumeration_constants(context, &c_type->value.enum_specifier);
+    }
+
+    return tag;
 }
 
 // TODO: This is a bit of a mess, and duplicates a lot of code from ir_visit_declaration.
@@ -165,7 +227,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
         return;
     }
 
-    // Does this declare or reference a tag? (TODO: also support enums)
+    // Does this declare or reference a tag?
     const tag_t *tag = NULL;
     if (declaration->type->kind == TYPE_STRUCT_OR_UNION || declaration->type->kind == TYPE_ENUM) {
         tag = tag_for_declaration(context, declaration->type);

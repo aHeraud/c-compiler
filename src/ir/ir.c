@@ -38,21 +38,19 @@ ssize_t ir_size_of_type_bits(const ir_arch_t *arch, const ir_type_t *type) {
         case IR_TYPE_ARRAY:
             return type->value.array.length * ir_size_of_type_bits(arch, type->value.array.element);
         case IR_TYPE_STRUCT_OR_UNION: {
-            if (type->value.struct_or_union.is_union) {
-                // If the type is a union, then the size is the size of the largest field
-                int max = 0;
-                for (int i = 0; i < type->value.struct_or_union.fields.size; i += 1) {
-                    int size = ir_size_of_type_bytes(arch, type->value.struct_or_union.fields.buffer[i]->type);
-                    if (size > max) max = size;
-                }
-                return max * BYTE_SIZE;
+            // If the type is a union, then the size is the size of the largest field
+            // Otherwise, the size is the sum of all fields
+            int sum_bytes = 0;
+            int max_bytes = 0;
+            for (int i = 0; i < type->value.struct_or_union.fields.size; i += 1) {
+                const ir_type_t *field_type = type->value.struct_or_union.fields.buffer[i]->type;
+                assert(type != field_type);
+                int size_bytes = ir_size_of_type_bytes(arch, field_type);
+                sum_bytes += size_bytes;
+                if (size_bytes > max_bytes) max_bytes = size_bytes;
             }
 
-            int size_bytes = 0;
-            for (int i = 0; i < type->value.struct_or_union.fields.size; i += 1) {
-                size_bytes += ir_size_of_type_bytes(arch, type->value.struct_or_union.fields.buffer[i]->type);
-            }
-            return size_bytes * BYTE_SIZE;
+            return (type->value.struct_or_union.is_union ? max_bytes : sum_bytes) * BYTE_SIZE;
         }
         default:
             return 0;
