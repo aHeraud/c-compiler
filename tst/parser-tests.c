@@ -2405,6 +2405,30 @@ void test_parse_var_enum_declaration_no_list(void) {
     CU_ASSERT_STRING_EQUAL(decl->identifier->value, "foo")
 }
 
+void test_parse_sizeof_typedef_name(void) {
+    lexer_global_context_t context = create_lexer_context();
+    const char *input =
+        "void test() {\n"
+        "    typedef unsigned long size_t;\n"
+        "    sizeof(size_t);\n"
+        "}\n";
+    lexer_t lexer = linit("path/to/file", input, strlen(input), &context);
+    parser_t parser = pinit(lexer);
+    translation_unit_t program;
+    CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
+    CU_ASSERT_EQUAL_FATAL(parser.errors.size, 0)
+    CU_ASSERT_EQUAL_FATAL(program.length, 1)
+    function_definition_t *function = program.external_declarations[0]->value.function_definition;
+    CU_ASSERT_TRUE_FATAL(function->body->kind == STATEMENT_COMPOUND)
+    block_item_t **block_items = (block_item_t**) function->body->value.compound.block_items.buffer;
+    CU_ASSERT_TRUE_FATAL(function->body->value.compound.block_items.size == 2)
+    block_item_t *typedef_declaration = block_items[0];
+    block_item_t *sizeof_statement = block_items[1];
+    CU_ASSERT_TRUE_FATAL(sizeof_statement->kind == BLOCK_ITEM_STATEMENT && sizeof_statement->value.statement->kind == STATEMENT_EXPRESSION)
+    expression_t *sizeof_expression = sizeof_statement->value.statement->value.expression;
+    CU_ASSERT_TRUE_FATAL(sizeof_expression->kind == EXPRESSION_SIZEOF);
+}
+
 int parser_tests_init_suite(void) {
     CU_pSuite pSuite = CU_add_suite("parser", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "primary expression - identifier", test_parse_primary_expression_ident) ||
@@ -2511,7 +2535,8 @@ int parser_tests_init_suite(void) {
         NULL == CU_add_test(pSuite, "typedef used in lower scope", test_parse_program_typedef_used_in_different_scope) ||
         NULL == CU_add_test(pSuite, "illegal symbol redefinition in function scope", test_parse_program_illegal_symbol_redefinition_in_function_scope) ||
         NULL == CU_add_test(pSuite, "parse enum declaration", test_parse_enum_declaration) ||
-        NULL == CU_add_test(pSuite, "parse enum variable declaration", test_parse_var_enum_declaration_no_list)
+        NULL == CU_add_test(pSuite, "parse enum variable declaration", test_parse_var_enum_declaration_no_list) ||
+        NULL == CU_add_test(pSuite, "sizeof typedef name", test_parse_sizeof_typedef_name)
     ) {
         CU_cleanup_registry();
         return CU_get_error();

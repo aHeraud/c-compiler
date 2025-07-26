@@ -3549,7 +3549,7 @@ bool parse_primary_expression(parser_t* parser, expression_t* expr) {
     token_t *token;
     source_position_t start = *current_position(parser);
 
-    if (accept(parser, TK_IDENTIFIER, &token)) {
+    if (!typedef_name(parser, true, NULL, NULL) && accept(parser, TK_IDENTIFIER, &token)) {
         *expr = (expression_t) {
             .span = SPAN_STARTING(start),
             .kind = EXPRESSION_PRIMARY,

@@ -2351,6 +2351,22 @@ void test_ir_union_inside_struct_inside_struct(void) {
     }));
 }
 
+void test_ir_sizeof_typedef() {
+    const char *input =
+       "typedef long size_t;\n"
+       "int main(void) {\n"
+       "    return sizeof(size_t);\n"
+       "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
+    CU_ASSERT_TRUE_FATAL(result.module->functions.size == 1);
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 8"
+    }));
+}
+
 int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -2465,5 +2481,6 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "struct forward declaration - ptr", test_ir_forward_struct_declaration_ptr);
     CU_add_test(suite, "struct recursive field", test_ir_recursive_struct_field);
     CU_add_test(suite, "union inside struct inside struct", test_ir_union_inside_struct_inside_struct);
+    CU_add_test(suite, "sizeof typedef", test_ir_sizeof_typedef);
     return CUE_SUCCESS;
 }
