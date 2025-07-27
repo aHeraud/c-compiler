@@ -39,16 +39,17 @@ void visit_enumeration_constants(ir_gen_context_t *context, const enum_specifier
         };
         declare_symbol(context, symbol);
 
-        if (is_global) {
-            ir_global_t *global = malloc(sizeof(ir_global_t));
-            *global = (ir_global_t) {
-                .initialized = true,
-                .value = symbol->const_value,
-                .type = symbol->ir_type,
-                .name = symbol->name,
-            };
-            VEC_APPEND(&context->module->globals, global);
-        }
+        // I can't remember why I thought this was necessary
+        // if (is_global) {
+        //     ir_global_t *global = malloc(sizeof(ir_global_t));
+        //     *global = (ir_global_t) {
+        //         .initialized = true,
+        //         .value = symbol->const_value,
+        //         .type = symbol->ir_type,
+        //         .name = symbol->name,
+        //     };
+        //     VEC_APPEND(&context->module->globals, global);
+        // }
     }
 }
 

@@ -269,6 +269,9 @@ const ir_type_t* get_ir_type(ir_gen_context_t *context, const type_t *c_type) {
             assert(tag->ir_type != NULL);
             return tag->ir_type;
         }
+        case TYPE_ENUM:
+            // TODO: return actual enum type?
+            return context->arch->sint;
         default:
             return &IR_VOID;
     }
@@ -393,7 +396,8 @@ ir_value_t ir_get_zero_value(ir_gen_context_t *context, const ir_type_t *type) {
             },
         };
         for (int i = 0; i < length; i += 1) {
-            ir_value_t zero = ir_get_zero_value(context, type->value.struct_or_union.fields.buffer[i]->type);
+            ir_struct_field_t *field = type->value.struct_or_union.fields.buffer[i];
+            ir_value_t zero = ir_get_zero_value(context, field->type);
             assert(zero.kind == IR_VALUE_CONST);
             value.value._struct.fields[i] = zero.constant;
         }

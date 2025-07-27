@@ -5,7 +5,7 @@
 
 
 bool is_integer_type(const type_t *type) {
-    return type->kind == TYPE_INTEGER;
+    return type->kind == TYPE_INTEGER || type->kind == TYPE_ENUM;
 }
 
 bool is_small_integer_type(const type_t *type) {
