@@ -295,6 +295,7 @@ expression_result_t ir_visit_multiplicative_binexpr(ir_gen_context_t *context, c
 expression_result_t ir_visit_sizeof_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_ternary_expression(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const expression_t *expr);
+expression_result_t ir_visit_minus_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_logical_not_unexpr(ir_gen_context_t *context, const expression_t *expr);
 expression_result_t ir_visit_address_of_unexpr(ir_gen_context_t *context, const expression_t *expr);

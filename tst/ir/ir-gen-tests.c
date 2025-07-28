@@ -1497,6 +1497,70 @@ void test_ir_gen_unary_local_not(void) {
     }));
 }
 
+void test_ir_gen_unary_negative_const_int(void) {
+    const char *input =
+        "int main(void) {\n"
+        "    return -1;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret i32 -1"
+    }));
+}
+
+void test_ir_gen_unary_negative_const_float(void) {
+    const char *input =
+        "float main(void) {\n"
+        "    return -1.0;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "ret f32 -1.000000"
+    }));
+}
+
+void test_ir_gen_unary_negative_int(void) {
+    const char *input =
+        "int main(int a) {\n"
+        "    return -a;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "store i32 a, *i32 %0",
+        "i32 %1 = load *i32 %0",
+        "i32 %2 = sub i32 0, i32 %1",
+        "ret i32 %2"
+    }));
+}
+
+void test_ir_gen_unary_negative_float(void) {
+    const char *input =
+        "float main(float a) {\n"
+        "    return -a;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*f32 %0 = alloca f32",
+        "store f32 a, *f32 %0",
+        "f32 %1 = load *f32 %0",
+        "f32 %2 = sub f32 0.000000, f32 %1",
+        "ret f32 %2"
+    }));
+}
+
 void test_ir_gen_label_and_goto(void) {
     const char *input =
         "int main(void) {\n"
@@ -2444,6 +2508,10 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "sizeof unary expression", test_ir_gen_sizeof_unary_expression);
     CU_add_test(suite, "unary logical not (constant)", test_ir_gen_unary_local_not_constexpr);
     CU_add_test(suite, "unary logical not", test_ir_gen_unary_local_not);
+    CU_add_test(suite, "unary negative (constant int)", test_ir_gen_unary_negative_const_int);
+    CU_add_test(suite, "unary negative (constant float)", test_ir_gen_unary_negative_const_float);
+    CU_add_test(suite, "unary negative int", test_ir_gen_unary_negative_int);
+    CU_add_test(suite, "unary negative float", test_ir_gen_unary_negative_float);
     CU_add_test(suite, "goto", test_ir_gen_label_and_goto);
     CU_add_test(suite, "goto (forward)", test_ir_gen_forward_goto);
     CU_add_test(suite, "break (while)", test_ir_gen_while_break);

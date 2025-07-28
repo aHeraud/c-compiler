@@ -1111,11 +1111,85 @@ expression_result_t ir_visit_unary_expression(ir_gen_context_t *context, const e
             return ir_visit_increment_decrement(context, expr, true, true);
         case UNARY_POST_INCREMENT:
             return ir_visit_increment_decrement(context, expr, false, true);
+        case UNARY_MINUS:
+            return ir_visit_minus_unexpr(context, expr);
         default:
             fprintf(stderr, "%s:%d:%d: Unary operator not implemented\n",
                 expr->span.start.path, expr->span.start.line, expr->span.start.column);
             exit(1);
     }
+}
+
+expression_result_t ir_visit_minus_unexpr(ir_gen_context_t *context, const expression_t *expr) {
+    // Unary minus negates its operand
+    // The operand must have arithmetic type
+    // The operand is promoted
+
+    expression_result_t operand = ir_visit_expression(context, expr->value.unary.operand);
+    if (operand.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+    if (operand.is_lvalue) operand = get_rvalue(context, operand);
+    if (!is_arithmetic_type(operand.c_type)) {
+        // The operand must have arithmetic type
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_INVALID_UNARY_ARITHMETIC_OPERATOR_TYPE,
+            .location = expr->value.unary.operand->span.start,
+            .value.invalid_unary_arithmetic_operator_type = {
+                .type = operand.c_type,
+                .operator = *expr->value.unary.token,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    // Apply integer promotions (if integral type)
+    const type_t *result_ctype = type_after_integer_promotion(operand.c_type);
+    operand = convert_to_type(context, operand.value, operand.c_type, result_ctype);
+
+    if (operand.value.kind == IR_VALUE_CONST) {
+        // Constant folding
+        ir_value_t result;
+        if (operand.value.constant.kind == IR_CONST_FLOAT) {
+            result = (ir_value_t) {
+                .kind = IR_VALUE_CONST,
+                .constant = {
+                    .kind = IR_CONST_INT,
+                    .type = ir_get_type_of_value(operand.value),
+                    .value.f = 0.0 - operand.value.constant.value.f,
+                },
+            };
+        } else {
+            result = (ir_value_t) {
+                .kind = IR_VALUE_CONST,
+                .constant = {
+                    .kind = IR_CONST_INT,
+                    .type = ir_get_type_of_value(operand.value),
+                    .value.i = 0ll - operand.value.constant.value.i,
+                },
+            };
+        }
+        return (expression_result_t) {
+            .kind = EXPR_RESULT_VALUE,
+            .c_type = operand.c_type,
+            .is_lvalue = false,
+            .is_string_literal = false,
+            .addr_of = false,
+            .value = result,
+        };
+    }
+
+    // Negate by subtracting the value from 0
+    ir_var_t result = temp_var(context, ir_get_type_of_value(operand.value));
+    ir_value_t zero = ir_get_zero_value(context, result.type);
+    ir_build_sub(context->builder,zero, operand.value, result);
+
+    return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
+        .c_type = operand.c_type,
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .addr_of = false,
+        .value = ir_value_for_var(result),
+    };
 }
 
 expression_result_t ir_visit_bitwise_not_unexpr(ir_gen_context_t *context, const expression_t *expr) {
