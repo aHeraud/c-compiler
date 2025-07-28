@@ -2408,8 +2408,8 @@ void test_ir_union_inside_struct_inside_struct(void) {
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
-        "*union.__anon_struct__2_1 %0 = get_struct_member_ptr *struct.s1_0 @3, i32 0",
-        "*i32 %1 = get_struct_member_ptr *union.__anon_struct__2_1 %0, i32 0",
+        "*union.__anon_struct__2_0 %0 = get_struct_member_ptr *struct.s1_2 @3, i32 0",
+        "*i32 %1 = get_struct_member_ptr *union.__anon_struct__2_0 %0, i32 0",
         "store i32 4278255360, *i32 %1",
         "ret i32 0"
     }));
@@ -2429,6 +2429,17 @@ void test_ir_sizeof_typedef() {
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "ret i32 8"
     }));
+}
+
+void test_ir_typedef_enum() {
+    const char *input =
+        "typedef enum E { A } E;\n"
+        "struct S { E a; };\n"
+        "static const struct S s = { .a = A };\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1)
 }
 
 int ir_gen_tests_init_suite(void) {
@@ -2550,5 +2561,6 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "struct recursive field", test_ir_recursive_struct_field);
     CU_add_test(suite, "union inside struct inside struct", test_ir_union_inside_struct_inside_struct);
     CU_add_test(suite, "sizeof typedef", test_ir_sizeof_typedef);
+    CU_add_test(suite, "typedef enum", test_ir_typedef_enum);
     return CUE_SUCCESS;
 }

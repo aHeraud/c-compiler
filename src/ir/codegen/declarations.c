@@ -223,19 +223,14 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
     assert(context != NULL && "Context must not be NULL");
     assert(declaration != NULL && "Declaration must not be NULL");
 
-    // Typedef-name resolution is handled by the parser. This is a no-op.
-    if (declaration->type->storage_class == STORAGE_CLASS_TYPEDEF) {
-        return;
-    }
-
     // Does this declare or reference a tag?
     const tag_t *tag = NULL;
     if (declaration->type->kind == TYPE_STRUCT_OR_UNION || declaration->type->kind == TYPE_ENUM) {
         tag = tag_for_declaration(context, declaration->type);
     }
 
-    if (declaration->identifier == NULL) {
-        // this only declares a tag
+    if (declaration->identifier == NULL || declaration->type->storage_class == STORAGE_CLASS_TYPEDEF) {
+        // this only declares a tag or a typedef
         return;
     }
 
@@ -412,20 +407,15 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
     assert(context != NULL && "Context must not be NULL");
     assert(declaration != NULL && "Declaration must not be NULL");
 
-    if (declaration->type->storage_class == STORAGE_CLASS_TYPEDEF) {
-        // Typedefs are a no-op
-        // The actual typedef-name resolution happens in the parser.
-        return;
-    }
-
     // Does this declare or reference a tag?
     const tag_t *tag = NULL;
     if (declaration->type->kind == TYPE_STRUCT_OR_UNION || declaration->type->kind == TYPE_ENUM) {
         tag = tag_for_declaration(context, declaration->type);
     }
 
-    if (declaration->identifier == NULL) {
-        // this only declares a tag
+    if (declaration->identifier == NULL || declaration->type->storage_class == STORAGE_CLASS_TYPEDEF) {
+        // this only declares a tag or a typedef
+        // The actual typedef-name resolution happens in the parser.
         return;
     }
 
