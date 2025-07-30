@@ -98,8 +98,7 @@ bool ir_types_equal(const ir_type_t *a, const ir_type_t *b) {
             return ir_types_equal(a->value.ptr.pointee, b->value.ptr.pointee);
         }
         case IR_TYPE_STRUCT_OR_UNION: {
-            // TODO
-            assert(false && "Unimplemented");
+            return strcmp(a->value.struct_or_union.id, b->value.struct_or_union.id) == 0;
         }
         default:
             return true;
@@ -819,7 +818,7 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
             if (instr->value.branch.has_cond && instr->value.branch.cond.kind == IR_VALUE_VAR) uses[count++] = &instr->value.branch.cond.var;
             break;
         case IR_CALL:
-            uses[count++] = &instr->value.call.function;
+            if (instr->value.call.function.kind == IR_VALUE_VAR) uses[count++] = &instr->value.call.function.var;
             for (int i = 0; i < instr->value.call.num_args; i += 1) {
                 assert(count < uses_max); // TODO
                 if (instr->value.call.args[i].kind == IR_VALUE_VAR) uses[count++] = &instr->value.call.args[i].var;

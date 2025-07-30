@@ -127,6 +127,14 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
                     value = ir_to_llvm_value(&context, &ir_value);
                     break;
                 }
+                case IR_CONST_GLOBAL_POINTER: {
+                    ir_value_t ir_value = {
+                        .kind = IR_VALUE_CONST,
+                        .constant = global->value,
+                    };
+                    value = ir_to_llvm_value(&context, &ir_value);
+                    break;
+                }
                 default:
                     assert(false);
                     fprintf(stderr, "%s:%d: Invalid IR global kind", __FILE__, __LINE__);
@@ -477,8 +485,17 @@ void llvm_gen_visit_instruction(
             break;
         }
         case IR_CALL: {
-            LLVMTypeRef fn_type = ir_to_llvm_type(context, instr->value.call.function.type);
-            LLVMValueRef fn = llvm_get_or_add_function(context, instr->value.call.function.name, fn_type);
+            LLVMTypeRef fn_type = ir_to_llvm_type(context, ir_get_type_of_value(instr->value.call.function));
+            // TODO: call things that aren't named functions
+            const char *fn_name;
+            if (instr->value.call.function.kind == IR_VALUE_VAR) {
+                fn_name = instr->value.call.function.var.name;
+            } else {
+                assert(instr->value.call.function.kind == IR_VALUE_CONST);
+                assert(instr->value.call.function.constant.kind == IR_CONST_GLOBAL_POINTER);
+                fn_name = instr->value.call.function.constant.value.global_name;
+            }
+            LLVMValueRef fn = llvm_get_or_add_function(context, fn_name, fn_type);
             LLVMValueRef *args = malloc(instr->value.call.num_args * sizeof(LLVMValueRef));
             for (int i = 0; i < instr->value.call.num_args; i += 1) {
                 args[i] = ir_to_llvm_value(context, &instr->value.call.args[i]);
@@ -822,6 +839,13 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
                     }
                     // Note: packed = true, since the ir generator creates new padding fields
                     return LLVMConstStruct(constant_values, value->constant.value._struct.length, true);
+                }
+                case IR_CONST_GLOBAL_POINTER: {
+                    const char *ir_name = value->constant.value.global_name;
+                    assert(ir_name != NULL);
+                    LLVMValueRef llvm_value = NULL;
+                    assert(hash_table_lookup(&context->global_var_map, ir_name, (void**) &llvm_value));
+                    return llvm_value;
                 }
             }
         }

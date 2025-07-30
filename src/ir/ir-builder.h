@@ -90,7 +90,7 @@ ir_instruction_node_t *ir_build_ge(ir_function_builder_t *builder, ir_value_t le
 /* Control Flow */
 ir_instruction_node_t *ir_build_br(ir_function_builder_t *builder, const char *label);
 ir_instruction_node_t *ir_build_br_cond(ir_function_builder_t *builder, ir_value_t cond, const char *label);
-ir_instruction_node_t *ir_build_call(ir_function_builder_t *builder, ir_var_t function, ir_value_t *args, size_t num_args, ir_var_t *result);
+ir_instruction_node_t *ir_build_call(ir_function_builder_t *builder, ir_value_t function, ir_value_t *args, size_t num_args, ir_var_t *result);
 ir_instruction_node_t *ir_build_ret(ir_function_builder_t *builder, ir_value_t a);
 ir_instruction_node_t *ir_build_ret_void(ir_function_builder_t *builder);
 ir_instruction_node_t *ir_build_switch(ir_function_builder_t *builder, ir_value_t value, char *default_label);

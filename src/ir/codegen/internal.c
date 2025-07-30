@@ -773,11 +773,8 @@ expression_result_t get_rvalue(ir_gen_context_t *context, expression_result_t re
         }
 
         ir_var_t temp = temp_var(context, ir_get_type_of_value(res.value)->value.ptr.pointee);
-        ir_var_t ptr = (ir_var_t) {
-            .name = res.value.var.name,
-            .type = res.value.var.type,
-        };
-        ir_build_load(context->builder, ir_value_for_var(ptr), temp);
+        ir_value_t ir_ptr = res.value;
+        ir_build_load(context->builder, ir_ptr, temp);
         return (expression_result_t) {
             .kind = EXPR_RESULT_VALUE,
             .c_type = res.c_type,

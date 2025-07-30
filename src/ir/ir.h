@@ -390,6 +390,7 @@ typedef struct IrConst {
         IR_CONST_FLOAT,
         IR_CONST_STRING,
         IR_CONST_STRUCT,
+        IR_CONST_GLOBAL_POINTER,
     } kind;
     const ir_type_t *type;
     union {
@@ -404,6 +405,7 @@ typedef struct IrConst {
             struct IrConst *fields;
             size_t length;
         } _struct;
+        const char* global_name;
     } value;
 } ir_const_t;
 
@@ -471,7 +473,7 @@ typedef struct IrInstruction {
             ir_value_t cond;
         } branch;
         struct {
-            ir_var_t function;
+            ir_value_t function;
             ir_value_t *args;
             size_t num_args;
             ir_var_t *result; // optional

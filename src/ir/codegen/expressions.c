@@ -228,8 +228,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
         result = (ir_var_t*) malloc(sizeof(ir_var_t));
         *result = temp_var(context, get_ir_type(context,function.c_type->value.function.return_type));
     }
-    assert(function.value.kind == IR_VALUE_VAR); // TODO: is it possible to directly call a constant?
-    ir_build_call(context->builder, function.value.var, args, actual_args_count, result);
+    ir_build_call(context->builder, function.value, args, actual_args_count, result);
 
     ir_value_t result_value = result != NULL ?
         ir_value_for_var(*result) : (ir_value_t) {
@@ -1592,10 +1591,7 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
                     .is_string_literal = false,
                     .addr_of = false,
                     .symbol = symbol,
-                    .value = (ir_value_t) {
-                        .kind = IR_VALUE_VAR,
-                        .var = symbol->ir_ptr,
-                    },
+                    .value = symbol->ir_ptr,
                 };
             }
         }

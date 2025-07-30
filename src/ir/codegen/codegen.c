@@ -133,10 +133,10 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
             .c_type = c_type,
             .ir_type = function_type,
             // Not actually a pointer, but we use the ir_ptr field to store the function name
-            .ir_ptr = (ir_var_t) {
+            .ir_ptr = ir_value_for_var((ir_var_t) {
                 .name = function->identifier->value,
                 .type = function_type,
-            },
+            }),
             .has_const_value = false,
         };
         declare_symbol(context, symbol);
@@ -183,7 +183,7 @@ void ir_visit_function(ir_gen_context_t *context, const function_definition_t *f
             .name = param->identifier->value,
             .c_type = c_type,
             .ir_type = ir_param_type,
-            .ir_ptr = param_ptr,
+            .ir_ptr = ir_value_for_var(param_ptr),
             .has_const_value = false,
         };
         declare_symbol(context, symbol);

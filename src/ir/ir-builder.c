@@ -378,7 +378,7 @@ ir_instruction_node_t *ir_build_br_cond(ir_function_builder_t *builder, ir_value
     return ir_builder_insert_instruction(builder, instruction);
 }
 
-ir_instruction_node_t *ir_build_call(ir_function_builder_t *builder, ir_var_t function, ir_value_t *args, size_t num_args, ir_var_t *result) {
+ir_instruction_node_t *ir_build_call(ir_function_builder_t *builder, ir_value_t function, ir_value_t *args, size_t num_args, ir_var_t *result) {
     ir_instruction_t instruction = {
         .opcode = IR_CALL,
         .value.call = {

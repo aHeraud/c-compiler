@@ -2442,6 +2442,23 @@ void test_ir_typedef_enum() {
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1)
 }
 
+void test_ir_constant_address_of_global() {
+    const char *input =
+        "int a = 0;\n"
+        "int *b = &a;\n"
+        "int main() { return *b; }\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    CU_ASSERT_TRUE_FATAL(result.module->globals.size == 2)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = load **i32 @1",
+        "i32 %1 = load *i32 %0",
+        "ret i32 %1"
+    }));
+}
+
 int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -2562,5 +2579,6 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "union inside struct inside struct", test_ir_union_inside_struct_inside_struct);
     CU_add_test(suite, "sizeof typedef", test_ir_sizeof_typedef);
     CU_add_test(suite, "typedef enum", test_ir_typedef_enum);
+    CU_add_test(suite, "constant address of global", test_ir_constant_address_of_global);
     return CUE_SUCCESS;
 }

@@ -95,7 +95,7 @@ typedef struct Symbol {
     // The IR type of this symbol.
     const ir_type_t *ir_type;
     // Pointer to the memory location where this symbol is stored (variables only).
-    ir_var_t ir_ptr;
+    ir_value_t ir_ptr;
     // True if this has a constant value (e.g. constant storage class)
     bool has_const_value;
     // Constant value for this symbol, only valid if has_constant_value == true

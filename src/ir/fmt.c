@@ -137,20 +137,30 @@ char* ir_fmt_const_string(const char *str) {
     return string.buffer;
 }
 
+int ir_fmt_const_no_type(char *buffer, size_t size, ir_const_t constant);
+
 int ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
     int result = 0;
-    char _type[512];
+    char _type[1024];
     ir_fmt_type(_type, 256, constant.type);
+    _fmt_snprintf_or_err(result, err, buffer, size, "%s ", _type);
+    ir_fmt_const_no_type(buffer, size, constant);
+    err:
+        return -1;
+}
+
+int ir_fmt_const_no_type(char *buffer, size_t size, ir_const_t constant) {
+    int result = 0;
     switch (constant.kind) {
         case IR_CONST_INT:
-            _fmt_snprintf_or_err(result, err, buffer, size, "%s %lli", _type, constant.value.i);
+            _fmt_snprintf_or_err(result, err, buffer, size, "%lli", constant.value.i);
             break;
         case IR_CONST_FLOAT:
-            _fmt_snprintf_or_err(result, err, buffer, size, "%s %Lf", _type, constant.value.f);
+            _fmt_snprintf_or_err(result, err, buffer, size, "%Lf", constant.value.f);
             break;
         case IR_CONST_STRING: {
             char *str = ir_fmt_const_string(constant.value.s);
-            _fmt_snprintf_or_err(result, err, buffer, size, "%s \"%s\"", _type, str);
+            _fmt_snprintf_or_err(result, err, buffer, size, "\"%s\"", str);
             free(str);
             break;
         }
@@ -167,7 +177,7 @@ int ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
                 values = constant.value._struct.fields;
             }
 
-            _fmt_snprintf_or_err(result, err, buffer, size, "%s {", _type);
+            _fmt_snprintf_or_err(result, err, buffer, size, "{");
             for (int i = 0; i < length; i += 1) {
                 if (i > 0) _fmt_snprintf_or_err(result, err, buffer, size, ",");
                 ir_const_t val = values[i];
@@ -186,6 +196,9 @@ int ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
             }
             _fmt_snprintf_or_err(result, err, buffer, size, "}");
         }
+        case IR_CONST_GLOBAL_POINTER:
+            _fmt_snprintf_or_err(result, err, buffer, size, "%s", constant.value.global_name);
+            break;
     }
     return result;
 err:
@@ -289,7 +302,13 @@ int ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *instr) {
         case IR_CALL: {
             if (instr->value.call.result != NULL)
                 _fmt_snprintf_or_err(result, err, buffer, size, "%s = ", FMT_VAR(a, 512, *instr->value.call.result));
-            _fmt_snprintf_or_err(result, err, buffer, size, "call %s(", instr->value.call.function.name);
+            if (instr->value.call.function.kind == IR_VALUE_VAR) {
+                _fmt_snprintf_or_err(result, err, buffer, size, "call %s(", instr->value.call.function.var.name);
+            } else {
+                char fname[512];
+                ir_fmt_const_no_type(fname, 512, instr->value.call.function.constant);
+                _fmt_snprintf_or_err(result, err, buffer, size, "call %s(", fname);
+            }
             for (size_t i = 0; i < instr->value.call.num_args; i += 1) {
                 _fmt_snprintf_or_err(result, err, buffer, size, "%s", FMT_VAL(a, 512, instr->value.call.args[i]));
                 if (i < instr->value.call.num_args - 1) {

@@ -29,10 +29,10 @@ void visit_enumeration_constants(ir_gen_context_t *context, const enum_specifier
             .has_const_value = true,
             .ir_type = context->arch->sint,
             .c_type = &INT,
-            .ir_ptr = {
+            .ir_ptr = ir_value_for_var((ir_var_t) {
                 .type = NULL,
                 .name = NULL,
-            },
+            }),
             .kind = SYMBOL_ENUMERATION_CONSTANT,
             .const_value = ir_make_const_int(context->arch->sint, value++).constant,
             .name = name,
@@ -308,16 +308,19 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
             name = global_name(context);
         }
 
+        ir_const_t ir_ptr = {
+            .kind = IR_CONST_GLOBAL_POINTER,
+            .type = is_function ? ir_type : get_ir_ptr_type(ir_type),
+            .value.global_name = name,
+        };
+
         *symbol = (symbol_t) {
             .kind = is_function ? SYMBOL_FUNCTION : SYMBOL_GLOBAL_VARIABLE,
             .identifier = declaration->identifier,
             .name = declaration->identifier->value,
             .c_type = c_type,
             .ir_type = ir_type,
-            .ir_ptr = (ir_var_t) {
-                .name = name,
-                .type = is_function ? ir_type : get_ir_ptr_type(ir_type),
-            },
+            .ir_ptr = ir_value_for_const(ir_ptr),
             .has_const_value = false,
         };
         declare_symbol(context, symbol);
@@ -327,8 +330,8 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
         if (c_type->kind != TYPE_FUNCTION) {
             global = malloc(sizeof(ir_global_t));
             *global = (ir_global_t) {
-                .name = symbol->ir_ptr.name,
-                .type = symbol->ir_ptr.type,
+                .name = name,
+                .type = ir_ptr.type,
                 .initialized = declaration->initializer != NULL,
             };
 
@@ -356,7 +359,7 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
         context->builder = ir_builder_create();
 
         ir_initializer_result_t initializer_result =
-                ir_visit_initializer(context, ir_value_for_var(symbol->ir_ptr), symbol->c_type, declaration->initializer);
+                ir_visit_initializer(context, symbol->ir_ptr, symbol->c_type, declaration->initializer);
 
         // Delete the builder, throw away any generated instructions, and restore whatever the previous values were
         ir_builder_destroy(context->builder);
@@ -384,7 +387,11 @@ void ir_visit_global_declaration(ir_gen_context_t *context, const declaration_t 
         global->type = get_ir_ptr_type(initializer_result.type);
         symbol->c_type = initializer_result.c_type;
         symbol->ir_type = get_ir_ptr_type(initializer_result.type);
-        symbol->ir_ptr.type = symbol->ir_type;
+        if (symbol->ir_ptr.kind == IR_VALUE_VAR) {
+            symbol->ir_ptr.var.type = symbol->ir_type;
+        } else {
+            symbol->ir_ptr.constant.type = symbol->ir_type;
+        }
     } else if (global != NULL) {
         // Default value for uninitialized global variables
         if (is_floating_type(declaration->type)) {
@@ -444,6 +451,11 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         ir_type = tag->ir_type;
     }
 
+    ir_var_t ir_ptr = {
+        .name = temp_name(context),
+        .type = get_ir_ptr_type(ir_type),
+    };
+
     // Create a new symbol for this declaration and add it to the current scope
     symbol = malloc(sizeof(symbol_t));
     *symbol = (symbol_t) {
@@ -452,21 +464,18 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         .name = declaration->identifier->value,
         .c_type = c_type,
         .ir_type = ir_type,
-        .ir_ptr = (ir_var_t) {
-            .name = temp_name(context),
-            .type = get_ir_ptr_type(ir_type),
-        },
+        .ir_ptr = ir_value_for_var(ir_ptr),
         .has_const_value = false,
     };
     declare_symbol(context, symbol);
 
     // Allocate storage space for the variable
-    ir_instruction_node_t *alloca_node = insert_alloca(context, ir_type, symbol->ir_ptr);
+    ir_instruction_node_t *alloca_node = insert_alloca(context, ir_type, ir_ptr);
 
     // Evaluate the initializer if present, and store the result in the allocated storage
     if (declaration->initializer != NULL) {
         ir_initializer_result_t initializer_result =
-                ir_visit_initializer(context, ir_value_for_var(symbol->ir_ptr), symbol->c_type, declaration->initializer);
+                ir_visit_initializer(context, symbol->ir_ptr, symbol->c_type, declaration->initializer);
         const ir_type_t *value_type = initializer_result.type;
 
         // If the variable was an array with a length inferred from the initializer list (e.g. `int a[] = {1, 2, 3};`),
@@ -475,11 +484,11 @@ void ir_visit_declaration(ir_gen_context_t *context, const declaration_t *declar
         if (value_type != NULL && c_type->kind == TYPE_ARRAY && c_type->value.array.size == NULL) {
             // update the symbol
             symbol->ir_type = value_type;
-            symbol->ir_ptr.type = get_ir_ptr_type(value_type);
+            symbol->ir_ptr.var.type = get_ir_ptr_type(value_type);
             // update the alloca instruction
             ir_instruction_t *alloca_instr = ir_builder_get_instruction(alloca_node);
             alloca_instr->value.alloca.type = value_type;
-            alloca_instr->value.alloca.result = symbol->ir_ptr;
+            alloca_instr->value.alloca.result = symbol->ir_ptr.var;
         }
 
         // If this variable has a constant type, and the initializer is a constant, then we can treat this as a compile
