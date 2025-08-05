@@ -671,8 +671,15 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
     // We will lazily relax this to allow comparisons between two arithmetic types, or two pointer types.
     // TODO: Implement the correct type restrictions for pointer comparisons.
 
-    if (is_arithmetic_type(left.c_type) && is_arithmetic_type(right.c_type)) {
-        const type_t *common_type = get_common_type(left.c_type, right.c_type);
+    if ((is_arithmetic_type(left.c_type) && is_arithmetic_type(right.c_type)) ||
+        (is_pointer_type(left.c_type) && is_pointer_type(right.c_type))
+    ) {
+        const type_t *common_type;
+        if (!is_pointer_type(left.c_type)) {
+            common_type = get_common_type(left.c_type, right.c_type);
+        } else {
+            common_type = c_ptr_uint_type();
+        }
         left = convert_to_type(context, left.value, left.c_type, common_type);
         right = convert_to_type(context, right.value, right.c_type, common_type);
 
@@ -768,6 +775,7 @@ expression_result_t ir_visit_comparison_binexpr(ir_gen_context_t *context, const
     } else if (is_pointer_type(left.c_type) && is_pointer_type(right.c_type)) {
         // TODO: Implement pointer comparisons
         assert(false && "Pointer comparisons not implemented");
+
     } else {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_INVALID_BINARY_EXPRESSION_OPERANDS,

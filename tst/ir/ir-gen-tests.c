@@ -2459,6 +2459,27 @@ void test_ir_constant_address_of_global() {
     }));
 }
 
+void test_ir_binexpr_ptr_cmp() {
+    const char *input = "int main(int *a, int *b) { return a < b; }";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "**i32 %0 = alloca *i32",
+        "**i32 %1 = alloca *i32",
+        "store *i32 a, **i32 %0",
+        "store *i32 b, **i32 %1",
+        "*i32 %2 = load **i32 %0",
+        "*i32 %3 = load **i32 %1",
+        "u64 %4 = ptoi *i32 %2",
+        "u64 %5 = ptoi *i32 %3",
+        "bool %6 = lt u64 %4, u64 %5",
+        "i32 %7 = ext bool %6",
+        "ret i32 %7"
+    }));
+}
+
 int ir_gen_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR Generation Tests", NULL, NULL);
     if (suite == NULL) {
@@ -2580,5 +2601,6 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "sizeof typedef", test_ir_sizeof_typedef);
     CU_add_test(suite, "typedef enum", test_ir_typedef_enum);
     CU_add_test(suite, "constant address of global", test_ir_constant_address_of_global);
+    CU_add_test(suite, "ptr comparison", test_ir_binexpr_ptr_cmp);
     return CUE_SUCCESS;
 }
