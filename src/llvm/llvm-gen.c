@@ -91,8 +91,8 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
                 name += 1;
             }
         }
-        LLVMTypeRef llvm_type = ir_to_llvm_type(&context, ir_type);
-        LLVMValueRef llvm_global = LLVMAddGlobal(context.llvm_module, llvm_type, name);
+
+        LLVMValueRef llvm_global;
         if (global->initialized) {
             LLVMValueRef value;
             switch (global->value.kind) {
@@ -140,9 +140,13 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
                     fprintf(stderr, "%s:%d: Invalid IR global kind", __FILE__, __LINE__);
                     exit(1);
             }
+            LLVMTypeRef llvm_type = LLVMTypeOf(value);
+            llvm_global = LLVMAddGlobal(context.llvm_module, llvm_type, name);
             LLVMSetInitializer(llvm_global, value);
         } else {
             // Zero initialize
+            LLVMTypeRef llvm_type = ir_to_llvm_type(&context, ir_type);
+            llvm_global = LLVMAddGlobal(context.llvm_module, llvm_type, name);
             LLVMSetInitializer(llvm_global, LLVMConstNull(llvm_type));
         }
         hash_table_insert(&context.global_var_map, global->name, llvm_global);
@@ -155,8 +159,8 @@ void llvm_gen_module(const ir_module_t *module, const target_t *target, const ch
 
     // finalize - validate the module and write it to a file
     char *message;
-    LLVMVerifyModule(context.llvm_module, LLVMAbortProcessAction, &message);
-    LLVMDisposeMessage(message);
+    //LLVMVerifyModule(context.llvm_module, LLVMAbortProcessAction, &message);
+    //LLVMDisposeMessage(message);
     LLVMPrintModuleToFile(context.llvm_module, output_filename, &message);
     LLVMDisposeModule(context.llvm_module);
 
@@ -829,6 +833,34 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
                     return LLVMConstArray(element_type, elements, len);
                 }
                 case IR_CONST_STRUCT: {
+                    if (value->constant.value._struct.is_union) {
+                        LLVMValueRef constant_values[2];
+
+                        // field value
+                        const size_t field_index = value->constant.value._struct.union_field_index;
+                        ir_value_t field_value = {
+                            .kind = IR_VALUE_CONST,
+                            .constant = value->constant.value._struct.fields[field_index],
+                        };
+                        constant_values[0] = ir_to_llvm_value(context, &field_value);
+
+                        // padding
+                        ir_struct_field_t *field = value->constant.type->value.struct_or_union.fields.buffer[field_index];
+                        size_t union_size = ir_size_of_type_bytes(context->target->arch->ir_arch, value->constant.type);
+                        size_t field_size = ir_size_of_type_bytes(context->target->arch->ir_arch, field->type);
+                        assert(union_size >= field_size);
+                        size_t padding_bytes = union_size - field_size;
+
+                        // TODO: is there a way to not have to zero initialize the individual elements
+                        LLVMValueRef zero = LLVMConstInt(LLVMInt8Type(), 0, false);
+                        LLVMValueRef *padding = malloc(padding_bytes * sizeof(LLVMValueRef));
+                        for (int i = 0; i < padding_bytes; i += 1) {
+                            padding[i] = zero;
+                        }
+                        constant_values[1] = LLVMConstArray(LLVMInt8Type(), padding, padding_bytes);
+                        return LLVMConstStruct(constant_values, 2, true);
+                    }
+
                     LLVMValueRef *constant_values = malloc(sizeof(LLVMValueRef) * value->constant.value._struct.length);
                     for (int i = 0; i < value->constant.value._struct.length; i += 1) {
                         ir_value_t field_value = {

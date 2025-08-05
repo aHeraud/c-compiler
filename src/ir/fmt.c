@@ -144,7 +144,8 @@ int ir_fmt_const(char *buffer, size_t size, ir_const_t constant) {
     char _type[1024];
     ir_fmt_type(_type, 256, constant.type);
     _fmt_snprintf_or_err(result, err, buffer, size, "%s ", _type);
-    ir_fmt_const_no_type(buffer, size, constant);
+    result += ir_fmt_const_no_type(buffer, size, constant);
+    return result;
     err:
         return -1;
 }

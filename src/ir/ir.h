@@ -402,6 +402,8 @@ typedef struct IrConst {
         long double f;
         const char* s;
         struct {
+            bool is_union;
+            int union_field_index;
             struct IrConst *fields;
             size_t length;
         } _struct;

@@ -277,6 +277,9 @@ ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, i
 
     bool is_constant = true;
 
+    // Last accessed field index - used to keep track of the field to use if this is a union
+    int last_accessed_field_index = 0;
+
     int field_index = 0;
     for (int i = 0; i < initializer_list->size; i += 1) {
         initializer_list_element_t element = initializer_list->buffer[i];
@@ -377,8 +380,12 @@ ir_initializer_result_t ir_visit_struct_initializer(ir_gen_context_t *context, i
         if (is_constant)
             constant_value->value._struct.fields[ir_field->index] = element_initializer_result.constant_value;
 
+        last_accessed_field_index = field_index;
         field_index += 1;
     }
+
+    constant_value->value._struct.is_union = ir_struct_type->value.struct_or_union.is_union;
+    if (ir_struct_type->value.struct_or_union.is_union) constant_value->value._struct.union_field_index = last_accessed_field_index;
 
     return (ir_initializer_result_t) {
         .c_type = c_type,
