@@ -1665,16 +1665,20 @@ expression_result_t ir_visit_primary_expression(ir_gen_context_t *context, const
             };
             ir_append_global_ptr(&context->module->globals, global);
 
+            const ir_type_t *ir_ptr_type = get_ir_ptr_type(ir_type);
+            ir_const_t const_ref = {
+                .kind = IR_CONST_GLOBAL_POINTER,
+                .type = ir_ptr_type,
+                .value.global_name = global->name,
+            };
+
             return (expression_result_t) {
                 .kind = EXPR_RESULT_VALUE,
                 .c_type = c_type,
                 .is_lvalue = false,
                 .is_string_literal = true,
                 .addr_of = false,
-                .value = ir_value_for_var((ir_var_t) {
-                    .type = get_ir_ptr_type(ir_type),
-                    .name = global->name,
-                })
+                .value = ir_value_for_const(const_ref),
             };
         }
         case PE_EXPRESSION: {

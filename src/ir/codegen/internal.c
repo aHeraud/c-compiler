@@ -635,7 +635,7 @@ expression_result_t convert_to_type(
     } else if (result_type->kind == IR_TYPE_PTR) {
         if (source_type->kind == IR_TYPE_PTR) {
             // constant conversion
-            if (value.kind == IR_VALUE_CONST) {
+            if (value.kind == IR_VALUE_CONST && value.constant.kind == IR_CONST_INT) {
                 ir_value_t constant = (ir_value_t) {
                     .kind = IR_VALUE_CONST,
                     .constant = (ir_const_t) {
