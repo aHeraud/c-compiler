@@ -1040,14 +1040,13 @@ void test_ir_gen_function_vararg_promotion(void) {
         "store f32 1.000000, *f32 %0",
         "store i8 75, *i8 %1",
         "store i16 1024, *i16 %3",
-        "*i8 %5 = bitcast *[i8;12] @0",
         "f32 %6 = load *f32 %0",
         "f64 %7 = ext f32 %6",
         "i8 %8 = load *i8 %1",
         "i32 %9 = ext i8 %8",
         "i16 %10 = load *i16 %3",
         "i32 %11 = ext i16 %10",
-        "i32 %12 = call printf(*i8 %5, f64 %7, i32 %9, i32 %11)",
+        "i32 %12 = call printf(*i8 @0, f64 %7, i32 %9, i32 %11)",
         "ret i32 0"
     }));
 }
@@ -1077,13 +1076,12 @@ void test_ir_gen_varargs_call(void) {
         "**i8 %2 = alloca *i8",
         "store i32 1, *i32 %0",
         "store f64 1.000000, *f64 %1",
-        "*i8 %3 = bitcast *[i8;6] @0",
-        "store *i8 %3, **i8 %2",
+        "store *i8 @0, **i8 %2",
         "i32 %4 = load *i32 %0",
         "f64 %5 = load *f64 %1",
         "*i8 %6 = load **i8 %2",
         "call foo(i32 %4, f64 %5, *i8 %6)",
-        "ret i32 0"
+        "ret i32 0",
     }));
 }
 
@@ -2415,7 +2413,7 @@ void test_ir_union_inside_struct_inside_struct(void) {
     }));
 }
 
-void test_ir_sizeof_typedef() {
+void test_ir_sizeof_typedef(void) {
     const char *input =
        "typedef long size_t;\n"
        "int main(void) {\n"
@@ -2431,7 +2429,7 @@ void test_ir_sizeof_typedef() {
     }));
 }
 
-void test_ir_typedef_enum() {
+void test_ir_typedef_enum(void) {
     const char *input =
         "typedef enum E { A } E;\n"
         "struct S { E a; };\n"
@@ -2442,7 +2440,7 @@ void test_ir_typedef_enum() {
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1)
 }
 
-void test_ir_constant_address_of_global() {
+void test_ir_constant_address_of_global(void) {
     const char *input =
         "int a = 0;\n"
         "int *b = &a;\n"
@@ -2459,7 +2457,7 @@ void test_ir_constant_address_of_global() {
     }));
 }
 
-void test_ir_binexpr_ptr_cmp() {
+void test_ir_binexpr_ptr_cmp(void) {
     const char *input = "int main(int *a, int *b) { return a < b; }";
     PARSE(input)
     ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
