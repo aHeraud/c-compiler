@@ -20,38 +20,48 @@
     translation_unit_t program;                                                  \
     CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
 
-// TODO: fix this abomination
-#define ASSERT_IR_INSTRUCTIONS_EQ(function, _body) \
-do { \
-    bool size_equals = function->body.size == sizeof(_body)/sizeof(_body[0]);   \
-    bool body_equals = true;                                                    \
-    if (size_equals) {                                                          \
-        for (int i = 0; i < function->body.size; i += 1) {                      \
-            const char instruction[1024];                                       \
-            ir_fmt_instr(instruction, 1024, &function->body.buffer[i]);         \
-            if (strcmp(_body[i], instruction) != 0) {                           \
-                body_equals = false;                                            \
-                fprintf(stderr, "Expected (at index %u): %s, Actual: %s\n",     \
-                    i, _body[i], instruction);                                  \
-                break;                                                          \
-            }                                                                   \
-        }                                                                       \
-    }                                                                           \
-    if (!body_equals || !size_equals) {                                         \
-        fprintf(stderr, "Expected and actual function body not equal:\n");      \
-        fprintf(stderr, "\nExpected:\n");                                       \
-        for (int i = 0; i < (sizeof(_body)/sizeof(_body[0])); i += 1) {         \
-            fprintf(stderr, "%s\n", _body[i]);                                  \
-        }                                                                       \
-        fprintf(stderr, "\nActual:\n");                                         \
-        for (int i = 0; i < function->body.size; i += 1) {                      \
-            char instr[1024];                                                   \
-            ir_fmt_instr(instr, 1024, &function->body.buffer[i]);               \
-            fprintf(stderr, "%s\n", instr);                                     \
-        }                                                                       \
-        CU_FAIL()                                                               \
-    }                                                                           \
-} while (0)
+/**
+ * Test a function definition against a static function body for equality.
+ * @param testcase Optional testcase name
+ * @param function Function definition
+ * @param body     Expected function definition body (serialized form)
+ * @param body_len Length of the body array
+ */
+void assert_ir_instructions_eq(const char *testcase, const ir_function_definition_t *function, const char **body, size_t body_len) {
+    bool size_equals = function->body.size == body_len;
+    bool body_equals = true;
+    ssize_t first_diff_idx = -1;
+    size_t min_length = body_len < function->body.size ? body_len : function->body.size;
+    for (int i = 0; i < min_length; i += 1) {
+        char instruction[1024];
+        ir_fmt_instr(instruction, 1024, &function->body.buffer[i]);
+        if (strcmp(body[i], instruction) != 0) {
+            body_equals = false;
+            first_diff_idx = i;
+            if (size_equals)
+                fprintf(stderr, "Expected (at index %u): %s, Actual: %s\n", i, body[i], instruction);
+            break;
+        }
+    }
+    if (!body_equals || !size_equals) {
+        if (testcase != NULL) fprintf(stderr, "%s: ", testcase);
+        fprintf(stderr, "Expected and actual function body not equal:\n");
+        fprintf(stderr, "\nExpected:\n");
+        for (int i = 0; i < body_len; i += 1) {
+            fprintf(stderr, "%3d:\t%s\t%s", i, body[i], i == first_diff_idx ? "<--- first difference here\n" : "\n");
+        }
+        fprintf(stderr, "\nActual:\n");
+        for (int i = 0; i < function->body.size; i += 1) {
+            char instr[1024];
+            ir_fmt_instr(instr, 1024, &function->body.buffer[i]);
+            fprintf(stderr, "%3d:\t%s\t%s", i, instr, i == first_diff_idx ? "<--- first difference here\n" : "\n");
+        }
+        fprintf(stderr, "\n");
+        CU_FAIL()
+    }
+}
+
+#define ASSERT_IR_INSTRUCTIONS_EQ(function, _body) assert_ir_instructions_eq(__func__, function, _body, sizeof(_body) / sizeof(_body[0]))
 
 void test_ir_gen_basic(void) {
     const char* input = "int main(void) {\n"
@@ -190,7 +200,7 @@ void test_ir_gen_divide_by_zero_integer_constants(void) {
                         "    return 1 / 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    generate_ir(&program, &IR_ARCH_X86_64);
 
     // TODO: warning, undefined result
     // For now we just make sure this doesn't crash
