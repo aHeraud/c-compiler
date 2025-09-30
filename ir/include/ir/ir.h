@@ -1,6 +1,12 @@
 #ifndef C_COMPILER_IR_H
 #define C_COMPILER_IR_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "utils/hashtable.h"
+#include "utils/vectors.h"
+
 /// # IR Definition
 ///
 /// Internal intermediate representation (IR) for the compiler.
@@ -139,8 +145,6 @@
 /// - bitcast a, type - Bitcast a to the specified type `b = (type) a`
 ///     + a and type must have the same size
 ///     + b will have the same bit pattern as a
-
-#include "types.h"
 
 typedef enum IrTypeKind {
     IR_TYPE_VOID,

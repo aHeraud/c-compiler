@@ -4,8 +4,7 @@
 
 #include "errors.h"
 #include "target.h"
-#include "ir/arch.h"
-#include "util/vectors.h"
+#include "utils/vectors.h"
 #include "parser/lexer.h"
 #include "parser/parser.h"
 #include "ir/codegen/codegen.h"

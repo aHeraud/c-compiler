@@ -3,13 +3,18 @@
 #include "types.h"
 #include "ast.h"
 
+integer_type_t get_integer_type_size(const type_t *type) {
+    if (type->kind == TYPE_ENUM) return INTEGER_TYPE_INT;
+    if (type->kind == TYPE_INTEGER) return type->value.integer.size;
+    return INTEGER_TYPE_INT; // invalid
+}
 
 bool is_integer_type(const type_t *type) {
     return type->kind == TYPE_INTEGER || type->kind == TYPE_ENUM;
 }
 
 bool is_small_integer_type(const type_t *type) {
-    return is_integer_type(type) && INTEGER_TYPE_RANKS[type->value.integer.size] < INTEGER_TYPE_RANKS[INTEGER_TYPE_INT];
+    return is_integer_type(type) && INTEGER_TYPE_RANKS[get_integer_type_size(type)] < INTEGER_TYPE_RANKS[INTEGER_TYPE_INT];
 }
 
 const type_t *type_after_integer_promotion(const type_t *type) {
@@ -186,7 +191,7 @@ const type_t *get_common_type(const type_t *a, const type_t *b) {
 
         // Otherwise, if the type of the unsigned operand has a rank greater than or equal to the rank of the signed
         // operand, then the signed operand is converted to the unsigned operand's type.
-        if (INTEGER_TYPE_RANKS[unsigned_type->value.integer.size] >= INTEGER_TYPE_RANKS[signed_type->value.integer.size]) {
+        if (INTEGER_TYPE_RANKS[get_integer_type_size(unsigned_type)] >= INTEGER_TYPE_RANKS[get_integer_type_size(signed_type)]) {
             return unsigned_type;
         }
 
@@ -196,13 +201,13 @@ const type_t *get_common_type(const type_t *a, const type_t *b) {
         // TODO: What exactly does "can represent all of the values of" mean? What if the signed type is the same size
         //       as the unsigned type? Is it ok if converting the unsigned type to the signed type results in a negative
         //       value? For now we assume that it's ok.
-        if (INTEGER_TYPE_RANKS[signed_type->value.integer.size] >= INTEGER_TYPE_RANKS[unsigned_type->value.integer.size]) {
+        if (INTEGER_TYPE_RANKS[get_integer_type_size(signed_type)] >= INTEGER_TYPE_RANKS[get_integer_type_size(unsigned_type)]) {
             return signed_type;
         }
 
         // Otherwise, both operands are converted to the unsigned integer type corresponding to the type of the operand
         // with signed integer type.
-        integer_type_t int_size = signed_type->value.integer.size;
+        integer_type_t int_size = get_integer_type_size(signed_type);
         switch (int_size) {
             case INTEGER_TYPE_BOOL:
                 return &BOOL;

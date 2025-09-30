@@ -7,7 +7,7 @@
 
 #include "lexer.h"
 #include "preprocessor.h"
-#include "util/vectors.h"
+#include "utils/vectors.h"
 
 void string_literal(struct Lexer* lexer, struct Token* token);
 void char_literal(struct Lexer* lexer, struct Token* token);

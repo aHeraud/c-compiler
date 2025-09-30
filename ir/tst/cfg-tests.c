@@ -1,10 +1,11 @@
+#include <stdbool.h>
 #include <CUnit/Basic.h>
 
 #include "ir/ir.h"
 #include "ir/ir-builder.h"
 #include "ir/cfg.h"
 
-void test_cfg_create_basic() {
+void test_cfg_create_basic(void) {
     // Create a basic cfg that has a single block
     ir_function_builder_t *builder = ir_builder_create();
     ir_build_ret_void(builder);
@@ -38,7 +39,7 @@ void test_cfg_create_basic() {
     CU_ASSERT_EQUAL_FATAL(cfg.entry->instructions.buffer[0]->opcode, IR_RET);
 }
 
-void test_cfg_create_if_else() {
+void test_cfg_create_if_else(void) {
     // Create a basic cfg that has a single block
     ir_var_t cond = {
         .name = "a",
@@ -81,7 +82,7 @@ void test_cfg_create_if_else() {
     CU_ASSERT_EQUAL_FATAL(cfg.entry->instructions.buffer[0]->opcode, IR_BR_COND);
 }
 
-void test_cfg_prune() {
+void test_cfg_prune(void) {
     // Create a basic cfg that has a single block
     ir_var_t cond = {
         .name = "a",
@@ -132,7 +133,7 @@ void test_cfg_prune() {
     CU_ASSERT_EQUAL_FATAL(cfg.basic_blocks.size, 3);
 }
 
-void test_cfg_linearize() {
+void test_cfg_linearize(void) {
     ir_var_t cond = {
         .name = "a",
         .type = & (ir_type_t) {
@@ -181,7 +182,7 @@ void test_cfg_linearize() {
     CU_ASSERT_EQUAL_FATAL(instrs.buffer[3].opcode, IR_RET);
 }
 
-int cfg_tests_init_suite() {
+int cfg_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("CFG Tests", NULL, NULL);
     if (suite == NULL) {
         return CU_get_error();

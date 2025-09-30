@@ -1,5 +1,5 @@
 #include <stddef.h>
-#include "vectors.h"
+#include "utils/vectors.h"
 
 char* replace_escape_sequences(const char* str) {
     char_vector_t vec = {NULL, 0, 0};

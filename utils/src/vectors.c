@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "vectors.h"
+#include "utils/vectors.h"
 
 void append_char(char** buffer, size_t* buffer_len, size_t* buffer_max_len, char c) {
     if (*buffer_len + 1 >= *buffer_max_len) {

@@ -4,8 +4,8 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "util/vectors.h"
-#include "util/hashtable.h"
+#include "utils/vectors.h"
+#include "utils/hashtable.h"
 #include "ir/ir.h"
 
 struct IrBasicBlock;

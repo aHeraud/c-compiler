@@ -1,6 +1,6 @@
 #include <string.h>
 #include "errors.h"
-#include "util/strings.h"
+#include "../../util/strings.h"
 #include "ir/codegen/internal.h"
 #include "parser/numeric-constants.h"
 

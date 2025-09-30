@@ -133,6 +133,8 @@ typedef struct Type {
     } value;
 } type_t;
 
+integer_type_t get_integer_type_size(const type_t *type);
+
 bool is_integer_type(const type_t *type);
 bool is_small_integer_type(const type_t *type);
 bool is_floating_type(const type_t *type);

@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include <malloc.h>
 #include <string.h>
-#include "hashtable.h"
+#include "utils/hashtable.h"
 
 size_t hashtable_string_hash_key(const char* key) {
     size_t hash = 0;

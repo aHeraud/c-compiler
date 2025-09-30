@@ -1,7 +1,7 @@
 #include "CUnit/Basic.h"
-#include "util/hashtable.h"
+#include "utils/hashtable.h"
 
-void test_hashtable_insert() {
+void test_hashtable_insert(void) {
     // base case, insert into empty hashtable that has one bucket
     hash_table_t table = hash_table_create_string_keys(1);
 
@@ -41,7 +41,7 @@ void test_hashtable_insert() {
     CU_ASSERT_EQUAL(table.size, 2);
 }
 
-void test_hashtable_lookup() {
+void test_hashtable_lookup(void) {
     hash_table_t table = hash_table_create_string_keys(1);
 
     // base case, lookup in empty hashtable
@@ -65,7 +65,7 @@ void test_hashtable_lookup() {
     CU_ASSERT_EQUAL(*value, value2);
 }
 
-void test_hashtable_remove() {
+void test_hashtable_remove(void) {
     hash_table_t table = hash_table_create_string_keys(1);
 
     // base case, remove from empty hashtable
@@ -106,7 +106,7 @@ void test_hashtable_remove() {
     CU_ASSERT_PTR_EQUAL(table.buckets[0]->value, &value1);
 }
 
-int hashtable_tests_init_suite() {
+int hashtable_tests_init_suite(void) {
     CU_pSuite pSuite = CU_add_suite("hashtable", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "insert", test_hashtable_insert) ||
         NULL == CU_add_test(pSuite, "lookup", test_hashtable_lookup) ||

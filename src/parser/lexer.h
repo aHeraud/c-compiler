@@ -3,8 +3,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "util/vectors.h"
-#include "util/hashtable.h"
+#include "utils/vectors.h"
+#include "utils/hashtable.h"
 
 typedef enum TokenKind {
     TK_NONE,

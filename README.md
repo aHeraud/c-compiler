@@ -190,7 +190,7 @@ The IR has 3 different forms:
    
    Similar to the control flow graph form, with the additional restriction that each variable can only be assigned once.
 
-There are utilities for converting the IR between the three forms, see src/ir/cfg.c and src/ir/ssa.c.
+There are utilities for converting the IR between the three forms, see `ir/src/cfg.c` and `ir/src/ssa.c`.
 
 ### C Language Feature Support
 

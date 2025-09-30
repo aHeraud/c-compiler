@@ -3,7 +3,7 @@
 #include "ir/cfg.h"
 #include "ir/ssa.h"
 #include "ir/fmt.h"
-#include "util/hashtable.h"
+#include "utils/hashtable.h"
 
 /// Module for converting a control flow graph into SSA form.
 /// Based on the paper "Simple and Efficient Construction of Static Single Assignment Form"

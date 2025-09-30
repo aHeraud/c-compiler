@@ -1,18 +1,12 @@
 #include "CUnit/Basic.h"
-#include "tests.h"
+
+int cfg_tests_init_suite(void);
 
 int main(void) {
     if (CUE_SUCCESS != CU_initialize_registry()) {
         return CU_get_error();
     }
 
-    lexer_tests_init_suite();
-    preprocessor_tests_init_suite();
-    parser_tests_init_suite();
-    hashtable_tests_init_suite();
-    types_tests_init_suite();
-    numeric_constants_tests_init_suite();
-    ir_gen_tests_init_suite();
     cfg_tests_init_suite();
 
     CU_basic_set_mode(CU_BRM_VERBOSE);

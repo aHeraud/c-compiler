@@ -1,4 +1,4 @@
-#include "ir-builder.h"
+#include "ir/ir-builder.h"
 
 struct IrInstructionNode {
     ir_instruction_t instruction;

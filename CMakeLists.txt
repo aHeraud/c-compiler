@@ -42,27 +42,25 @@ else()
     SET(CMAKE_C_FLAGS "-std=c99")
 endif()
 
+enable_testing()
+
+add_subdirectory(utils)
+include_directories(${CMAKE_SOURCE_DIR}/utils/include)
+
+add_subdirectory(ir)
+include_directories(${CMAKE_SOURCE_DIR}/ir/include)
+
 include_directories(src)
 
 add_library(cclib STATIC
         src/target.h src/target.c
         src/parser/lexer.h src/parser/lexer.c
         src/parser/preprocessor.h src/parser/preprocessor.c
-        src/util/read-lines.h src/util/read-lines.c
-        src/util/vectors.h src/util/vectors.c
         src/parser/parser.c src/parser/parser.h
         src/ast.h src/ast.c
-        src/util/hashtable.c src/util/hashtable.h
-        src/util/strings.c src/util/strings.h
         src/types.c src/types.h
         src/parser/numeric-constants.h src/parser/numeric-constants.c
-        src/ir/ir.h src/ir/ir.c
-        src/ir/ir-builder.h src/ir/ir-builder.c
         src/errors.h src/errors.c
-        src/ir/cfg.h src/ir/cfg.c
-        src/ir/ssa.h src/ir/ssa.c
-        src/ir/fmt.h src/ir/fmt.c
-        src/ir/arch.h src/ir/arch.c
         src/ir/codegen/codegen.h src/ir/codegen/codegen.c
         src/ir/codegen/internal.h src/ir/codegen/internal.c
         src/ir/codegen/declarations.c
@@ -71,38 +69,40 @@ add_library(cclib STATIC
         src/ir/codegen/statements.c
         src/llvm/llvm-gen.h src/llvm/llvm-gen.c
 )
+target_link_libraries(cclib PUBLIC utils ir)
 
 add_executable(cc src/main.c)
-
 target_link_libraries(cc PUBLIC cclib)
 target_link_libraries(cc PUBLIC LLVM) # TODO: only link the required libraries, not all of LLVM
+
+# For enabling asan
+# target_compile_options(cc PRIVATE -fsanitize=address)
+# target_link_options(cc PRIVATE -fsanitize=address)
 
 set(CMAKE_POLICY_VERSION_MINIMUM "3.10")
 set(CUNIT_DISABLE_TESTS TRUE)
 set(CUNIT_DISABLE_EXAMPLES TRUE)
 add_git_submodule("dependencies/cunit")
 add_executable(unit-tests
-        src/util/read-lines.h src/util/vectors.h
+        utils/include/utils/vectors.h
         src/parser/lexer.h src/parser/parser.h
         tst/test-main.c
         tst/tests.h
-        tst/util/read-lines-test.c
         tst/lexer-tests.c
         tst/parser-tests.c src/ast.h
         tst/preprocessor-tests.c
-        tst/util/hashtable-tests.c
+        utils/tst/hashtable-tests.c
         tst/test-common.h
         tst/test-common.c
         tst/types-test.c
         tst/numeric-constants-tests.c
         tst/ir/ir-gen-tests.c
-        tst/ir/cfg-tests.c
+        ir/tst/cfg-tests.c
 )
 target_compile_definitions(unit-tests PRIVATE C_COMPILER_UNIT_TESTS)
 target_link_libraries(unit-tests PUBLIC cunit)
-target_link_libraries(unit-tests PUBLIC cclib)
+target_link_libraries(unit-tests PUBLIC cclib ir utils)
 
-enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
 add_test(NAME validation-tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/validation/harness.py WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/validation)
 set_property(TEST validation-tests PROPERTY ENVIRONMENT_MODIFICATION "PATH=path_list_append:${LLVM_TOOLS_BINARY_DIR}")

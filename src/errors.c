@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "errors.h"
-#include "util/vectors.h"
+#include "utils/vectors.h"
 
 #define ERROR_PREFIX "%s:%d:%d: error: "
 

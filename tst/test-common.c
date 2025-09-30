@@ -1,6 +1,6 @@
 #include <malloc.h>
 #include "parser/lexer.h"
-#include "util/vectors.h"
+#include "utils/vectors.h"
 #include "test-common.h"
 
 token_kind_t* token_kind_array(token_t* tokens, size_t size) {
