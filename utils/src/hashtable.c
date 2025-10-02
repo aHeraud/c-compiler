@@ -4,6 +4,16 @@
 #include <string.h>
 #include "utils/hashtable.h"
 
+struct HashTableEntry {
+    // Doubly linked list of all entries in the table
+    struct HashTableEntry *prev_entry, *next_entry;
+    // Doubly linked list of entries in the same bucket (all share the same hash code)
+    struct HashTableEntry *prev_bucket, *next_bucket;
+    size_t hashcode;
+    const void *key;
+    void *value;
+};
+
 size_t hashtable_string_hash_key(const char* key) {
     size_t hash = 0;
     for (size_t i = 0; key[i] != '\0'; i++) {
@@ -37,19 +47,21 @@ hash_table_t hash_table_create_pointer_keys(size_t num_buckets) {
 
 hash_table_t hash_table_create(size_t num_buckets, hashtable_hash_fn_t hash_fn, hashtable_equals_fn_t equals_fn) {
     return (hash_table_t) {
-            .num_buckets = num_buckets,
-            .size = 0,
-            .hash_fn = hash_fn,
-            .equals_fn = equals_fn,
-            .buckets = calloc(num_buckets, sizeof(hash_table_bucket_t*)),
+        .num_buckets = num_buckets,
+        .size = 0,
+        .hash_fn = hash_fn,
+        .equals_fn = equals_fn,
+        .buckets = calloc(num_buckets, sizeof(hash_table_entry_t*)),
+        .head = NULL,
+        .tail = NULL,
     };
 }
 
 void hash_table_destroy(hash_table_t* table) {
     for (size_t i = 0; i < table->num_buckets; i++) {
-        hash_table_bucket_t* entry = table->buckets[i];
+        hash_table_entry_t* entry = table->buckets[i];
         while (entry != NULL) {
-            hash_table_bucket_t* next = entry->next;
+            hash_table_entry_t* next = entry->next_bucket;
             free(entry);
             entry = next;
         }
@@ -60,53 +72,62 @@ void hash_table_destroy(hash_table_t* table) {
     table->size = 0;
 }
 
-/**
- * Insert a key-value pair into a hashtable.
- * If the key already exists, the value is not changed, and the function returns false.
- *
- * @param table
- * @param key
- * @param value
- * @return true if the key-value pair was inserted, false if the key already exists
- */
-bool hash_table_insert(hash_table_t* table, const void* key, void* value) {
+void hash_table_insert(hash_table_t* table, const void* key, void* value) {
     assert(table != NULL && table->num_buckets > 0);
     size_t hashcode = table->hash_fn(key);
     size_t bucket_index = hashcode % table->num_buckets;
-    hash_table_bucket_t* bucket_head = table->buckets[bucket_index];
+    hash_table_entry_t* bucket_head = table->buckets[bucket_index];
+
+    hash_table_entry_t *entry = NULL;
+
     if (bucket_head == NULL) {
-        bucket_head = malloc(sizeof(hash_table_bucket_t));
-        *bucket_head = (hash_table_bucket_t) {
-                .prev = NULL,
-                .next = NULL,
-                .hashcode = hashcode,
-                .key = key,
-                .value = value,
+        bucket_head = malloc(sizeof(hash_table_entry_t));
+        *bucket_head = (hash_table_entry_t) {
+            .prev_bucket = NULL,
+            .next_bucket = NULL,
+            .prev_entry = NULL,
+            .next_entry = NULL,
+            .hashcode = hashcode,
+            .key = key,
+            .value = value,
         };
         table->buckets[bucket_index] = bucket_head;
         table->size += 1;
-        return true;
+        entry = bucket_head;
     } else {
-        hash_table_bucket_t* prev = NULL;
-        hash_table_bucket_t* entry = bucket_head;
+        hash_table_entry_t* prev = NULL;
+        entry = bucket_head;
         while (entry != NULL) {
             if (entry->hashcode == hashcode && table->equals_fn(entry->key, key)) {
-                return false;
+                // update in place
+                entry->value = value;
+                return;
             }
             prev = entry;
-            entry = entry->next;
+            entry = entry->next_bucket;
         }
-        entry = malloc(sizeof(hash_table_bucket_t));
-        *entry = (hash_table_bucket_t) {
-                .prev = prev,
-                .next = NULL,
-                .hashcode = hashcode,
-                .key = key,
-                .value = value,
+        entry = malloc(sizeof(hash_table_entry_t));
+        *entry = (hash_table_entry_t) {
+            .prev_bucket = prev,
+            .next_bucket = NULL,
+            .prev_entry = NULL,
+            .next_entry = NULL,
+            .hashcode = hashcode,
+            .key = key,
+            .value = value,
         };
-        prev->next = entry;
+        prev->next_bucket = entry;
         table->size += 1;
-        return true;
+    }
+
+    // Update the linked list of all entries
+    if (table->tail == NULL) {
+        table->head = entry;
+        table->tail = entry;
+    } else {
+        entry->prev_entry = table->tail;
+        table->tail->next_entry = entry;
+        table->tail = entry;
     }
 }
 
@@ -121,7 +142,7 @@ bool hash_table_lookup(const hash_table_t* table, const void* key, void** value)
     if (table->num_buckets == 0) return false;
     size_t hashcode = table->hash_fn(key);
     size_t index = hashcode % table->num_buckets;
-    hash_table_bucket_t* entry = table->buckets[index];
+    hash_table_entry_t* entry = table->buckets[index];
     while (entry != NULL) {
         if (entry->hashcode == hashcode && table->equals_fn(entry->key, key)) {
             if (value != NULL) {
@@ -129,7 +150,7 @@ bool hash_table_lookup(const hash_table_t* table, const void* key, void** value)
             }
             return true;
         }
-        entry = entry->next;
+        entry = entry->next_bucket;
     }
     return false;
 }
@@ -145,21 +166,33 @@ bool hash_table_remove(hash_table_t* table, const void* key, void** value) {
     if (table->num_buckets == 0) return false;
     size_t hashcode = table->hash_fn(key);
     size_t index = hashcode % table->num_buckets;
-    hash_table_bucket_t* entry = table->buckets[index];
+    hash_table_entry_t* entry = table->buckets[index];
     while (entry != NULL) {
         if (entry->hashcode == hashcode && table->equals_fn(entry->key, key)) {
-            if (entry->prev != NULL) {
-                entry->prev->next = entry->next;
+            if (entry->prev_bucket != NULL) {
+                entry->prev_bucket->next_bucket = entry->next_bucket;
             } else {
-                table->buckets[index] = entry->next;
+                table->buckets[index] = entry->next_bucket;
             }
 
-            if (entry->next != NULL) {
-                entry->next->prev = entry->prev;
+            if (entry->next_bucket != NULL) {
+                entry->next_bucket->prev_bucket = entry->prev_bucket;
             }
 
             if (value != NULL) {
                 *value = entry->value;
+            }
+
+            // Update the linked list of all entries
+            if (entry->prev_entry != NULL) {
+                entry->prev_entry->next_entry = entry->next_entry;
+            } else {
+                table->head = entry->next_entry;
+            }
+            if (entry->next_entry != NULL) {
+                entry->next_entry->prev_entry = entry->prev_entry;
+            } else {
+                table->tail = entry->prev_entry;
             }
 
             free(entry);
@@ -167,9 +200,29 @@ bool hash_table_remove(hash_table_t* table, const void* key, void** value) {
             table->size -= 1;
             return true;
         } else {
-            entry = entry->next;
+            entry = entry->next_bucket;
         }
     }
 
     return false;
+}
+
+const hash_table_entry_t *hash_table_get_iterator(const hash_table_t *table) {
+    assert(table != NULL);
+    return table->head;
+}
+
+const hash_table_entry_t *hash_table_iterator_next(const hash_table_entry_t *entry) {
+    assert(entry != NULL);
+    return entry->next_entry;
+}
+
+const void* hash_table_entry_get_key(const hash_table_entry_t *entry) {
+    assert(entry != NULL);
+    return entry->key;
+}
+
+void* hash_table_entry_get_value(const hash_table_entry_t *entry) {
+    assert(entry != NULL);
+    return entry->value;
 }

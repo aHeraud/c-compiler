@@ -47,18 +47,17 @@ tag_t *lookup_tag_by_uid(const ir_gen_context_t *context, const char *uid) {
 
 void declare_symbol(ir_gen_context_t *context, symbol_t *symbol) {
     assert(context != NULL && symbol != NULL);
-    bool inserted = hash_table_insert(&context->current_scope->symbols, symbol->identifier->value, (void*) symbol);
-    assert(inserted);
+    hash_table_insert(&context->current_scope->symbols, symbol->identifier->value, (void*) symbol);
 }
 
 void declare_tag(ir_gen_context_t *context, const tag_t *tag) {
     assert(context != NULL && tag != NULL);
-    assert(hash_table_insert(&context->current_scope->tags, tag->identifier->value, (void*) tag));
-    assert(hash_table_insert(&context->tag_uid_map, tag->uid, (void*) tag));
+    hash_table_insert(&context->current_scope->tags, tag->identifier->value, (void*) tag);
+    hash_table_insert(&context->tag_uid_map, tag->uid, (void*) tag);
 
     // also add the type to the module
     assert(!hash_table_lookup(&context->module->type_map, tag->uid, NULL)); // should be unique
-    assert(hash_table_insert(&context->module->type_map, tag->uid, (void*) tag->ir_type));
+    hash_table_insert(&context->module->type_map, tag->uid, (void*) tag->ir_type);
 }
 
 void enter_scope(ir_gen_context_t *context) {

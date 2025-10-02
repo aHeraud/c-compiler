@@ -58,7 +58,7 @@ LLVMBasicBlockRef llvm_get_or_create_basic_block(llvm_gen_context_t *context, co
     if (!hash_table_lookup(&context->block_map, tmp, (void**)&llvm_block)) {
         const char* block_name = strdup(tmp);
         llvm_block = LLVMAppendBasicBlock(context->llvm_function, block_name);
-        assert(hash_table_insert(&context->block_map, block_name, llvm_block));
+        hash_table_insert(&context->block_map, block_name, llvm_block);
     }
 
     return llvm_block;
@@ -903,7 +903,7 @@ LLVMValueRef llvm_get_or_add_function(llvm_gen_context_t *context, const char* n
     } else {
         // Add the function to the module
         fn = LLVMAddFunction(context->llvm_module, name, fn_type);
-        assert(hash_table_insert(&context->llvm_function_map, name, fn));
+        hash_table_insert(&context->llvm_function_map, name, fn);
         return fn;
     }
 }

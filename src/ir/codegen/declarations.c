@@ -55,13 +55,13 @@ void visit_enumeration_constants(ir_gen_context_t *context, const enum_specifier
 
 const type_t *make_incomplete_type(const type_t *type) {
     switch (type->kind) {
-        TYPE_ENUM: {
+        case TYPE_ENUM: {
             type_t *new_type = malloc(sizeof(type_t));
             *new_type = *type;
             new_type->value.enum_specifier.enumerators = (enumerator_vector_t) VEC_INIT;
             return new_type;
         }
-        TYPE_STRUCT_OR_UNION: {
+        case TYPE_STRUCT_OR_UNION: {
             type_t *new_type = malloc(sizeof(type_t));
             *new_type = *type;
             new_type->value.struct_or_union.has_body = false;
