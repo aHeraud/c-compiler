@@ -121,6 +121,33 @@ void test_ir_sort_globals_cycle(void) {
     hash_table_destroy(&module.type_map);
 }
 
+static void test_ir_sort_globals_independent_stable(void) {
+    // Two independent globals should preserve original order
+    ir_module_t module = {
+        .name = "module",
+        .arch = NULL,
+        .globals = VEC_INIT,
+        .type_map = hash_table_create_string_keys(16),
+        .functions = { .buffer = NULL, .size = 0, .capacity = 0 },
+    };
+
+    ir_const_t a_val = { .kind = IR_CONST_INT, .type = NULL, .value.i = 10 };
+    ir_const_t b_val = { .kind = IR_CONST_INT, .type = NULL, .value.i = 20 };
+
+    VEC_APPEND(&module.globals, make_global("first", true, a_val));
+    VEC_APPEND(&module.globals, make_global("second", true, b_val));
+
+    ir_sort_global_definitions(&module);
+
+    CU_ASSERT_EQUAL(module.globals.size, 2);
+    CU_ASSERT_STRING_EQUAL(module.globals.buffer[0]->name, "first");
+    CU_ASSERT_STRING_EQUAL(module.globals.buffer[1]->name, "second");
+
+    for (size_t i = 0; i < module.globals.size; i++) free(module.globals.buffer[i]);
+    if (module.globals.buffer) free(module.globals.buffer);
+    hash_table_destroy(&module.type_map);
+}
+
 int ir_tests_init_suite(void) {
     CU_pSuite suite = CU_add_suite("IR tests", NULL, NULL);
     if (suite == NULL) return CU_get_error();
@@ -130,4 +157,3 @@ int ir_tests_init_suite(void) {
     CU_add_test(suite, "sort globals - cycle", test_ir_sort_globals_cycle);
     return CUE_SUCCESS;
 }
-

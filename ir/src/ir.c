@@ -954,6 +954,7 @@ static void ir_collect_global_refs(const ir_const_t *val, string_vector_t *refs)
 void ir_sort_global_definitions(ir_module_t *module) {
     ir_global_ptr_vector_t globals_sorted = { .buffer = NULL, .size = 0, .capacity = 0 };
     ir_global_ptr_vector_t pending = { .buffer = NULL, .size = 0, .capacity = 0 };
+    size_t pending_head = 0; // queue head index
 
     // map of global name -> definition
     hash_table_t nodes = hash_table_create_string_keys(module->globals.size << 1);
@@ -1023,9 +1024,8 @@ void ir_sort_global_definitions(ir_module_t *module) {
         if (deg == 0) VEC_APPEND(&pending, def);
     }
 
-    while (pending.size > 0) {
-        ir_global_t *u = pending.buffer[pending.size - 1];
-        pending.size -= 1;
+    while (pending_head < pending.size) {
+        ir_global_t *u = pending.buffer[pending_head++];
         VEC_APPEND(&globals_sorted, u);
 
         // for each dependent v of u, reduce in-degree and enqueue if 0
