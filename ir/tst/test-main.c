@@ -1,6 +1,7 @@
 #include "CUnit/Basic.h"
 
 int cfg_tests_init_suite(void);
+int ir_tests_init_suite(void);
 
 int main(void) {
     if (CUE_SUCCESS != CU_initialize_registry()) {
@@ -8,6 +9,7 @@ int main(void) {
     }
 
     cfg_tests_init_suite();
+    ir_tests_init_suite();
 
     CU_basic_set_mode(CU_BRM_VERBOSE);
 

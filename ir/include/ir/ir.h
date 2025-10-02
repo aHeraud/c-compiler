@@ -630,4 +630,10 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max);
  */
 ir_var_t *ir_get_def(ir_instruction_t *instr);
 
+/**
+ * Sorts the global definitions of a module so that dependencies are defined before their uses.
+ * @param module
+ */
+void ir_sort_global_definitions(ir_module_t *module);
+
 #endif //C_COMPILER_IR_H

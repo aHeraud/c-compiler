@@ -913,3 +913,184 @@ ir_var_t *ir_get_def(ir_instruction_t *instr) {
     }
     return NULL;
 }
+
+static void ir_collect_global_refs(const ir_const_t *val, string_vector_t *refs) {
+    switch (val->kind) {
+        case IR_CONST_GLOBAL_POINTER:
+            VEC_APPEND(refs, (char*) val->value.global_name);
+            break;
+        case IR_CONST_ARRAY: {
+            for (size_t i = 0; i < val->value.array.length; i += 1) {
+                ir_collect_global_refs(&val->value.array.values[i], refs);
+            }
+            break;
+        }
+        case IR_CONST_STRUCT: {
+            // Handle both structs and unions by visiting all initialized fields
+            if (val->value._struct.is_union) {
+                int idx = val->value._struct.union_field_index;
+                if (idx >= 0 && (size_t)idx < val->value._struct.length) {
+                    ir_collect_global_refs(&val->value._struct.fields[idx], refs);
+                } else {
+                    // Fallback: visit all fields if union selector is invalid
+                    for (size_t i = 0; i < val->value._struct.length; i += 1) {
+                        ir_collect_global_refs(&val->value._struct.fields[i], refs);
+                    }
+                }
+            } else {
+                for (size_t i = 0; i < val->value._struct.length; i += 1) {
+                    ir_collect_global_refs(&val->value._struct.fields[i], refs);
+                }
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+// Based on Kahn's algorithm for topological sorting
+// TODO: report cycles as error?
+void ir_sort_global_definitions(ir_module_t *module) {
+    ir_global_ptr_vector_t globals_sorted = { .buffer = NULL, .size = 0, .capacity = 0 };
+    ir_global_ptr_vector_t pending = { .buffer = NULL, .size = 0, .capacity = 0 };
+
+    // map of global name -> definition
+    hash_table_t nodes = hash_table_create_string_keys(module->globals.size << 1);
+    for (int i = 0; i < module->globals.size; i += 1) {
+        ir_global_t *def = module->globals.buffer[i];
+        hash_table_insert(&nodes, def->name, def);
+    }
+
+    // map of dep_name -> vector of dependents that reference dep_name
+    hash_table_t edges = hash_table_create_string_keys(module->globals.size << 1);
+
+    // map of global name -> in degree
+    hash_table_t in_degree = hash_table_create_string_keys(module->globals.size << 1);
+
+    // initialize in_degree to 0 for all nodes
+    for (int i = 0; i < module->globals.size; i += 1) {
+        ir_global_t *def = module->globals.buffer[i];
+        hash_table_insert(&in_degree, def->name, (void*) (long) 0);
+    }
+
+    // build graph edges and in-degrees
+    for (int i = 0; i < module->globals.size; i += 1) {
+        const ir_global_t *def = module->globals.buffer[i];
+        if (!def->initialized) continue;
+
+        const ir_const_t *val = &def->value;
+        string_vector_t refs = { .buffer = NULL, .size = 0, .capacity = 0 };
+        ir_collect_global_refs(val, &refs);
+        for (int j = 0; j < refs.size; j += 1) {
+            const char *ref_name = refs.buffer[j];
+            // Only consider edges to globals defined in this module
+            void *ref_node = NULL;
+            if (!hash_table_lookup(&nodes, ref_name, &ref_node)) {
+                continue;
+            }
+
+            // edges[ref_name] -> add def->name as dependent
+            string_vector_t *outs = NULL;
+            void *outs_ptr = NULL;
+            if (!hash_table_lookup(&edges, ref_name, &outs_ptr)) {
+                outs = malloc(sizeof(string_vector_t));
+                *outs = (string_vector_t) { .buffer = NULL, .size = 0, .capacity = 0 };
+                hash_table_insert(&edges, ref_name, outs);
+            } else {
+                outs = (string_vector_t*) outs_ptr;
+            }
+            VEC_APPEND(outs, (char*) def->name);
+
+            // increase in-degree of the dependent (def)
+            void *deg_ptr = NULL;
+            long deg = 0;
+            if (hash_table_lookup(&in_degree, def->name, &deg_ptr)) {
+                deg = (long) deg_ptr;
+            }
+            hash_table_insert(&in_degree, def->name, (void*) (deg + 1));
+        }
+        // cleanup refs buffer
+        if (refs.buffer) free(refs.buffer);
+    }
+
+    // initialize pending list with nodes that have no dependencies
+    for (int i = 0; i < module->globals.size; i += 1) {
+        ir_global_t *def = module->globals.buffer[i];
+        void *deg_ptr = NULL;
+        long deg = 0;
+        if (hash_table_lookup(&in_degree, def->name, &deg_ptr)) deg = (long) deg_ptr;
+        if (deg == 0) VEC_APPEND(&pending, def);
+    }
+
+    while (pending.size > 0) {
+        ir_global_t *u = pending.buffer[pending.size - 1];
+        pending.size -= 1;
+        VEC_APPEND(&globals_sorted, u);
+
+        // for each dependent v of u, reduce in-degree and enqueue if 0
+        void *outs_ptr = NULL;
+        if (hash_table_lookup(&edges, u->name, &outs_ptr)) {
+            string_vector_t *outs = (string_vector_t*) outs_ptr;
+            for (size_t k = 0; k < outs->size; k += 1) {
+                const char *v_name = outs->buffer[k];
+                void *deg_ptr = NULL;
+                long deg = 0;
+                if (hash_table_lookup(&in_degree, v_name, &deg_ptr)) {
+                    deg = (long) deg_ptr;
+                }
+                if (deg > 0) {
+                    deg -= 1;
+                    hash_table_insert(&in_degree, v_name, (void*) deg);
+                    if (deg == 0) {
+                        void *v_node = NULL;
+                        if (hash_table_lookup(&nodes, v_name, &v_node)) {
+                            VEC_APPEND(&pending, (ir_global_t*) v_node);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // if a cycle exists, append remaining globals
+    if (globals_sorted.size < module->globals.size) {
+        // track which names are already in globals_sorted
+        hash_table_t placed = hash_table_create_string_keys(module->globals.size << 1);
+        for (size_t i = 0; i < globals_sorted.size; i += 1) {
+            hash_table_insert(&placed, globals_sorted.buffer[i]->name, (void*)1);
+        }
+        for (size_t i = 0; i < module->globals.size; i += 1) {
+            ir_global_t *g = module->globals.buffer[i];
+            void *dummy = NULL;
+            if (!hash_table_lookup(&placed, g->name, &dummy)) {
+                VEC_APPEND(&globals_sorted, g);
+                hash_table_insert(&placed, g->name, (void*)1);
+            }
+        }
+        hash_table_destroy(&placed);
+    }
+
+    // write back the sorted order to the module
+    ir_global_ptr_vector_t old = module->globals;
+    module->globals = globals_sorted;
+    // cleanup old buffer
+    if (old.buffer) free(old.buffer);
+
+    // clean up vectors in edges and the tables
+    const hash_table_entry_t *it = hash_table_get_iterator(&edges);
+    while (it != NULL) {
+        string_vector_t *vec = (string_vector_t*) hash_table_entry_get_value(it);
+        if (vec != NULL) {
+            if (vec->buffer) free(vec->buffer);
+            free(vec);
+        }
+        it = hash_table_iterator_next(it);
+    }
+    hash_table_destroy(&edges);
+    hash_table_destroy(&in_degree);
+    hash_table_destroy(&nodes);
+
+    // cleanup pending vector buffer
+    if (pending.buffer) free(pending.buffer);
+}

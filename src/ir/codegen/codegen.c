@@ -39,6 +39,9 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir
     hash_table_destroy(&context.function_definition_map);
     hash_table_destroy(&context.tag_uid_map);
 
+    // Topological sort of global definitions
+    ir_sort_global_definitions(context.module);
+
     ir_gen_result_t result = {
         .module = context.module,
         .errors = context.errors,

@@ -16,6 +16,7 @@ include_directories("${CMAKE_SOURCE_DIR}/dependencies/cunit/CUnit")
 add_executable(ir-unit-tests
         tst/test-main.c
         tst/cfg-tests.c
+        tst/ir-tests.c
 )
 target_link_libraries(ir-unit-tests PUBLIC ir cunit)
 add_test(NAME ir-unit-tests COMMAND ir-unit-tests WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
