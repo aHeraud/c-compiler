@@ -1,7 +1,11 @@
+#include "target.h"
 #include "ir/arch.h"
+
+#include <string.h>
 
 const ir_arch_t IR_ARCH_X86 = {
     .name = "i386",
+    .alt_name = "x86",
     .uchar = &IR_U8,
     .schar = &IR_I8,
     .ushort = &IR_U16,
@@ -26,6 +30,7 @@ const ir_arch_t IR_ARCH_X86 = {
 
 const ir_arch_t IR_ARCH_X86_64 = {
     .name = "amd64",
+    .alt_name = "x86_64",
     .uchar = &IR_U8,
     .schar = &IR_I8,
     .ushort = &IR_U16,
@@ -50,6 +55,7 @@ const ir_arch_t IR_ARCH_X86_64 = {
 
 const ir_arch_t IR_ARCH_ARM32 = {
     .name = "arm32",
+    .alt_name = "aarch32",
     .uchar = &IR_U8,
     .schar = &IR_I8,
     .ushort = &IR_U16,
@@ -74,6 +80,7 @@ const ir_arch_t IR_ARCH_ARM32 = {
 
 const ir_arch_t IR_ARCH_ARM64 = {
     .name = "arm64",
+    .alt_name = "aarch64",
     .uchar = &IR_U8,
     .schar = &IR_I8,
     .ushort = &IR_U16,
@@ -95,3 +102,21 @@ const ir_arch_t IR_ARCH_ARM64 = {
     .f32_alignment = 4,
     .f64_alignment = 8,
 };
+
+const ir_arch_t *ARCH_LIST[] = {
+    &IR_ARCH_X86,
+    &IR_ARCH_X86_64,
+    &IR_ARCH_ARM32,
+    &IR_ARCH_ARM64,
+};
+
+const ir_arch_t *get_ir_arch(const target_t *target) {
+    if (target == NULL) return NULL;
+
+    for (int i = 0; i < sizeof (ARCH_LIST) / sizeof (ir_arch_t*); i += 1) {
+        if (strcmp(target->arch, ARCH_LIST[i]->name) == 0 || strcmp(target->arch, ARCH_LIST[i]->alt_name) == 0)
+            return ARCH_LIST[i];
+    }
+
+    return NULL;
+}

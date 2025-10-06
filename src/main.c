@@ -10,7 +10,8 @@
 #include "ir/codegen/codegen.h"
 #include "ir/cfg.h"
 #include "ir/fmt.h"
-#include "llvm/llvm-gen.h"
+#include "backend/backend.h"
+#include "ir/arch.h"
 
 // TODO: Set based on current platform
 char* DEFAULT_SYSTEM_INCLUDE_DIRECTORIES[2] = {
@@ -267,7 +268,8 @@ void compile(options_t options, const char* input_file_name) {
         exit(1);
     }
 
-    ir_gen_result_t result = generate_ir(translation_unit, target->arch->ir_arch);
+    const ir_arch_t *ir_arch = get_ir_arch(target);
+    ir_gen_result_t result = generate_ir(translation_unit, ir_arch);
     if (result.errors.size > 0) {
         for (size_t i = 0; i < result.errors.size; i++) {
             compilation_error_t error = result.errors.buffer[i];
@@ -307,7 +309,7 @@ void compile(options_t options, const char* input_file_name) {
         output_file_name = options.output_file;
     }
 
-    llvm_gen_module(ir_module, target, output_file_name);
+    llvm_gen_module(ir_module, target, ir_arch, output_file_name);
 }
 
 const char *get_output_path(const char *path, const char *extension) {

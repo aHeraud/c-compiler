@@ -10,7 +10,7 @@ add_library(ir STATIC
         include/ir/ir-builder.h src/ir-builder.c
         include/ir/ssa.h src/ssa.c
 )
-target_link_libraries(ir PUBLIC utils)
+target_link_libraries(ir PUBLIC common)
 
 include_directories("${CMAKE_SOURCE_DIR}/dependencies/cunit/CUnit")
 add_executable(ir-unit-tests

@@ -5,9 +5,10 @@
 #include "llvm-c/Core.h"
 
 #include "ir/ir.h"
-#include "llvm-gen.h"
 #include "ir/cfg.h"
 #include "ir/ssa.h"
+
+#include "llvm-gen.h"
 
 typedef struct IncompletePhiNode {
     const ir_phi_node_t *phi;
@@ -25,6 +26,7 @@ typedef struct LLVMGenContext {
 
     // Target information
     const target_t *target;
+    const ir_arch_t *ir_arch;
 
     // Map of ir struct id to llvm type
     hash_table_t llvm_struct_types_map;
@@ -64,12 +66,13 @@ LLVMBasicBlockRef llvm_get_or_create_basic_block(llvm_gen_context_t *context, co
     return llvm_block;
 }
 
-void llvm_gen_module(const ir_module_t *module, const target_t *target, const char* output_filename) {
+void llvm_gen_module(const ir_module_t *module, const target_t *target, const ir_arch_t *ir_arch, const char* output_filename) {
     // init
     llvm_gen_context_t context = {
         .llvm_module = LLVMModuleCreateWithName(module->name),
         .llvm_builder = LLVMCreateBuilder(),
         .target = target,
+        .ir_arch = ir_arch,
         .llvm_function_map = hash_table_create_string_keys(128),
         .llvm_struct_types_map = hash_table_create_string_keys(128),
         .global_var_map = hash_table_create_string_keys(128),
@@ -777,7 +780,7 @@ LLVMTypeRef ir_to_llvm_type(llvm_gen_context_t *context, const ir_type_t *type) 
             if (type->value.struct_or_union.is_union) {
                 // If the type is a union, we will just represent it as an array of bytes, where the size is equal
                 // to the size of the largest field
-                int size = ir_size_of_type_bytes(context->target->arch->ir_arch, type);
+                int size = ir_size_of_type_bytes(context->ir_arch, type);
                 llvm_type = LLVMArrayType(LLVMInt8Type(), size);
             } else {
                 // Build the LLVM struct type
@@ -812,7 +815,7 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
             switch (value->constant.kind) {
                 case IR_CONST_INT: {
                     LLVMTypeRef llvm_type = ir_type->kind == IR_TYPE_PTR
-                        ? ir_to_llvm_type(context, context->target->arch->ir_arch->ptr_int_type)
+                        ? ir_to_llvm_type(context, context->ir_arch->ptr_int_type)
                         : ir_to_llvm_type(context, ir_type);
                     return LLVMConstInt(llvm_type, value->constant.value.i, false);
                 }
@@ -846,8 +849,8 @@ LLVMValueRef ir_to_llvm_value(llvm_gen_context_t *context, const ir_value_t *val
 
                         // padding
                         ir_struct_field_t *field = value->constant.type->value.struct_or_union.fields.buffer[field_index];
-                        size_t union_size = ir_size_of_type_bytes(context->target->arch->ir_arch, value->constant.type);
-                        size_t field_size = ir_size_of_type_bytes(context->target->arch->ir_arch, field->type);
+                        size_t union_size = ir_size_of_type_bytes(context->ir_arch, value->constant.type);
+                        size_t field_size = ir_size_of_type_bytes(context->ir_arch, field->type);
                         assert(union_size >= field_size);
                         size_t padding_bytes = union_size - field_size;
 

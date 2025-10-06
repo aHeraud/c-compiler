@@ -2,15 +2,10 @@
 
 #include <string.h>
 
-const arch_t ARCH_X86_64 = {
-    .name = "x86_64",
-    .arch_type = X86_64,
-    .ir_arch = &IR_ARCH_X86_64,
-};
 
 const target_t TARGET_X86_64_UNKNOWN_LINUX_GNU = {
     .name = "x86_64-unknown-linux-gnu",
-    .arch = &ARCH_X86_64,
+    .arch = "x86_64",
     .vendor = "unknown",
     .os = "linux-gnu",
 };

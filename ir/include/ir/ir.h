@@ -229,7 +229,7 @@ static const ir_type_t IR_PTR_CHAR = { .kind = IR_TYPE_PTR, .value.ptr = { .poin
 
 /**
  * Architecture details needed for ir codegen.
- * The ir itself architecture agnostic, with the exception of pointer <--> int conversions due to
+ * The ir itself is architecture agnostic, with the exception of pointer <--> int conversions due to
  * different pointer sizes, and type sizes (mostly potential differences in unpacked struct/union types due to
  * alignment requirements).
  * A few things are needed to correctly translate the input program into ir:
@@ -244,6 +244,10 @@ typedef struct IrArch {
      * Architecture name, e.g. "x86_64" or "aarch64"
      */
     const char *name;
+    /**
+     * Alternate architecture name
+     */
+    const char *alt_name;
     /**
      * IR type corresponding to the c type `unsigned char`
      */
