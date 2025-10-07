@@ -245,17 +245,7 @@ void compile(options_t options, const char* input_file_name) {
     }
     fclose(file);
 
-    lexer_global_context_t global_context = {
-            .user_include_paths = &options.additional_include_directories,
-            .system_include_paths = &options.additional_system_include_directories,
-            .macro_definitions = hash_table_create_string_keys(1024),
-    };
-
-    lexer_t lexer = linit(input_file_name,
-                          source_buffer,
-                          bytes_read,
-                          &global_context
-    );
+    lexer_t lexer = linit(input_file_name,source_buffer, bytes_read);
     parser_t parser = pinit(lexer);
 
     translation_unit_t *translation_unit = malloc(sizeof(translation_unit_t));

@@ -1,22 +1,12 @@
 #ifndef C_COMPILER_LEXER_H
 #define C_COMPILER_LEXER_H
 
-#include <stdbool.h>
 #include <stdint.h>
-#include "utils/vectors.h"
-#include "utils/hashtable.h"
 
 typedef enum TokenKind {
     TK_NONE,
     TK_COMMENT,
     TK_NEWLINE,
-
-    /* Preprocessor Directives */
-    TK_PP_INCLUDE,
-    TK_PP_DEFINE,
-    TK_PP_UNDEF,
-    TK_PP_IFDEF,
-    TK_PP_LINE,
 
     /* Preprocessor tokens */
     TK_HASH, // stringification
@@ -123,13 +113,6 @@ static const char* token_kind_names[] = {
         [TK_COMMENT] = "TK_COMMENT",
         [TK_NEWLINE] = "TK_NEWLINE",
 
-        /* Preprocessor Directives */
-        [TK_PP_INCLUDE] = "TK_PP_INCLUDE",
-        [TK_PP_DEFINE] = "TK_PP_DEFINE",
-        [TK_PP_UNDEF] = "TK_PP_UNDEF",
-        [TK_PP_IFDEF] = "TK_PP_IFDEF",
-        [TK_PP_LINE] = "TK_PP_LINE",
-
         /* Preprocessor tokens */
         [TK_HASH] = "TK_HASH", // stringification
         [TK_DOUBLE_HASH] = "TK_DOUBLE_HASH", // concatenation
@@ -234,13 +217,6 @@ static const char* token_kind_display_names[] = {
         [TK_NONE] = "TK_NONE",
         [TK_COMMENT] = "TK_COMMENT",
         [TK_NEWLINE] = "TK_NEWLINE",
-
-        /* Preprocessor Directives */
-        [TK_PP_INCLUDE] = "TK_PP_INCLUDE",
-        [TK_PP_DEFINE] = "TK_PP_DEFINE",
-        [TK_PP_UNDEF] = "TK_PP_UNDEF",
-        [TK_PP_IFDEF] = "TK_PP_IFDEF",
-        [TK_PP_LINE] = "TK_PP_LINE",
 
         /* Preprocessor tokens */
         [TK_HASH] = "#", // stringification
@@ -394,14 +370,6 @@ static struct ReservedWord RESERVED_WORDS[] = {
 //        {"_Thread_local", TK_THREAD_LOCAL}
 };
 
-static struct ReservedWord PREPROCESSOR_DIRECTIVES[] = {
-        {"include", TK_PP_INCLUDE},
-        {"define", TK_PP_DEFINE},
-        {"undef", TK_PP_UNDEF},
-        {"ifdef", TK_PP_IFDEF},
-        {"line", TK_PP_LINE}
-};
-
 typedef struct SourcePosition {
     const char* path;
     uint32_t line;
@@ -441,57 +409,18 @@ typedef struct TokenNode {
     struct TokenNode* next;
 } token_node_t;
 
-typedef struct MacroDefinition {
-    const char* name;
-    token_vector_t parameters; // positional parameters, if any
-    bool variadic;
-    token_vector_t tokens;
-} macro_definition_t;
-
-/**
- * Context shared by all lexers.
- * This is used to store global state, such as the list of include paths and macro definitions.
- */
-typedef struct LexerGlobalContext {
-    string_vector_t* user_include_paths;
-    string_vector_t* system_include_paths;
-    /**
-     * Hash table of macro definitions.
-     * The key is the macro name, and the value is a pointer to a heap allocated macro_definition_t.
-     */
-    hash_table_t macro_definitions;
-    /**
-     * Set to true when the lexer is parsing a macro definition.
-     */
-    bool disable_macro_expansion;
-} lexer_global_context_t;
-
-struct Lexer;
 typedef struct Lexer {
     const char* input_path;
     const char* input;
     size_t input_offset;
     size_t input_len;
     source_position_t position;
-    lexer_global_context_t* global_context;
-    /**
-     * A pointer to a child lexer (if any exist).
-     * Mainly used for handling #includes directives, which create a new lexer to parse the included file.
-     */
-    struct Lexer* child;
-    /**
-     * Tokens that have been parsed but not yet consumed.
-     * Generally, this will be the tokens that were parsed by the preprocessor as part of macro expansion,
-     * as the lexer will only scan one token at a time from the input (includes directives are handled by nested lexers).
-     */
-    token_node_t* pending_tokens;
 } lexer_t;
 
 lexer_t linit(
         const char* input_path,
         const char* input,
-        size_t input_len,
-        lexer_global_context_t* global_context
+        size_t input_len
 );
 char lpeek(struct Lexer* lexer, unsigned int count);
 char ladvance(struct Lexer* lexer);

@@ -13,11 +13,10 @@
 /// These are a bit fragile, since they rely on the output of the IR generation matching exactly.
 /// This should probably be refactored in the future.
 
-#define PARSE(input)                                                             \
-    lexer_global_context_t lexer_context = create_lexer_context();               \
-    lexer_t lexer = linit("path/to/file", input, strlen(input), &lexer_context); \
-    parser_t parser = pinit(lexer);                                              \
-    translation_unit_t program;                                                  \
+#define PARSE(input)                                              \
+    lexer_t lexer = linit("path/to/file", input, strlen(input));  \
+    parser_t parser = pinit(lexer);                               \
+    translation_unit_t program;                                   \
     CU_ASSERT_TRUE_FATAL(parse(&parser, &program))
 
 /**

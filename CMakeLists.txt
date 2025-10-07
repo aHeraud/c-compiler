@@ -50,7 +50,6 @@ include_directories(src)
 
 add_library(cclib STATIC
         src/parser/lexer.h src/parser/lexer.c
-        src/parser/preprocessor.h src/parser/preprocessor.c
         src/parser/parser.c src/parser/parser.h
         src/ast.h src/ast.c
         src/types.c src/types.h
@@ -83,7 +82,6 @@ add_executable(unit-tests
         tst/tests.h
         tst/lexer-tests.c
         tst/parser-tests.c src/ast.h
-        tst/preprocessor-tests.c
         tst/test-common.h
         tst/test-common.c
         tst/types-test.c

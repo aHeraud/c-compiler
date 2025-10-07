@@ -74,19 +74,6 @@ Tests are split into two categories:
 
 ## Features
 
-### Preprocessor
-
-There is no separate preprocessor, instead the pre-processor is combined with the lexer and will automatically handle 
-preprocessor directives and macro replacement.
-
-Preprocessor feature support:
-- [x] #define (partial support for function like macros)
-- [ ] Variadic macros
-- [x] #undef
-- [x] #include
-- [ ] #ifdef, #ifndef
-- [ ] #if, #else, #elseif
-
 ### Intermediate Representation (IR)
 
 The compiler has its own internal representation, which is produced as the output of the first code generation phase. 

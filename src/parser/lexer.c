@@ -6,7 +6,6 @@
 #include <stdbool.h>
 
 #include "lexer.h"
-#include "preprocessor.h"
 #include "utils/vectors.h"
 
 void string_literal(struct Lexer* lexer, struct Token* token);
@@ -19,6 +18,11 @@ void integer_suffix(lexer_t *lexer, char_vector_t *vec);
 void float_suffix(lexer_t *lexer, char_vector_t *vec);
 void identifier_or_reserved_word(struct Lexer* lexer, struct Token* token);
 void comment(struct Lexer* lexer, token_t* token);
+
+void handle_preprocessor_directive(lexer_t *lexer);
+void set_position(struct Lexer* lexer, source_position_t position);
+token_t preprocessor_file_replacement(lexer_t *lexer, token_t *token);
+token_t preprocessor_line_replacement(lexer_t *lexer, token_t *token);
 
 void append_token(token_t** buffer, size_t *size, size_t* capacity, token_t token) {
     if (*size + 1 > *capacity) {
@@ -94,8 +98,7 @@ char lpeek(struct Lexer* lexer, unsigned int count) {
 lexer_t linit(
         const char* input_path,
         const char* input,
-        size_t input_len,
-        lexer_global_context_t* global_context
+        size_t input_len
 ) {
     lexer_t lexer = {
         .input_path = input_path,
@@ -105,36 +108,14 @@ lexer_t linit(
         .position = {
             .path = input_path,
             .line = 1,
-            .column = 0,
+            .column = 1,
         },
-        .global_context = global_context,
     };
 
     return lexer;
 }
 
 token_t lscan(struct Lexer* lexer) {
-    if (lexer->child != NULL) {
-        token_t token = lscan(lexer->child);
-        if (token.kind == TK_NONE || token.kind == TK_EOF) {
-            // child lexer is done, clean it up
-            free(lexer->child);
-            lexer->child = NULL;
-        } else {
-            return token;
-        }
-    }
-
-    if (lexer->pending_tokens != NULL) {
-        // These tokens were already parsed by this lexer (probably by a macro expansion).
-        // Return them instead of scanning the input for a new token.
-        token_node_t* node = lexer->pending_tokens;
-        token_t token = node->token;
-        lexer->pending_tokens = node->next;
-        free(node);
-        return token;
-    }
-
     // skip whitespace
     char c0 = lpeek(lexer, 1);
     while (c0 == ' ' || c0 == '\t' || c0 == '\n') {
@@ -418,32 +399,8 @@ token_t lscan(struct Lexer* lexer) {
         case '#':
             if (start_of_line) {
                 // preprocessor directive
-                token_t directive_name;
-                preprocessor_directive(lexer, &directive_name);
-                switch (directive_name.kind) {
-                    case TK_PP_INCLUDE:
-                        preprocessor_include(lexer);
-                        return lscan(lexer); // scan next token
-                    case TK_PP_DEFINE:
-                        {
-                            macro_definition_t* macro_definition = malloc(sizeof(macro_definition_t));
-                            preprocessor_define(lexer, macro_definition);
-                            hash_table_insert(&lexer->global_context->macro_definitions,
-                                              macro_definition->name,
-                                              macro_definition);
-                        }
-                        return lscan(lexer); // scan next token
-                    case TK_PP_UNDEF:
-                        {
-                            token_t macro_name;
-                            identifier_or_reserved_word(lexer, &macro_name);
-                            preprocessor_undefine(lexer, macro_name.value);
-                        }
-                        return lscan(lexer); // scan next token
-                    default:
-                        // not a preprocessor directive
-                        return lscan(lexer); // scan next token
-                }
+                handle_preprocessor_directive(lexer);
+                return lscan(lexer);
             } else {
                 // only really valid while processing macros, but the parser can handle it
                 ladvance(lexer); // consume '#'
@@ -467,16 +424,6 @@ token_t lscan(struct Lexer* lexer) {
                         token = preprocessor_line_replacement(lexer, &token);
                     } else if (strcmp(token.value, "__FILE__") == 0) {
                         token = preprocessor_file_replacement(lexer, &token);
-                    } else {
-                        macro_definition_t* macro_definition;
-                        if (!lexer->global_context->disable_macro_expansion &&
-                            hash_table_lookup(&lexer->global_context->macro_definitions, token.value, (void**) &macro_definition)) {
-                            // expand macro
-                            macro_parameters_t parameters;
-                            preprocessor_parse_macro_invocation_parameters(lexer, macro_definition, &parameters);
-                            preprocessor_expand_macro(lexer, macro_definition, parameters);
-                            return lscan(lexer); // skip past the macro name and scan next token
-                        }
                     }
                 }
             } else if (isdigit(c0)) {
@@ -844,4 +791,108 @@ void comment(struct Lexer* lexer, token_t* token) {
 
     token->kind = TK_COMMENT;
     token->value = realloc(buffer.buffer, buffer.size);
+}
+
+/**
+ * Handle a supported pre-processor directive
+ * This only supports the following directives:
+ *    - line control `#line <linenum> ["filename"]`
+ *    - gcc style line control: `# <linenum> ["filename"] [flags...]`
+ * @param lexer
+ */
+void handle_preprocessor_directive(lexer_t *lexer) {
+    // next character should be a '#'
+    if (lpeek(lexer, 1) != '#') return;
+    ladvance(lexer); // consume '#'
+
+    // consume the rest of the tokens on the line
+    token_vector_t tokens = {NULL, 0, 0};
+    while (lpeek(lexer, 1) != '\0') {
+        // skip whitespace
+        while (lpeek(lexer, 1) == ' ' || lpeek(lexer, 1) == '\t' || lpeek(lexer, 1) == '\r')
+            ladvance(lexer);
+
+        if (lpeek(lexer, 1) == '\n') {
+            ladvance(lexer);
+            break;
+        }
+
+        token_t token = lscan(lexer);
+        VEC_APPEND(&tokens, token);
+    }
+
+    if (tokens.size == 0) return;
+
+    if (strcmp(tokens.buffer[0].value, "line") == 0) {
+        // line directive of the form `#line <linenum> ["filename"]`
+        int linenum = 0;
+        const char* filename = NULL;
+        if (tokens.size > 1 && tokens.buffer[1].kind == TK_INTEGER_CONSTANT) {
+            linenum = atoi(tokens.buffer[1].value);
+            if (tokens.size > 2 && tokens.buffer[2].kind == TK_STRING_LITERAL)
+                filename = tokens.buffer[2].value;
+            source_position_t newpos = {
+                .path = filename != NULL ? filename : lexer->position.path,
+                .line = linenum,
+                .column = 1,
+            };
+            set_position(lexer, newpos);
+        }
+    } else if (tokens.buffer[0].kind == TK_INTEGER_CONSTANT) {
+        // gnu style line directive of the form: # <linenum> ["filename"] [flags...]
+        int linenum = atoi(tokens.buffer[0].value);
+        const char* filename = NULL;
+        if (tokens.size > 1 && tokens.buffer[1].kind == TK_STRING_LITERAL) filename = tokens.buffer[1].value;
+        source_position_t newpos = {
+            .path = filename != NULL ? filename : lexer->position.path,
+            .line = linenum,
+            .column = 1,
+        };
+        set_position(lexer, newpos);
+    }
+
+    VEC_DESTROY(&tokens);
+}
+
+/**
+ * Set the position of the lexer. This only affects the position reported for the scanned tokens.
+ * @param lexer    pointer to the lexer
+ * @param position new position
+ */
+void set_position(struct Lexer* lexer, source_position_t position) {
+    lexer->position = position;
+}
+
+/**
+ * Pre-processor __FILE__ substitution.
+ * Expands to the path of the translation unit being processed.
+ * @param lexer Lexer context
+ * @param token The token containing the __FILE__ directive.
+ * @return A new token containing the path of the translation unit being processed.
+ */
+token_t preprocessor_file_replacement(lexer_t *lexer, token_t *token) {
+    return (token_t) {
+        .position = token->position,
+        .kind = TK_STRING_LITERAL,
+        .value = lexer->input_path
+    };
+}
+
+/**
+ * Pre-processor __LINE__ substitution.
+ * Expands to the line number of the current token.
+ * @param lexer Lexer context
+ * @param token The token containing the __LINE__ directive.
+ * @return A new token containing the line number of the current token.
+ */
+token_t preprocessor_line_replacement(lexer_t *lexer, token_t *token) {
+    char_vector_t vec = {malloc(32), 0, 32};
+    snprintf(vec.buffer, 32, "%d", lexer->position.line);
+    vec.size = strlen(vec.buffer);
+    shrink_char_vector(&vec.buffer, &vec.size, &vec.capacity);
+    return (token_t) {
+        .position = token->position,
+        .kind = TK_INTEGER_CONSTANT,
+        .value = vec.buffer,
+    };
 }

@@ -2,7 +2,8 @@
 #define C_COMPILER_TYPES_H
 
 #include <stdbool.h>
-#include <stddef.h>
+#include "utils/vectors.h"
+#include "utils/hashtable.h"
 #include "parser/lexer.h"
 
 struct Type;

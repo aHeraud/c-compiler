@@ -7,7 +7,6 @@ int main(void) {
     }
 
     lexer_tests_init_suite();
-    preprocessor_tests_init_suite();
     parser_tests_init_suite();
     types_tests_init_suite();
     numeric_constants_tests_init_suite();
