@@ -62,7 +62,7 @@ char ladvance(struct Lexer* lexer) {
             lexer->input_offset++;
         }
         lexer->position.line++;
-        lexer->position.column = 0;
+        lexer->position.column = 1;
         return '\n';
     } else if (c0 == '\\' && (c1 == '\n' || c1 == '\r')) {
         // Handle line continuations
@@ -71,7 +71,7 @@ char ladvance(struct Lexer* lexer) {
             lexer->input_offset++;
         }
         lexer->position.line++;
-        lexer->position.column = 0;
+        lexer->position.column = 1;
         return ladvance(lexer);
     } else {
         lexer->position.column++;
@@ -123,7 +123,7 @@ token_t lscan(struct Lexer* lexer) {
         c0 = lpeek(lexer, 1);
     }
 
-    bool start_of_line = lexer->position.column == 0;
+    bool start_of_line = lexer->position.column <= 1;
 
     struct Token token;
     token.kind = TK_NONE;
@@ -849,6 +849,10 @@ void handle_preprocessor_directive(lexer_t *lexer) {
             .column = 1,
         };
         set_position(lexer, newpos);
+    } else {
+        // TODO: better error/warning handling
+        fprintf(stderr, "%s:%d:%d: warn: unrecognized preprocessor directive\n",
+                lexer->position.path, lexer->position.line, lexer->position.column);
     }
 
     VEC_DESTROY(&tokens);

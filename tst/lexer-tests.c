@@ -209,6 +209,61 @@ void test_lex_line_directive(void) {
     VEC_DESTROY(&tokens);
 }
 
+void test_lex_alt_line_directive(void) {
+    char *input_path = "line-directive.c";
+    char *source_buffer =
+        "a\n"
+        "# 42 \"new-file.c\" 1 2 3\n"
+        "b\n";
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer));
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 2)
+
+    token_t a = tokens.buffer[0];
+    CU_ASSERT_EQUAL_FATAL(a.kind, TK_IDENTIFIER)
+    CU_ASSERT_STRING_EQUAL_FATAL(a.value, "a")
+    CU_ASSERT_STRING_EQUAL_FATAL(a.position.path, "line-directive.c")
+    CU_ASSERT_EQUAL_FATAL(a.position.line, 1)
+    CU_ASSERT_EQUAL_FATAL(a.position.column, 1)
+
+    token_t b = tokens.buffer[1];
+    CU_ASSERT_EQUAL_FATAL(b.kind, TK_IDENTIFIER)
+    CU_ASSERT_STRING_EQUAL_FATAL(b.value, "b")
+    CU_ASSERT_STRING_EQUAL_FATAL(b.position.path, "new-file.c")
+    CU_ASSERT_EQUAL_FATAL(b.position.line, 42)
+    CU_ASSERT_EQUAL_FATAL(b.position.column, 1)
+
+    VEC_DESTROY(&tokens);
+}
+
+void test_lex_ignore_unknown_preprocessor_directives(void) {
+    char *input_path = "test.c";
+    char *source_buffer =
+        "#include <stdio.h>\n"
+        "int a;\n";
+    lexer_t lexer = linit(input_path, source_buffer, strlen(source_buffer));
+
+    token_vector_t tokens = {.buffer = NULL, .size = 0, .capacity = 0};
+    token_t token;
+    while ((token = lscan(&lexer)).kind != TK_EOF) {
+        append_token(&tokens.buffer, &tokens.size, &tokens.capacity, token);
+    }
+
+    CU_ASSERT_EQUAL_FATAL(tokens.size, 3)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[0].kind, TK_INT)
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[1].kind, TK_IDENTIFIER)
+    CU_ASSERT_STRING_EQUAL_FATAL(tokens.buffer[1].value, "a")
+    CU_ASSERT_EQUAL_FATAL(tokens.buffer[2].kind, TK_SEMICOLON)
+
+    VEC_DESTROY(&tokens);
+}
+
 int lexer_tests_init_suite(void) {
     CU_pSuite pSuite = CU_add_suite("lexer", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "lex simple test program", test_simple_program) ||
@@ -226,7 +281,9 @@ int lexer_tests_init_suite(void) {
         NULL == CU_add_test(pSuite, "lex octal constant", test_lex_octal_constant) ||
         NULL == CU_add_test(pSuite, "__FILE__ substitution", test__FILE__substitution) ||
         NULL == CU_add_test(pSuite, "__LINE__ substitution", test__LINE__substitution) ||
-        NULL == CU_add_test(pSuite, "line directive", test_lex_line_directive)
+        NULL == CU_add_test(pSuite, "line directive", test_lex_line_directive) ||
+        NULL == CU_add_test(pSuite, "alt line directive", test_lex_alt_line_directive) ||
+        NULL == CU_add_test(pSuite, "ignore unknown preprocessor directives", test_lex_ignore_unknown_preprocessor_directives)
     ) {
         CU_cleanup_registry();
         return CU_get_error();
