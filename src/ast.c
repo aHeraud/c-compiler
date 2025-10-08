@@ -113,7 +113,7 @@ bool expression_eq(const expression_t *left, const expression_t *right) {
             }
             return expression_eq(left->value.member_access.struct_or_union, right->value.member_access.struct_or_union);
         case EXPRESSION_SIZEOF:
-            return types_equal(left->value.sizeof_type, right->value.sizeof_type);
+            return types_equal(left->value.type, right->value.type);
         case EXPRESSION_CAST:
             return types_equal(left->value.cast.type, right->value.cast.type) &&
                    expression_eq(left->value.cast.expression, right->value.cast.expression);

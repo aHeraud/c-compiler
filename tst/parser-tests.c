@@ -330,7 +330,7 @@ void test_parse_unary_sizeof_type(void) {
     expression_t expected = (expression_t) {
             .span = dummy_span(),
             .kind = EXPRESSION_SIZEOF,
-            .value.sizeof_type = &INT,
+            .value.type = &INT,
     };
     CU_ASSERT_TRUE_FATAL(expression_eq(&expr, &expected))
 }
@@ -344,7 +344,7 @@ void test_parse_unary_sizeof_function_pointer_type(void) {
     expression_t expected = (expression_t) {
         .span = dummy_span(),
         .kind = EXPRESSION_SIZEOF,
-        .value.sizeof_type = pointer_to(&(type_t) {
+        .value.type = pointer_to(&(type_t) {
             .kind = TYPE_FUNCTION,
             .value.function = {
                 .return_type = &INT,
@@ -2322,6 +2322,31 @@ void test_parse_sizeof_typedef_name(void) {
     CU_ASSERT_TRUE_FATAL(sizeof_expression->kind == EXPRESSION_SIZEOF);
 }
 
+void test_parse___builtin_va_arg(void) {
+    const char *input = "__builtin_va_arg(args, int)";
+    lexer_t lexer = linit("path/to/file", input, strlen(input));
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_TRUE_FATAL(parse_expression(&parser, &expr))
+    CU_ASSERT_TRUE_FATAL(expr.kind == EXPRESSION_CALL)
+    CU_ASSERT_TRUE_FATAL(expr.value.call.callee->kind == EXPRESSION_PRIMARY)
+    CU_ASSERT_STRING_EQUAL_FATAL(expr.value.call.callee->value.primary.value.token.value, "__builtin_va_arg")
+    CU_ASSERT_TRUE_FATAL(expr.value.call.arguments.size == 2)
+    // second argument should be a type
+    expression_t *type_arg = (expression_t *) expr.value.call.arguments.buffer[1];
+    CU_ASSERT_TRUE_FATAL(type_arg->kind == EXPRESSION_TYPE)
+    CU_ASSERT_TRUE_FATAL(type_arg->value.type->kind == TYPE_INTEGER)
+}
+
+void test_parse___builtin_va_arg_invalid_type_name(void ) {
+    const char *input = "__builtin_va_arg(args, badtype)";
+    lexer_t lexer = linit("path/to/file", input, strlen(input));
+    parser_t parser = pinit(lexer);
+    expression_t expr;
+    CU_ASSERT_FALSE_FATAL(parse_expression(&parser, &expr))
+    CU_ASSERT_TRUE_FATAL(parser.errors.size >= 1)
+}
+
 int parser_tests_init_suite(void) {
     CU_pSuite pSuite = CU_add_suite("parser", NULL, NULL);
     if (NULL == CU_add_test(pSuite, "primary expression - identifier", test_parse_primary_expression_ident) ||
@@ -2429,7 +2454,9 @@ int parser_tests_init_suite(void) {
         NULL == CU_add_test(pSuite, "illegal symbol redefinition in function scope", test_parse_program_illegal_symbol_redefinition_in_function_scope) ||
         NULL == CU_add_test(pSuite, "parse enum declaration", test_parse_enum_declaration) ||
         NULL == CU_add_test(pSuite, "parse enum variable declaration", test_parse_var_enum_declaration_no_list) ||
-        NULL == CU_add_test(pSuite, "sizeof typedef name", test_parse_sizeof_typedef_name)
+        NULL == CU_add_test(pSuite, "sizeof typedef name", test_parse_sizeof_typedef_name) ||
+        NULL == CU_add_test(pSuite, "parse __builtin_va_arg", test_parse___builtin_va_arg) ||
+        NULL == CU_add_test(pSuite, "parse __builtin_va_arg - invalid type name", test_parse___builtin_va_arg_invalid_type_name)
     ) {
         CU_cleanup_registry();
         return CU_get_error();

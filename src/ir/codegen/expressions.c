@@ -917,7 +917,7 @@ expression_result_t ir_visit_logical_expression(ir_gen_context_t *context, const
 
 expression_result_t ir_visit_sizeof_expression(ir_gen_context_t *context, const expression_t *expr) {
     assert(expr != NULL && expr->kind == EXPRESSION_SIZEOF);
-    const ir_type_t *type = get_ir_type(context, expr->value.sizeof_type);
+    const ir_type_t *type = get_ir_type(context, expr->value.type);
     ssize_t size = ir_size_of_type_bytes(context->arch, type);
     const ir_value_t size_val = ir_make_const_int(context->arch->ptr_int_type, (long long) size);
     return (expression_result_t) {

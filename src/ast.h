@@ -160,6 +160,7 @@ typedef struct Expression {
         EXPRESSION_SIZEOF,
         EXPRESSION_CAST,
         EXPRESSION_COMPOUND_LITERAL,
+        EXPRESSION_TYPE,
     } kind;
     union {
         primary_expression_t primary;
@@ -169,7 +170,7 @@ typedef struct Expression {
         call_expression_t call;
         array_subscript_expression_t array_subscript;
         member_access_expression_t member_access;
-        type_t *sizeof_type;
+        type_t *type; // also the value for EXPRESSION_SIZEOF
         cast_expression_t cast;
         compound_literal_expression_t compound_literal;
     } value;

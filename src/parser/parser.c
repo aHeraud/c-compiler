@@ -3363,7 +3363,7 @@ bool parse_unary_expression(parser_t *parser, expression_t *expr) {
             *expr = (expression_t) {
                 .span = SPANNING_NEXT(token),
                 .kind = EXPRESSION_SIZEOF,
-                .value.sizeof_type = type,
+                .value.type = type,
             };
             return true;
         } else {
@@ -3463,10 +3463,29 @@ bool parse_postfix_expression(parser_t *parser, expression_t *expr) {
             ptr_vector_t arguments = {.size = 0, .capacity = 0, .buffer = NULL};
             while (next_token(parser) ->kind != TK_RPAREN && next_token(parser)->kind != TK_EOF) {
                 expression_t *argument = malloc(sizeof(expression_t));
-                if (!parse_assignment_expression(parser, argument)) {
-                    free(argument);
-                    // TODO: cleanup arguments
-                    return false;
+
+                // special handling for va_arg(va_list, type) (__builtin_va_arg)
+                // second argument is a type, which is not allowed by the grammar
+                if (arguments.size == 1 && primary->kind == EXPRESSION_PRIMARY &&
+                    primary->value.primary.kind == PE_IDENTIFIER &&
+                    strcmp(primary->value.primary.value.token.value, "__builtin_va_arg") == 0) {
+                    type_t *type = NULL;
+                    if (!parse_type_name(parser, &type)) {
+                        free(argument);
+                        // TODO: cleanup
+                        return false;
+                    }
+                    *argument = (expression_t) {
+                        .span = SPAN_STARTING(*current_position(parser)),
+                        .kind = EXPRESSION_TYPE,
+                        .value.type = type,
+                    };
+                } else {
+                    if (!parse_assignment_expression(parser, argument)) {
+                        free(argument);
+                        // TODO: cleanup arguments
+                        return false;
+                    }
                 }
 
                 append_ptr(&arguments.buffer, &arguments.size, &arguments.capacity, argument);
