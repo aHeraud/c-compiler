@@ -592,3 +592,42 @@ ir_instruction_node_t *ir_build_bitcast(ir_function_builder_t *builder, ir_value
     };
     return ir_builder_insert_instruction(builder, instruction);
 }
+
+ir_instruction_node_t *ir_build_va_start(ir_function_builder_t *builder, ir_value_t va_list_ptr) {
+    return ir_builder_insert_instruction(builder, (ir_instruction_t) {
+        .opcode = IR_VA_START,
+        .value.va = {
+            .va_list_src = va_list_ptr,
+        }
+    });
+}
+
+ir_instruction_node_t *ir_build_va_arg(ir_function_builder_t *builder, ir_value_t va_list_ptr, ir_type_t *type, ir_var_t result) {
+    return ir_builder_insert_instruction(builder, (ir_instruction_t) {
+        .opcode = IR_VA_ARG,
+        .value.va = {
+            .va_list_src = va_list_ptr,
+            .type = type,
+            .result = result,
+        }
+    });
+}
+
+ir_instruction_node_t *ir_build_va_end(ir_function_builder_t *builder, ir_value_t va_list_ptr) {
+    return ir_builder_insert_instruction(builder, (ir_instruction_t) {
+        .opcode = IR_VA_END,
+        .value.va = {
+            .va_list_src = va_list_ptr,
+        }
+    });
+}
+
+ir_instruction_node_t *ir_build_va_copy(ir_function_builder_t *builder, ir_value_t dest, ir_value_t src) {
+    return ir_builder_insert_instruction(builder, (ir_instruction_t) {
+        .opcode = IR_VA_COPY,
+        .value.va = {
+            .va_list_dest = dest,
+            .va_list_src = src,
+        }
+    });
+}

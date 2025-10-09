@@ -379,6 +379,22 @@ int ir_fmt_instr(char *buffer, size_t size, const ir_instruction_t *instr) {
             _fmt_snprintf_or_err(result, err, buffer, size, " }");
             break;
         }
+        case IR_VA_START: {
+            _fmt_snprintf_or_err(result, err, buffer, size, "va_start %s", FMT_VAL(a, 512, instr->value.va.va_list_src));
+            break;
+        }
+        case IR_VA_END: {
+            _fmt_snprintf_or_err(result, err, buffer, size, "va_end %s", FMT_VAL(a, 512, instr->value.va.va_list_src));
+            break;
+        }
+        case IR_VA_ARG: {
+            _fmt_snprintf_or_err(result, err, buffer, size, "%s = va_arg %s, %s", FMT_VAR(a, 512, instr->value.va.result), FMT_VAL(b, 512, instr->value.va.va_list_src), FMT_TYPE(c, 512, instr->value.va.type));
+            break;
+        }
+        case IR_VA_COPY: {
+            _fmt_snprintf_or_err(result, err, buffer, size, "va_copy %s, %s", FMT_VAL(a, 512, instr->value.va.va_list_src), FMT_VAL(b, 512, instr->value.va.va_list_dest));
+            break;
+        }
     }
 
     return result;

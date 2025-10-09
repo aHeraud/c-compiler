@@ -112,4 +112,10 @@ ir_instruction_node_t *ir_build_itop(ir_function_builder_t *builder, ir_value_t 
 ir_instruction_node_t *ir_build_ptoi(ir_function_builder_t *builder, ir_value_t a, ir_var_t result);
 ir_instruction_node_t *ir_build_bitcast(ir_function_builder_t *builder, ir_value_t value, ir_var_t result);
 
+/* Var arg intrinsics */
+ir_instruction_node_t *ir_build_va_start(ir_function_builder_t *builder, ir_value_t va_list_ptr);
+ir_instruction_node_t *ir_build_va_arg(ir_function_builder_t *builder, ir_value_t va_list_ptr, ir_type_t *type, ir_var_t result);
+ir_instruction_node_t *ir_build_va_end(ir_function_builder_t *builder, ir_value_t va_list_ptr);
+ir_instruction_node_t *ir_build_va_copy(ir_function_builder_t *builder, ir_value_t dest, ir_value_t src);
+
 #endif //C_COMPILER_IR_BUILDER_H

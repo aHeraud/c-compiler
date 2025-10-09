@@ -704,6 +704,18 @@ void ir_validate_visit_instruction(
                 // TODO: verify that there are no duplicate cases
             }
             break;
+        case IR_VA_START:
+            // TODO
+            break;
+        case IR_VA_END:
+            // TODO
+            break;
+        case IR_VA_COPY:
+            // TODO
+            break;
+        case IR_VA_ARG:
+            // TODO
+            break;
         default:
             append_ir_validation_error(errors, (ir_validation_error_t) {
                 .instruction = instruction,
@@ -856,6 +868,15 @@ size_t ir_get_uses(ir_instruction_t *instr, ir_var_t **uses, size_t uses_max) {
         case IR_SWITCH:
             if (instr->value.switch_.value.kind == IR_VALUE_VAR) uses[count++] = &instr->value.switch_.value.var;
             break;
+        case IR_VA_START:
+        case IR_VA_ARG:
+        case IR_VA_END:
+            if (instr->value.va.va_list_src.kind == IR_VALUE_VAR) uses[count++] = &instr->value.va.va_list_src.var;
+            break;
+        case IR_VA_COPY:
+            if (instr->value.va.va_list_src.kind == IR_VALUE_VAR) uses[count++] = &instr->value.va.va_list_src.var;
+            if (instr->value.va.va_list_dest.kind == IR_VALUE_VAR) uses[count++] = &instr->value.va.va_list_dest.var;
+            break;
     }
     return count;
 }
@@ -905,10 +926,15 @@ ir_var_t *ir_get_def(ir_instruction_t *instr) {
         case IR_ITOP:
         case IR_BITCAST:
             return &instr->value.unary_op.result;
+        case IR_VA_ARG:
+            return &instr->value.va.result;
         // No defs
         case IR_MEMSET:
         case IR_MEMCPY:
         case IR_SWITCH:
+        case IR_VA_START:
+        case IR_VA_END:
+        case IR_VA_COPY:
             break;
     }
     return NULL;

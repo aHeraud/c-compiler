@@ -384,6 +384,12 @@ typedef enum IrOpcode {
     IR_PTOI,
     IR_ITOP,
     IR_BITCAST,
+
+    /* Vararg Support */
+    IR_VA_START,
+    IR_VA_END,
+    IR_VA_ARG,
+    IR_VA_COPY,
 } ir_opcode_t;
 
 typedef enum IrValueKind {
@@ -515,6 +521,12 @@ typedef struct IrInstruction {
             ir_switch_case_vector_t cases;
             char *default_label;
         } switch_;
+        struct {
+            ir_value_t va_list_src;  // va list ptr
+            ir_value_t va_list_dest; // for va copy
+            ir_var_t result;         // for va_arg
+            ir_type_t *type;        // for va_arg
+        } va;
     } value;
 } ir_instruction_t;
 

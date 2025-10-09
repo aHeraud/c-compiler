@@ -137,3 +137,19 @@ The comparison operations are:
 - bitcast a, type - Bitcast a to the specified type `b = (type) a`
     + a and type must have the same size
     + b will have the same bit pattern as a
+
+### Var Args
+
+Intrinsics for handling C variable argument lists.
+
+- va_start ap - Initialize a va_list variable ap
+    + ap must be a pointer to a va_list struct (the definition is target/platform dependent)
+    + Must be executed before any va_arg, va_end, or va_copy instructions that read from ap
+- va_end ap - Clean up the va_list ap
+    + ap must be a pointer to a va_list struct
+- va_copy dest, src - Copy va_list src to dest
+    + dest and src must be pointers to va_list structs
+- va_arg ap, type, result - Get the next argument from the va_list ap of the specified type
+    + ap must be a pointer to a va_list struct
+    + type is the type of the argument to get
+    + result will be of the specified type
