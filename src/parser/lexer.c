@@ -900,3 +900,13 @@ token_t preprocessor_line_replacement(lexer_t *lexer, token_t *token) {
         .value = vec.buffer,
     };
 }
+
+token_t *make_identifier_token(const char *val, source_position_t pos, token_t *token) {
+    assert(token != NULL);
+    *token = (token_t) {
+        .kind = TK_IDENTIFIER,
+        .position = pos,
+        .value = val,
+    };
+    return token;
+}

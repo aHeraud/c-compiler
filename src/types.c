@@ -130,6 +130,8 @@ bool types_equal(const type_t *a, const type_t *b) {
                 // TODO: need to evaluate this to compare it for equality?
             }
             return true;
+        case TYPE_BUILTIN:
+            return strcmp(a->value.builtin_name, b->value.builtin_name) == 0;
         default: // unknown type
             return false;
     }

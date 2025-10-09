@@ -51,6 +51,7 @@
 
 #include <string.h>
 
+#include "builtins.h"
 #include "parser/lexer.h"
 
 void append_parse_error(parse_error_vector_t* vec, parse_error_t error) {
@@ -303,6 +304,20 @@ typedef struct ParseCheckpoint {
     size_t error_index;
 } parse_checkpoint_t;
 
+void parser_setup_builtin_types(parser_t *parser) {
+    for (size_t i = 0; i < sizeof(BUILTIN_TYPES) / sizeof(type_t*); i += 1) {
+        const type_t *builtin_type = BUILTIN_TYPES[i];
+        parser_symbol_t *symbol = malloc(sizeof(parser_symbol_t));
+        *symbol = (parser_symbol_t) {
+            .kind = SYMBOL_TYPEDEF,
+            .next_token_index = 0,
+            .token = make_identifier_token(builtin_type->value.builtin_name, BUILTIN_SOURCE_POS, malloc(sizeof(token_t))),
+            .type = builtin_type,
+        };
+        parser_insert_symbol(parser, symbol);
+    }
+}
+
 parser_t pinit(lexer_t lexer) {
     parser_symbol_table_t symbol_table = malloc(sizeof(struct ParserSymbolTable));
     symbol_table->root_scope = malloc(sizeof(parser_scope_t));
@@ -311,7 +326,7 @@ parser_t pinit(lexer_t lexer) {
         .symbols_map = hash_table_create_string_keys(64),
     };
     symbol_table->current_scope = symbol_table->root_scope;
-    return (parser_t) {
+    parser_t parser = {
             .lexer = lexer,
             .tokens = {.size = 0, .capacity = 0, .buffer = NULL},
             .errors = {.size = 0, .capacity = 0, .buffer = NULL},
@@ -319,6 +334,8 @@ parser_t pinit(lexer_t lexer) {
             .symbol_table = symbol_table,
             .id_counter = 1,
     };
+    parser_setup_builtin_types(&parser);
+    return parser;
 }
 
 void recover(parser_t *parser);

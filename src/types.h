@@ -18,6 +18,7 @@ typedef enum TypeKind {
     TYPE_ARRAY,
     TYPE_STRUCT_OR_UNION,
     TYPE_ENUM,
+    TYPE_BUILTIN,
 } type_kind_t;
 
 typedef enum IntegerType {
@@ -131,6 +132,7 @@ typedef struct Type {
         } array;
         struct_t struct_or_union;
         enum_specifier_t enum_specifier;
+        const char *builtin_name;
     } value;
 } type_t;
 

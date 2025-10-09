@@ -426,4 +426,7 @@ char lpeek(struct Lexer* lexer, unsigned int count);
 char ladvance(struct Lexer* lexer);
 token_t lscan(lexer_t* lexer);
 
+// Helpers for creating common token types
+token_t *make_identifier_token(const char *name, source_position_t pos, token_t *token);
+
 #endif //C_COMPILER_LEXER_H

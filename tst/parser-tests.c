@@ -2322,6 +2322,19 @@ void test_parse_sizeof_typedef_name(void) {
     CU_ASSERT_TRUE_FATAL(sizeof_expression->kind == EXPRESSION_SIZEOF);
 }
 
+void test_parse___builtin_va_list_declaration(void) {
+    const char *input = "__builtin_va_list args;";
+    lexer_t lexer = linit("path/to/file", input, strlen(input));
+    parser_t parser = pinit(lexer);
+    ptr_vector_t declarations = VEC_INIT;
+    CU_ASSERT_TRUE_FATAL(parse_declaration(&parser, &declarations))
+    CU_ASSERT_EQUAL_FATAL(declarations.size, 1)
+    declaration_t *decl = declarations.buffer[0];
+    CU_ASSERT_TRUE_FATAL(decl->type->kind == TYPE_BUILTIN)
+    CU_ASSERT_TRUE_FATAL(strcmp(decl->type->value.builtin_name, "__builtin_va_list") == 0)
+    CU_ASSERT_STRING_EQUAL_FATAL(decl->identifier->value, "args")
+}
+
 void test_parse___builtin_va_arg(void) {
     const char *input = "__builtin_va_arg(args, int)";
     lexer_t lexer = linit("path/to/file", input, strlen(input));
@@ -2455,6 +2468,7 @@ int parser_tests_init_suite(void) {
         NULL == CU_add_test(pSuite, "parse enum declaration", test_parse_enum_declaration) ||
         NULL == CU_add_test(pSuite, "parse enum variable declaration", test_parse_var_enum_declaration_no_list) ||
         NULL == CU_add_test(pSuite, "sizeof typedef name", test_parse_sizeof_typedef_name) ||
+        NULL == CU_add_test(pSuite, "parse __builtin_va_list", test_parse___builtin_va_list_declaration) ||
         NULL == CU_add_test(pSuite, "parse __builtin_va_arg", test_parse___builtin_va_arg) ||
         NULL == CU_add_test(pSuite, "parse __builtin_va_arg - invalid type name", test_parse___builtin_va_arg_invalid_type_name)
     ) {
