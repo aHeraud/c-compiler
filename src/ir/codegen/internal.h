@@ -2,6 +2,7 @@
 #define CODEGEN_INTERNAL_H
 
 #include "ast.h"
+#include "target.h"
 #include "ir/ir.h"
 #include "ir/ir-builder.h"
 
@@ -13,6 +14,7 @@ VEC_DEFINE(StatementPtrVector, statement_ptr_vector_t, statement_t*)
 typedef struct IrGenContext {
     ir_module_t *module;
     const ir_arch_t *arch;
+    const target_t *target;
 
     hash_table_t global_map;
     hash_table_t function_definition_map;
@@ -251,6 +253,9 @@ const type_t* resolve_type(ir_gen_context_t *context, const type_t *c_type);
  * @return Resolved C type
  */
 const type_t *resolve_struct_type(ir_gen_context_t *context, const type_t *c_type);
+
+const type_t *make_incomplete_type(const type_t *type);
+const ir_type_t *make_incomplete_ir_type(const ir_gen_context_t *context, const char *id, const type_t *type);
 
 typedef struct InitializerResult {
     const type_t *c_type;

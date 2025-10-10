@@ -1,4 +1,6 @@
 #include <string.h>
+
+#include "builtins.h"
 #include "errors.h"
 #include "util/strings.h"
 #include "ir/codegen/internal.h"
@@ -15,6 +17,21 @@ const expression_result_t EXPR_ERR = {
         .var = {
             .name = NULL,
             .type = NULL,
+        },
+    },
+};
+
+const expression_result_t EXPR_VOID = {
+    .kind = EXPR_RESULT_VALUE,
+    .c_type = &VOID,
+    .is_lvalue = false,
+    .is_string_literal = false,
+    .addr_of = false,
+    .value = {
+        .kind = IR_VALUE_CONST,
+        .constant = {
+            .kind = IR_CONST_INT,
+            .type = &IR_VOID,
         },
     },
 };
@@ -80,6 +97,9 @@ expression_result_t ir_visit_expression(ir_gen_context_t *context, const express
             return ir_visit_unary_expression(context, expression);
         case EXPRESSION_COMPOUND_LITERAL:
             return ir_visit_compound_literal(context, expression);
+        case EXPRESSION_TYPE:
+            // should be un-reachable?
+            return EXPR_ERR;
     }
 
     // TODO
@@ -147,8 +167,189 @@ expression_result_t ir_visit_array_subscript_expression(ir_gen_context_t *contex
     };
 }
 
+expression_result_t ir_visit_call___builtin_va_start(ir_gen_context_t *context, const expression_t *expr) {
+    if (expr->value.call.arguments.size < 1) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_COUNT_MISMATCH,
+            .location = expr->value.call.callee->span.start,
+            .value.call_argument_count_mismatch = {
+                .actual = expr->value.call.arguments.size,
+                .expected = 1,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    expression_result_t va_list = ir_visit_expression(context, expr->value.call.arguments.buffer[0]);
+    if (va_list.c_type->kind != TYPE_STRUCT_OR_UNION || va_list.c_type->value.struct_or_union.identifier == NULL ||
+        strcmp(va_list.c_type->value.struct_or_union.identifier->value, "__builtin_va_list") != 0) {
+        const expression_t *arg = (expression_t*) expr->value.call.arguments.buffer[0];
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_TYPE_MISMATCH,
+            .location = arg->span.start,
+            .value.call_argument_type_mismatch = {
+                .argument_index = 0,
+                .actual_type = va_list.c_type,
+                .expected_type = &RAW_BUILTIN_VA_LIST_TYPE
+            }
+        });
+        return EXPR_ERR;
+    }
+
+    ir_build_va_start(context->builder, va_list.value);
+
+    return EXPR_VOID;
+}
+
+expression_result_t ir_visit_call___builtin_va_end(ir_gen_context_t *context, const expression_t *expr) {
+    if (expr->value.call.arguments.size != 1) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_COUNT_MISMATCH,
+            .location = expr->value.call.callee->span.start,
+            .value.call_argument_count_mismatch = {
+                .actual = expr->value.call.arguments.size,
+                .expected = 1,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    expression_result_t va_list = ir_visit_expression(context, expr->value.call.arguments.buffer[0]);
+    if (va_list.kind == EXPR_RESULT_ERR) return va_list;
+    if (va_list.c_type->kind != TYPE_STRUCT_OR_UNION || va_list.c_type->value.struct_or_union.identifier == NULL ||
+        strcmp(va_list.c_type->value.struct_or_union.identifier->value, "__builtin_va_list") != 0) {
+        const expression_t *arg = (expression_t*) expr->value.call.arguments.buffer[0];
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_TYPE_MISMATCH,
+            .location = arg->span.start,
+            .value.call_argument_type_mismatch = {
+                .argument_index = 0,
+                .actual_type = va_list.c_type,
+                .expected_type = &RAW_BUILTIN_VA_LIST_TYPE
+            }
+        });
+        return EXPR_ERR;
+    }
+
+    ir_build_va_end(context->builder, va_list.value);
+
+    return EXPR_VOID;
+}
+
+expression_result_t ir_visit_call___builtin_va_copy(ir_gen_context_t *context, const expression_t *expr) {
+    if (expr->value.call.arguments.size != 2) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_COUNT_MISMATCH,
+            .location = expr->value.call.callee->span.start,
+            .value.call_argument_count_mismatch = {
+                .actual = expr->value.call.arguments.size,
+                .expected = 2,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    expression_result_t dest = ir_visit_expression(context, expr->value.call.arguments.buffer[0]);
+    if (dest.kind == EXPR_RESULT_ERR) return dest;
+    if (dest.c_type->kind != TYPE_STRUCT_OR_UNION || dest.c_type->value.struct_or_union.identifier == NULL ||
+        strcmp(dest.c_type->value.struct_or_union.identifier->value, "__builtin_va_list") != 0) {
+        const expression_t *arg = (expression_t*) expr->value.call.arguments.buffer[0];
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_TYPE_MISMATCH,
+            .location = arg->span.start,
+            .value.call_argument_type_mismatch = {
+                .argument_index = 0,
+                .actual_type = dest.c_type,
+                .expected_type = &RAW_BUILTIN_VA_LIST_TYPE
+            }
+        });
+        return EXPR_ERR;
+    }
+
+    expression_result_t src = ir_visit_expression(context, expr->value.call.arguments.buffer[1]);
+    if (src.kind == EXPR_RESULT_ERR) return src;
+    if (src.c_type->kind != TYPE_STRUCT_OR_UNION || src.c_type->value.struct_or_union.identifier == NULL ||
+        strcmp(src.c_type->value.struct_or_union.identifier->value, "__builtin_va_list") != 0) {
+        const expression_t *arg = (expression_t*) expr->value.call.arguments.buffer[1];
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_TYPE_MISMATCH,
+            .location = arg->span.start,
+            .value.call_argument_type_mismatch = {
+                .argument_index = 0,
+                .actual_type = src.c_type,
+                .expected_type = &RAW_BUILTIN_VA_LIST_TYPE
+            }
+        });
+        return EXPR_ERR;
+    }
+
+    ir_build_va_copy(context->builder, dest.value, src.value);
+
+    return EXPR_VOID;
+}
+
+expression_result_t ir_visit_call___builtin_va_arg(ir_gen_context_t *context, const expression_t *expr) {
+    // __builtin_va_arg takes two arguments: a va_list and a type
+    if (expr->value.call.arguments.size != 2) {
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_COUNT_MISMATCH,
+            .location = expr->value.call.callee->span.start,
+            .value.call_argument_count_mismatch = {
+                .actual = expr->value.call.arguments.size,
+                .expected = 2,
+            },
+        });
+        return EXPR_ERR;
+    }
+
+    expression_t *type_arg = expr->value.call.arguments.buffer[1];
+    type_t *type;
+    if (type_arg == NULL || type_arg->kind != EXPRESSION_TYPE) {
+        // TODO: err message
+        return EXPR_ERR;
+    }
+    type = type_arg->value.type;
+
+    expression_result_t va_list = ir_visit_expression(context, expr->value.call.arguments.buffer[0]);
+    if (va_list.kind == EXPR_RESULT_ERR) return EXPR_ERR;
+    if (va_list.c_type->kind != TYPE_STRUCT_OR_UNION || va_list.c_type->value.struct_or_union.identifier == NULL ||
+        strcmp(va_list.c_type->value.struct_or_union.identifier->value, "__builtin_va_list") != 0) {
+        const expression_t *arg = (expression_t*) expr->value.call.arguments.buffer[1];
+        append_compilation_error(&context->errors, (compilation_error_t) {
+            .kind = ERR_CALL_ARGUMENT_TYPE_MISMATCH,
+            .location = arg->span.start,
+            .value.call_argument_type_mismatch = {
+                .argument_index = 0,
+                .actual_type = va_list.c_type,
+                .expected_type = &RAW_BUILTIN_VA_LIST_TYPE
+            }
+        });
+        return EXPR_ERR;
+    }
+
+    ir_var_t result = temp_var(context, get_ir_type(context,type_arg->value.type));
+    ir_build_va_arg(context->builder, va_list.value, get_ir_type(context, type), result);
+    return (expression_result_t) {
+        .kind = EXPR_RESULT_VALUE,
+        .c_type = type_arg->value.type,
+        .is_lvalue = false,
+        .is_string_literal = false,
+        .addr_of = false,
+        .value = ir_value_for_var(result),
+    };
+}
+
 expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const expression_t *expr) {
-    expression_result_t function = ir_visit_expression(context, expr->value.call.callee);
+    const expression_t *callee = expr->value.call.callee;
+    if (callee->kind == EXPRESSION_PRIMARY && callee->value.primary.kind == PE_IDENTIFIER) {
+        const char *fn_name = callee->value.primary.value.token.value;
+        if (strcmp(fn_name, "__builtin_va_start") == 0) return ir_visit_call___builtin_va_start(context, expr);
+        if (strcmp(fn_name, "__builtin_va_arg") == 0) return ir_visit_call___builtin_va_arg(context, expr);
+        if (strcmp(fn_name, "__builtin_va_end") == 0) return ir_visit_call___builtin_va_end(context, expr);
+        if (strcmp(fn_name, "__builtin_va_copy") == 0) return ir_visit_call___builtin_va_copy(context, expr);
+    }
+
+    expression_result_t function = ir_visit_expression(context, callee);
     ptr_vector_t arguments = (ptr_vector_t) {
         .size = 0,
         .capacity = 0,
@@ -162,7 +363,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     if (function.c_type->kind != TYPE_FUNCTION) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_CALL_TARGET_NOT_FUNCTION,
-            .location = expr->value.call.callee->span.start,
+            .location = callee->span.start,
             .value.call_target_not_function = {
                 .type = function.c_type,
             }
@@ -177,7 +378,7 @@ expression_result_t ir_visit_call_expression(ir_gen_context_t *context, const ex
     if ((variadic && actual_args_count < expected_args_count) || (!variadic && actual_args_count != expected_args_count)) {
         append_compilation_error(&context->errors, (compilation_error_t) {
             .kind = ERR_CALL_ARGUMENT_COUNT_MISMATCH,
-            .location = expr->value.call.callee->span.start,
+            .location = callee->span.start,
             .value.call_argument_count_mismatch = {
                 .expected = expected_args_count,
                 .actual = actual_args_count,

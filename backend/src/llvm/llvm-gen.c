@@ -726,6 +726,50 @@ void llvm_gen_visit_instruction(
             hash_table_destroy(&successors); // clean up
             break;
         }
+        case IR_VA_START: {
+            // Call the llvm.va_start intrinsic
+            LLVMTypeRef fn_param_types[1] = { LLVMPointerType(LLVMVoidType(), 0) };
+            LLVMTypeRef fn_type = LLVMFunctionType(LLVMVoidType(), fn_param_types, 1, false);
+            const char *fn_name = "llvm.va_start.p0";
+            LLVMValueRef fn = llvm_get_or_add_function(context, fn_name, fn_type);
+            LLVMValueRef args[1] = { ir_to_llvm_value(context, &instr->value.va.va_list_src) };
+            LLVMBuildCall2(context->llvm_builder, fn_type, fn, args, 1, "");
+            break;
+        }
+        case IR_VA_END: {
+            // Call the llvm.va_end intrinsic
+            LLVMTypeRef fn_param_types[1] = { LLVMPointerType(LLVMVoidType(), 0) };
+            LLVMTypeRef fn_type = LLVMFunctionType(LLVMVoidType(), fn_param_types, 1, false);
+            const char *fn_name = "llvm.va_end.p0";
+            LLVMValueRef fn = llvm_get_or_add_function(context, fn_name, fn_type);
+            LLVMValueRef args[1] = { ir_to_llvm_value(context, &instr->value.va.va_list_src) };
+            LLVMBuildCall2(context->llvm_builder, fn_type, fn, args, 1, "");
+            break;
+        }
+        case IR_VA_COPY: {
+            // Call the llvm.va_copy intrinsic
+            LLVMTypeRef fn_param_types[2] = {
+                LLVMPointerType(LLVMVoidType(), 0),
+                LLVMPointerType(LLVMVoidType(), 0),
+            };
+            LLVMTypeRef fn_type = LLVMFunctionType(LLVMVoidType(), fn_param_types, 2, false);
+            const char *fn_name = "llvm.va_copy.p0";
+            LLVMValueRef fn = llvm_get_or_add_function(context, fn_name, fn_type);
+            LLVMValueRef args[2] = {
+                ir_to_llvm_value(context, &instr->value.va.va_list_dest),
+                ir_to_llvm_value(context, &instr->value.va.va_list_src),
+            };
+            LLVMBuildCall2(context->llvm_builder, fn_type, fn, args, 2, "");
+            break;
+        }
+        case IR_VA_ARG: {
+            LLVMValueRef list = ir_to_llvm_value(context, &instr->value.va.va_list_src);
+            const ir_type_t *type_arg = instr->value.va.type;
+            LLVMTypeRef llvm_type = ir_to_llvm_type(context, type_arg);
+            LLVMValueRef result = LLVMBuildVAArg(context->llvm_builder, list, llvm_type, "");
+            hash_table_insert(&context->local_var_map, instr->value.va.result.name, result);
+            break;
+        }
         default:
             assert(false && "Unrecognized opcode");
     }

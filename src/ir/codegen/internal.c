@@ -1,6 +1,8 @@
 #include <string.h>
 #include "errors.h"
 #include "ir/codegen/internal.h"
+
+#include "builtins.h"
 #include "ir/fmt.h"
 
 symbol_t *lookup_symbol(const ir_gen_context_t *context, const char *name) {
@@ -904,6 +906,12 @@ const type_t* resolve_type(ir_gen_context_t *context, const type_t *c_type) {
             assert(tag != NULL);
             return tag->c_type;
         }
+        case TYPE_BUILTIN: {
+            assert(c_type->value.builtin_name != NULL);
+            if (strcmp(c_type->value.builtin_name, BUILTIN_VA_LIST_NAME) == 0) return get_va_list_type(context->target);
+            fprintf(stderr, "Internal error: %s:%d: Unknown builtin type: %s\n", __FILE__, __LINE__, c_type->value.builtin_name);
+            exit(1);
+        }
         default:
             // Scalar types don't reference other types, so don't need to be resolved
             return c_type;
@@ -961,4 +969,48 @@ const type_t *resolve_struct_type(ir_gen_context_t *context, const type_t *c_typ
     }
 
     return resolved;
+}
+
+const type_t *make_incomplete_type(const type_t *type) {
+    switch (type->kind) {
+        case TYPE_ENUM: {
+            type_t *new_type = malloc(sizeof(type_t));
+            *new_type = *type;
+            new_type->value.enum_specifier.enumerators = (enumerator_vector_t) VEC_INIT;
+            return new_type;
+        }
+        case TYPE_STRUCT_OR_UNION: {
+            type_t *new_type = malloc(sizeof(type_t));
+            *new_type = *type;
+            new_type->value.struct_or_union.has_body = false;
+            new_type->value.struct_or_union.field_map = hash_table_create_string_keys(64);
+            new_type->value.struct_or_union.fields = (field_ptr_vector_t) VEC_INIT;
+            return new_type;
+        }
+        default:
+            return type;
+    }
+}
+
+const ir_type_t *make_incomplete_ir_type(const ir_gen_context_t *context, const char *id, const type_t *type) {
+    switch (type->kind) {
+        case TYPE_ENUM: {
+            return context->arch->sint;
+        }
+        case TYPE_STRUCT_OR_UNION: {
+            ir_type_t *new_type = malloc(sizeof(ir_type_t));
+            *new_type = (ir_type_t) {
+                .kind = IR_TYPE_STRUCT_OR_UNION,
+                .value.struct_or_union = {
+                    .field_map = hash_table_create_string_keys(64),
+                    .fields = (ir_struct_field_ptr_vector_t) VEC_INIT,
+                    .is_union = type->value.struct_or_union.is_union,
+                    .id = id,
+                },
+            };
+            return new_type;
+        }
+        default:
+            return get_ir_type(context, type);
+    }
 }

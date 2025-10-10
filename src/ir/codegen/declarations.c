@@ -53,50 +53,6 @@ void visit_enumeration_constants(ir_gen_context_t *context, const enum_specifier
     }
 }
 
-const type_t *make_incomplete_type(const type_t *type) {
-    switch (type->kind) {
-        case TYPE_ENUM: {
-            type_t *new_type = malloc(sizeof(type_t));
-            *new_type = *type;
-            new_type->value.enum_specifier.enumerators = (enumerator_vector_t) VEC_INIT;
-            return new_type;
-        }
-        case TYPE_STRUCT_OR_UNION: {
-            type_t *new_type = malloc(sizeof(type_t));
-            *new_type = *type;
-            new_type->value.struct_or_union.has_body = false;
-            new_type->value.struct_or_union.field_map = hash_table_create_string_keys(64);
-            new_type->value.struct_or_union.fields = (field_ptr_vector_t) VEC_INIT;
-            return new_type;
-        }
-        default:
-            return type;
-    }
-}
-
-const ir_type_t *make_incomplete_ir_type(const ir_gen_context_t *context, const char *id, const type_t *type) {
-    switch (type->kind) {
-        case TYPE_ENUM: {
-            return context->arch->sint;
-        }
-        case TYPE_STRUCT_OR_UNION: {
-            ir_type_t *new_type = malloc(sizeof(ir_type_t));
-            *new_type = (ir_type_t) {
-                .kind = IR_TYPE_STRUCT_OR_UNION,
-                .value.struct_or_union = {
-                    .field_map = hash_table_create_string_keys(64),
-                    .fields = (ir_struct_field_ptr_vector_t) VEC_INIT,
-                    .is_union = type->value.struct_or_union.is_union,
-                    .id = id,
-                },
-            };
-            return new_type;
-        }
-        default:
-            return get_ir_type(context, type);
-    }
-}
-
 const tag_t *tag_for_declaration(ir_gen_context_t *context, const type_t *c_type) {
     assert(c_type->kind == TYPE_STRUCT_OR_UNION || c_type->kind == TYPE_ENUM);
 

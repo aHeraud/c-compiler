@@ -10,6 +10,7 @@ int main(void) {
     parser_tests_init_suite();
     types_tests_init_suite();
     numeric_constants_tests_init_suite();
+    ir_gen_tests_init_suite();
 
     CU_basic_set_mode(CU_BRM_VERBOSE);
 

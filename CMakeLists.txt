@@ -62,6 +62,7 @@ add_library(cclib STATIC
         src/ir/codegen/initializers.c
         src/ir/codegen/statements.c
         src/util/strings.h src/util/strings.c
+        src/builtins.h src/builtins.c
 )
 target_link_libraries(cclib PUBLIC common ir backend)
 

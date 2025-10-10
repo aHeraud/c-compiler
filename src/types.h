@@ -192,6 +192,19 @@ static const type_t VOID = {
         .kind = TYPE_VOID,
 };
 
+static const type_t VOID_PTR = {
+    .is_const = false,
+    .is_volatile = false,
+    .storage_class = STORAGE_CLASS_AUTO,
+    .kind = TYPE_POINTER,
+    .value.pointer = {
+        .is_const = false,
+        .is_volatile = false,
+        .is_restrict = false,
+        .base = &VOID,
+    },
+};
+
 static const type_t BOOL = {
     .kind = TYPE_INTEGER,
     .is_const = false,

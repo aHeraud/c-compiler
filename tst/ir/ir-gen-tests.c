@@ -26,7 +26,14 @@
  * @param body     Expected function definition body (serialized form)
  * @param body_len Length of the body array
  */
-void assert_ir_instructions_eq(const char *testcase, const ir_function_definition_t *function, const char **body, size_t body_len) {
+void assert_ir_instructions_eq(
+    const char *file,
+    int line,
+    const char *testcase,
+    const ir_function_definition_t *function,
+    const char **body,
+    size_t body_len
+) {
     bool size_equals = function->body.size == body_len;
     bool body_equals = true;
     ssize_t first_diff_idx = -1;
@@ -56,18 +63,18 @@ void assert_ir_instructions_eq(const char *testcase, const ir_function_definitio
             fprintf(stderr, "%3d:\t%s\t%s", i, instr, i == first_diff_idx ? "<--- first difference here\n" : "\n");
         }
         fprintf(stderr, "\n");
-        CU_FAIL()
+        CU_assertImplementation(CU_FALSE, line, ("CU_FAIL()"), file, testcase, CU_FALSE);
     }
 }
 
-#define ASSERT_IR_INSTRUCTIONS_EQ(function, _body) assert_ir_instructions_eq(__func__, function, _body, sizeof(_body) / sizeof(_body[0]))
+#define ASSERT_IR_INSTRUCTIONS_EQ(function, _body) assert_ir_instructions_eq(__FILE__, __LINE__, __func__, function, _body, sizeof(_body) / sizeof(_body[0]))
 
 void test_ir_gen_basic(void) {
     const char* input = "int main(void) {\n"
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -83,7 +90,7 @@ void test_ir_gen_add_simple(void) {
                         "    return a + b;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -106,7 +113,7 @@ void test_ir_gen_add_i32_f32(void) {
                         "    return a + b;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -129,7 +136,7 @@ void test_ir_gen_add_constants(void) {
                         "    return 1.0f + 2.0f;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -143,7 +150,7 @@ void test_ir_gen_sub_constants(void) {
                         "    return 3 - 5;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -157,7 +164,7 @@ void test_ir_gen_multiply_constants(void) {
                         "    return 3 * 5;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -171,7 +178,7 @@ void test_ir_gen_divide_constants(void) {
                         "    return 64 / 8;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -185,7 +192,7 @@ void test_ir_gen_divide_by_zero_float_constants(void) {
                         "    return 1.0f / 0.0f;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -199,7 +206,7 @@ void test_ir_gen_divide_by_zero_integer_constants(void) {
                         "    return 1 / 0;\n"
                         "}\n";
     PARSE(input)
-    generate_ir(&program, &IR_ARCH_X86_64);
+    generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
 
     // TODO: warning, undefined result
     // For now we just make sure this doesn't crash
@@ -210,7 +217,7 @@ void test_ir_gen_mod_constants(void) {
                         "    return 5 % 3;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -224,7 +231,7 @@ void test_ir_gen_left_shift_constants(void) {
                         "    return 4 << 2;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -238,7 +245,7 @@ void test_ir_gen_right_shift_constants(void) {
                         "    return 3 >> 1;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -252,7 +259,7 @@ void test_ir_gen_logic_and_constants_1(void) {
                         "    return 1 && 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -266,7 +273,7 @@ void test_ir_gen_logic_and_constants_2(void) {
                         "    return 0 && 1;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -280,7 +287,7 @@ void test_ir_gen_logic_and_constants_3(void) {
                         "    return 1 && 1;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -294,7 +301,7 @@ void test_ir_gen_logic_or_constants_1(void) {
                         "    return 1 || 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -308,7 +315,7 @@ void test_ir_gen_logic_or_constants_2(void) {
                         "    return 0 || 1;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -322,7 +329,7 @@ void test_ir_gen_logic_or_constants_3(void) {
                         "    return 0 || 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -336,7 +343,7 @@ void test_ir_gen_ternary_expression_constants_1(void) {
                         "    return 1 ? 2 : 3;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -350,7 +357,7 @@ void test_ir_gen_ternary_expression_constants_2(void) {
                         "    return 0 ? 2 : 3;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -366,7 +373,7 @@ void test_ir_gen_prefix_increment_integer(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -389,7 +396,7 @@ void test_ir_gen_postfix_increment_integer(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -412,7 +419,7 @@ void test_ir_gen_prefix_decrement_integer(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -435,7 +442,7 @@ void test_ir_gen_postfix_decrement_integer(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -458,7 +465,7 @@ void test_ir_gen_postfix_increment_float(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -481,7 +488,7 @@ void test_ir_gen_postfix_decrement_float(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -505,7 +512,7 @@ void test_ir_gen_postfix_increment_pointer(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -531,7 +538,7 @@ void test_ir_gen_postfix_decrement_pointer(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -556,7 +563,7 @@ void test_ir_gen_addr_of_variable(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -574,7 +581,7 @@ void test_ir_gen_indirect_load(void) {
                         "    return *a;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -593,7 +600,7 @@ void test_ir_gen_indirect_store(void) {
                         "    return 0;\n"
                         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -612,7 +619,7 @@ void test_ir_gen_ptr_increment_deref_and_write(void) {
         "    *ptr++ = 4;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -632,7 +639,7 @@ void test_ir_gen_ptr_to_ptr_copy_and_increment(void) {
             "    *to++ = *from++;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -659,7 +666,7 @@ void test_ir_gen_array_load_constant_index(void) {
                         "    int b = a[1];\n"
                         "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -680,7 +687,7 @@ void test_ir_gen_array_store_constant_index(void) {
                         "    a[1] = 10;\n"
                         "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -699,7 +706,7 @@ void test_ir_gen_array_load_variable_index(void) {
                         "    int b = a[i];\n"
                         "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -721,7 +728,7 @@ void test_ir_gen_array_index_on_ptr(void) {
                         "    return a[0];\n"
                         "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -742,7 +749,7 @@ void test_ir_gen_array_unspecified_size_with_initializer(void) {
         "    return a[2];\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -767,7 +774,7 @@ void test_ir_gen_array_initializer_with_designators(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -793,7 +800,7 @@ void test_ir_gen_struct_initializer(void) {
             "    return foo.b;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -818,7 +825,7 @@ void test_ir_gen_struct_initializer_with_designators(void) {
             "    return foo.b;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -844,7 +851,7 @@ void test_ir_gen_struct_initializer_with_designators_nested(void) {
             "    return s.inner.b;"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -871,7 +878,7 @@ void test_ir_gen_struct_initializer_with_designators_deeply_nested(void) {
             "    return s.middle.inner.a;"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -897,7 +904,7 @@ void test_ir_gen_struct_assignment_memcpy(void) {
             "    return 0;\n"
             "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -916,7 +923,7 @@ void test_ir_gen_struct_initializer_compound_literal(void) {
             "    return 0;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -938,7 +945,7 @@ void test_ir_gen_compound_literal_assign(void) {
             "    return 0;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_EQUAL_FATAL(result.errors.size, 0);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -963,7 +970,7 @@ void test_ir_gen_if_else_statement(void) {
         "    return x;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -993,7 +1000,7 @@ void test_ir_gen_call_expr_returns_void(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1013,7 +1020,7 @@ void test_ir_gen_function_arg_promotion(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1038,7 +1045,7 @@ void test_ir_gen_function_vararg_promotion(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1075,7 +1082,7 @@ void test_ir_gen_varargs_call(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1099,7 +1106,7 @@ void test_ir_gen_implicit_return_void(void) {
     const char* input = "void foo(void) {}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1118,7 +1125,7 @@ void test_ir_gen_conditional_expr_void(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1144,7 +1151,7 @@ void test_ir_gen_conditional_expr_returning_int(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1181,7 +1188,7 @@ void test_ir_while_loop(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1214,7 +1221,7 @@ void test_ir_do_while_loop(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -1244,7 +1251,7 @@ void test_ir_gen_for_loop_empty(void) {
         "}\n";
 
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 
     // You would expect to see the loop end label and a return 0 instruction here, but the ir-generator has
@@ -1260,7 +1267,7 @@ void test_ir_gen_for_loop_empty(void) {
 void test_ir_gen_declare_struct_type_global_scope(void) {
     const char* input = "struct Foo { int a; };\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     assert(result.errors.size == 0);
 }
 
@@ -1269,7 +1276,7 @@ void test_ir_gen_declare_struct_default_initializer(void) {
                         "    struct Foo { int a; } foo;"
                         "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
         "*struct.Foo_0 %0 = alloca struct.Foo_0",
@@ -1285,7 +1292,7 @@ void test_ir_gen_struct_set_field(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1304,7 +1311,7 @@ void test_ir_gen_struct_ptr_set_field(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1325,7 +1332,7 @@ void test_ir_gen_struct_read_field(void) {
         "    return 0;"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1346,7 +1353,7 @@ void test_ir_gen_struct_ptr_read_field(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1371,7 +1378,7 @@ void test_ir_gen_struct_definition_scoping(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1389,7 +1396,7 @@ void test_ir_gen_anonymous_struct(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1409,7 +1416,7 @@ void test_ir_gen_nested_anonymous_struct(void) {
             "    return 0;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1425,7 +1432,7 @@ void test_ir_gen_sizeof_type_primitive(void) {
     // sizeof(type) is a compile time constant, so it can be a global initializer
     const char *input = "int size = sizeof(int);\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     CU_ASSERT_EQUAL_FATAL(result.module->globals.size, 1);
     const ir_global_t *size = result.module->globals.buffer[0];
@@ -1439,7 +1446,7 @@ void test_ir_gen_sizeof_type_struct(void) {
         "struct Foo { char a; int b; };\n"
         "int size = sizeof(struct Foo);\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     CU_ASSERT_EQUAL_FATAL(result.module->globals.size, 1);
     const ir_global_t *size = result.module->globals.buffer[0];
@@ -1453,7 +1460,7 @@ void test_ir_gen_sizeof_unary_expression(void) {
         "float val = 0;\n"
         "int size = sizeof(val)\n;";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     CU_ASSERT_EQUAL_FATAL(result.module->globals.size, 2);
     const ir_global_t *size = result.module->globals.buffer[1];
@@ -1470,7 +1477,7 @@ void test_ir_gen_unary_local_not_constexpr(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1489,7 +1496,7 @@ void test_ir_gen_unary_local_not(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1510,7 +1517,7 @@ void test_ir_gen_unary_negative_const_int(void) {
         "    return -1;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1524,7 +1531,7 @@ void test_ir_gen_unary_negative_const_float(void) {
         "    return -1.0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1538,7 +1545,7 @@ void test_ir_gen_unary_negative_int(void) {
         "    return -a;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1556,7 +1563,7 @@ void test_ir_gen_unary_negative_float(void) {
         "    return -a;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1577,7 +1584,7 @@ void test_ir_gen_label_and_goto(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1598,7 +1605,7 @@ void test_ir_gen_forward_goto(void) {
         "    end: return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1618,7 +1625,7 @@ void test_ir_gen_while_break(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     // This looks a bit funky, but I think its due to eliminating unreachable nodes from the cfg then translating
@@ -1642,7 +1649,7 @@ void test_ir_gen_do_while_break(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     // Note that the entire condition check is removed due to being un-reachable in the CFG
@@ -1663,7 +1670,7 @@ void test_ir_gen_for_break(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1685,7 +1692,7 @@ void test_ir_gen_while_continue(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1709,7 +1716,7 @@ void test_ir_gen_do_while_continue(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1733,7 +1740,7 @@ void test_ir_gen_for_continue(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1756,7 +1763,7 @@ void ir_test_compound_assign_add(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1780,7 +1787,7 @@ void ir_test_compound_assign_sub(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1804,7 +1811,7 @@ void ir_test_compound_assign_mul(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1828,7 +1835,7 @@ void ir_test_compound_assign_div(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1852,7 +1859,7 @@ void ir_test_compound_assign_mod(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1876,7 +1883,7 @@ void ir_test_compound_assign_and(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1900,7 +1907,7 @@ void ir_test_compound_assign_or(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1924,7 +1931,7 @@ void ir_test_compound_assign_xor(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1948,7 +1955,7 @@ void ir_test_compound_assign_shl(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1972,7 +1979,7 @@ void ir_test_compound_assign_shr(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -1996,7 +2003,7 @@ void ir_test_cast_expression(void) {
             "return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2023,7 +2030,7 @@ void test_ir_gen_empty_switch(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2046,7 +2053,7 @@ void test_ir_gen_switch(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2076,7 +2083,7 @@ void test_ir_gen_switch_default_fallthrough(void) {
             "    return 0;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2107,7 +2114,7 @@ void test_ir_gen_loop_inside_switch(void) {
             "    return 0;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2147,7 +2154,7 @@ void test_ir_gen_global_initializer_constant_propagation(void) {
             "const int a = 14;\n"
             "const int b = a + 1;\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_global_t *b = result.module->globals.buffer[1];
     CU_ASSERT_TRUE_FATAL(b->initialized)
@@ -2164,7 +2171,7 @@ void test_ir_gen_constant_propagation(void) {
             "    return a + b + c;\n"
             "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2185,7 +2192,7 @@ void test_ir_gen_enum_declare_assign_use(void) {
             "    return foo;\n"
             "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2204,7 +2211,7 @@ void test_ir_gen_enum_assign_to_int_var(void) {
             "    return foo;\n"
             "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2220,7 +2227,7 @@ void test_ir_gen_global_array_initializer_list(void) {
     // ir module's globals table.
     const char *input = "int a[] = { 1, 2, 3 };";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     ir_global_t *a = result.module->globals.buffer[0];
@@ -2243,7 +2250,7 @@ void test_ir_gen_global_array_initializer_list(void) {
 void test_ir_global_array_initializer_list_with_excess_elements(void) {
     const char *input = "int a[2] = { 1, 2, 3 };";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     ir_global_t *a = result.module->globals.buffer[0];
@@ -2265,7 +2272,7 @@ void test_ir_global_array_initializer_list_with_excess_elements(void) {
 void test_ir_global_array_initializer_list_with_fewer_elements(void) {
     const char *input = "int a[3] = { 1, 2 };";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     ir_global_t *a = result.module->globals.buffer[0];
@@ -2292,7 +2299,7 @@ void test_ir_sizeof_global_array_size_inferred_from_initializer(void) {
             "    return sizeof(a);\n"
             "}";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     const ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -2304,7 +2311,7 @@ void test_ir_sizeof_global_array_size_inferred_from_initializer(void) {
 void test_ir_global_array_nested_designated_initializer_list(void) {
     const char *input = "int a[2][2] = { [1][1] = 1 };";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     ir_global_t *a = result.module->globals.buffer[0];
@@ -2330,7 +2337,7 @@ void test_ir_global_array_nested_designated_initializer_list(void) {
 void test_ir_global_struct_initializer_list(void) {
     const char *input = "struct Foo { int a; int b; } foo = { 1, 2 };";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     ir_global_t *foo = result.module->globals.buffer[0];
@@ -2351,7 +2358,7 @@ void test_ir_global_array_of_structs_initializer_list(void) {
         "struct Foo { int a; };\n"
         "struct Foo foo[1] = { { 1, }, };\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     ir_global_t *foo = result.module->globals.buffer[0];
@@ -2373,7 +2380,7 @@ void test_ir_forward_struct_declaration_ptr(void) {
         "    int a;\n"
         "};\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     CU_ASSERT_TRUE_FATAL(result.module->globals.buffer[0]->type->kind == IR_TYPE_PTR);
@@ -2385,7 +2392,7 @@ void test_ir_recursive_struct_field(void) {
         "    struct Foo *foo;\n"
         "};\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
 }
 
@@ -2410,7 +2417,7 @@ void test_ir_union_inside_struct_inside_struct(void) {
         "    return 0;\n"
         "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1);
     const ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -2429,7 +2436,7 @@ void test_ir_sizeof_typedef(void) {
        "    return sizeof(size_t);\n"
        "}\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0);
     CU_ASSERT_TRUE_FATAL(result.module->functions.size == 1);
     const ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -2444,7 +2451,7 @@ void test_ir_typedef_enum(void) {
         "struct S { E a; };\n"
         "static const struct S s = { .a = A };\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 1)
 }
@@ -2455,7 +2462,7 @@ void test_ir_constant_address_of_global(void) {
         "int *b = &a;\n"
         "int main() { return *b; }\n";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     CU_ASSERT_TRUE_FATAL(result.module->globals.size == 2)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
@@ -2469,7 +2476,7 @@ void test_ir_constant_address_of_global(void) {
 void test_ir_binexpr_ptr_cmp(void) {
     const char *input = "int main(int *a, int *b) { return a < b; }";
     PARSE(input)
-    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64);
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
     CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
     const ir_function_definition_t *function = result.module->functions.buffer[0];
     ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
@@ -2484,6 +2491,133 @@ void test_ir_binexpr_ptr_cmp(void) {
         "bool %6 = lt u64 %4, u64 %5",
         "i32 %7 = ext bool %6",
         "ret i32 %7"
+    }));
+}
+
+void test_ir_declare_va_list(void) {
+    const char *input =
+        "void foo(void) {\n"
+        "    __builtin_va_list args;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*struct.__builtin_va_list %0 = alloca struct.__builtin_va_list",
+        "ret void"
+    }));
+}
+
+void test_ir_var_args_fn(void) {
+    const char *input =
+        "int foo(int a, ...) {\n"
+        "    __builtin_va_list args;\n"
+        "    __builtin_va_start(args, a);\n"
+        "    int b = __builtin_va_arg(args, int);\n"
+        "    __builtin_va_end(args);\n"
+        "    return b;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "*struct.__builtin_va_list %1 = alloca struct.__builtin_va_list",
+        "*i32 %2 = alloca i32",
+        "store i32 a, *i32 %0",
+        "va_start *struct.__builtin_va_list %1",
+        "i32 %3 = va_arg *struct.__builtin_va_list %1, i32",
+        "store i32 %3, *i32 %2",
+        "va_end *struct.__builtin_va_list %1",
+        "i32 %4 = load *i32 %2",
+        "ret i32 %4"
+    }));
+}
+
+void test_ir_var_args_struct_arg(void) {
+    const char *input =
+        "struct S { int a; };\n"
+        "int foo(int a, ...) {\n"
+        "    __builtin_va_list args;\n"
+        "    __builtin_va_start(args, a);\n"
+        "    struct S b = __builtin_va_arg(args, struct S);\n"
+        "    __builtin_va_end(args);\n"
+        "    return b.a;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "*struct.__builtin_va_list %1 = alloca struct.__builtin_va_list",
+        "*struct.S_0 %2 = alloca struct.S_0",
+        "store i32 a, *i32 %0",
+        "va_start *struct.__builtin_va_list %1",
+        "struct.S_0 %3 = va_arg *struct.__builtin_va_list %1, struct.S_0",
+        "store struct.S_0 %3, *struct.S_0 %2",
+        "va_end *struct.__builtin_va_list %1",
+        "*i32 %4 = get_struct_member_ptr *struct.S_0 %2, i32 0",
+        "i32 %5 = load *i32 %4",
+        "ret i32 %5",
+    }));
+}
+
+void test_ir_var_args_typedef_arg(void) {
+    const char *input =
+        "typedef struct { int a; } s;\n"
+        "int foo(int a, ...) {\n"
+        "    __builtin_va_list args;\n"
+        "    __builtin_va_start(args, a);\n"
+        "    s b = __builtin_va_arg(args, s);\n"
+        "    __builtin_va_end(args);\n"
+        "    return b.a;\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "*struct.__builtin_va_list %1 = alloca struct.__builtin_va_list",
+        "*struct.__anon_struct__1_1 %2 = alloca struct.__anon_struct__1_1",
+        "store i32 a, *i32 %0",
+        "va_start *struct.__builtin_va_list %1",
+        "struct.__anon_struct__1_1 %3 = va_arg *struct.__builtin_va_list %1, struct.__anon_struct__1_1",
+        "store struct.__anon_struct__1_1 %3, *struct.__anon_struct__1_1 %2",
+        "va_end *struct.__builtin_va_list %1",
+        "*i32 %4 = get_struct_member_ptr *struct.__anon_struct__1_1 %2, i32 0",
+        "i32 %5 = load *i32 %4",
+        "ret i32 %5",
+    }));
+}
+
+void test_ir_var_args_va_copy(void) {
+    const char *input =
+        "typedef struct { int a; } s;\n"
+        "int foo(int a, ...) {\n"
+        "    __builtin_va_list args1, args2;\n"
+        "    __builtin_va_start(args1, a);\n"
+        "    __builtin_va_copy(args2, args1);\n"
+        "    __builtin_va_end(args1);\n"
+        "    __builtin_va_end(args2);\n"
+        "}\n";
+    PARSE(input)
+    ir_gen_result_t result = generate_ir(&program, &IR_ARCH_X86_64, &TARGET_X86_64_UNKNOWN_LINUX_GNU);
+    CU_ASSERT_TRUE_FATAL(result.errors.size == 0)
+    const ir_function_definition_t *function = result.module->functions.buffer[0];
+    ASSERT_IR_INSTRUCTIONS_EQ(function, ((const char*[]) {
+        "*i32 %0 = alloca i32",
+        "*struct.__builtin_va_list %1 = alloca struct.__builtin_va_list",
+        "*struct.__builtin_va_list %2 = alloca struct.__builtin_va_list",
+        "store i32 a, *i32 %0",
+        "va_start *struct.__builtin_va_list %1",
+        "va_copy *struct.__builtin_va_list %1, *struct.__builtin_va_list %2",
+        "va_end *struct.__builtin_va_list %1",
+        "va_end *struct.__builtin_va_list %2",
+        "ret i32 0",
     }));
 }
 
@@ -2609,5 +2743,10 @@ int ir_gen_tests_init_suite(void) {
     CU_add_test(suite, "typedef enum", test_ir_typedef_enum);
     CU_add_test(suite, "constant address of global", test_ir_constant_address_of_global);
     CU_add_test(suite, "ptr comparison", test_ir_binexpr_ptr_cmp);
+    CU_add_test(suite, "declare local __builtin_va_list variable", test_ir_declare_va_list);
+    CU_add_test(suite, "__builtin_va_arg", test_ir_var_args_fn);
+    CU_add_test(suite, "__builtin_va_arg - struct type", test_ir_var_args_struct_arg);
+    CU_add_test(suite, "__builtin_va_arg - typedef struct type", test_ir_var_args_typedef_arg);
+    CU_add_test(suite, "__builtin_va_copy", test_ir_var_args_va_copy);
     return CUE_SUCCESS;
 }

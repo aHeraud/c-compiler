@@ -23,6 +23,7 @@ typedef enum CompilationErrorKind {
     ERR_INVALID_TERNARY_EXPRESSION_OPERANDS,
     ERR_CALL_TARGET_NOT_FUNCTION,
     ERR_CALL_ARGUMENT_COUNT_MISMATCH,
+    ERR_CALL_ARGUMENT_TYPE_MISMATCH,
     ERR_INVALID_LOOP_CONDITION_TYPE,
     ERR_INVALID_LOGICAL_BINARY_EXPRESSION_OPERAND_TYPE,
     ERR_INVALID_CONVERSION_TO_BOOLEAN,
@@ -86,6 +87,11 @@ typedef struct CompilationError {
             size_t expected;
             size_t actual;
         } call_argument_count_mismatch;
+        struct {
+            size_t argument_index;
+            const type_t *expected_type;
+            const type_t *actual_type;
+        } call_argument_type_mismatch;
         struct {
             const type_t *type;
         } invalid_ternary_condition_type;

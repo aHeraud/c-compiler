@@ -80,6 +80,11 @@ void print_compilation_error(const compilation_error_t *error) {
                     error->location.path, error->location.line, error->location.column);
             break;
         }
+        case ERR_CALL_ARGUMENT_TYPE_MISMATCH: {
+            fprintf(stderr, ERROR_PREFIX "Call argument type mismatch\n",
+                error->location.path, error->location.line, error->location.column);
+            break;
+        }
         case ERR_INVALID_LOOP_CONDITION_TYPE: {
             fprintf(stderr, ERROR_PREFIX "Invalid loop condition type\n",
                     error->location.path, error->location.line, error->location.column);

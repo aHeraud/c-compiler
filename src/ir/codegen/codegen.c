@@ -4,13 +4,18 @@
 #include "errors.h"
 #include "ir/cfg.h"
 #include "ir/codegen/codegen.h"
+
+#include "builtins.h"
 #include "ir/codegen/internal.h"
 #include "ir/fmt.h"
 
-ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir_arch_t *arch) {
+void ir_setup_builtins(ir_gen_context_t *context);
+
+ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir_arch_t *arch, const target_t *target) {
     ir_gen_context_t context = {
         .module = malloc(sizeof(ir_module_t)),
         .arch = arch,
+        .target = target,
         .global_map = hash_table_create_string_keys(256),
         .function_definition_map = hash_table_create_string_keys(256),
         .tag_uid_map = hash_table_create_string_keys(256),
@@ -49,8 +54,27 @@ ir_gen_result_t generate_ir(const translation_unit_t *translation_unit, const ir
     return result;
 }
 
+void ir_setup_builtins(ir_gen_context_t *context) {
+    // built-in types
+    // __builtin_va_list - va_list struct type - platform (arch + calling convention) dependent
+    const type_t *va_list_type = get_va_list_type(context->target);
+    const type_t *incomplete_ctype = make_incomplete_type(va_list_type);
+    tag_t *va_list_tag = malloc(sizeof(tag_t));
+    *va_list_tag = (tag_t) {
+        .c_type = incomplete_ctype,
+        .identifier = va_list_type->value.struct_or_union.identifier,
+        .uid = "__builtin_va_list",
+        .ir_type = make_incomplete_ir_type(context, "__builtin_va_list", incomplete_ctype),
+    };
+    va_list_tag->ir_type = get_ir_struct_type(context, va_list_tag, va_list_type, va_list_tag->uid);
+    declare_tag(context, va_list_tag);
+}
+
 void ir_visit_translation_unit(ir_gen_context_t *context, const translation_unit_t *translation_unit) {
     enter_scope(context);
+
+    // Set up built-in types and functions
+    ir_setup_builtins(context);
 
     for (size_t i = 0; i < translation_unit->length; i++) {
         external_declaration_t *external_declaration = (external_declaration_t*) translation_unit->external_declarations[i];

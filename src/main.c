@@ -259,7 +259,7 @@ void compile(options_t options, const char* input_file_name) {
     }
 
     const ir_arch_t *ir_arch = get_ir_arch(target);
-    ir_gen_result_t result = generate_ir(translation_unit, ir_arch);
+    ir_gen_result_t result = generate_ir(translation_unit, ir_arch, target);
     if (result.errors.size > 0) {
         for (size_t i = 0; i < result.errors.size; i++) {
             compilation_error_t error = result.errors.buffer[i];
